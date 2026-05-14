@@ -3,24 +3,51 @@ import unicodedata
 from datetime import date
 
 REGRAS = [
-    (["diesel","gasolina","etanol","combustivel","abastec"], "3.1.2", "despesa"),
-    (["semente","adubo","fertilizante","calcario","defensivo"], "3.1.1", "despesa"),
-    (["racao","vacina","vermifugo","medicamento animal"], "3.1.3", "despesa"),
-    (["salario","funcionario","diarista","mao de obra"], "3.1.4", "despesa"),
-    (["manutencao","reparo","conserto","peca"], "3.1.5", "despesa"),
-    (["energia","luz","conta de luz"], "3.1.6", "despesa"),
-    (["arrendamento","aluguel rural"], "3.1.7", "despesa"),
-    (["trator","maquina","equipamento","implemento"], "5.1", "investimento"),
-    (["obra","benfeitoria","cerca","curral"], "5.2", "investimento"),
-    (["novilho","bezerra","matriz","plantel","compra animal","compra ovelha","compra cabra","ovelha","cabra"], "5.3", "investimento"),
-    (["venda","vendi","recebi","entregue"], "1.1", "receita"),
-    (["soja","milho","cafe","cana","algodao"], "1.1.1", "receita"),
-    (["boi","vaca","gado","bovino","suino","frango","ovino","caprino","ovelha","carneiro","cabra","bode","cordeiro"], "1.1.2", "receita"),
+    (["diesel","gasolina","etanol","combustivel","abastec"], "3.1.2", "despesa", None),
+    (["semente","adubo","fertilizante","calcario","defensivo"], "3.1.1", "despesa", None),
+    (["racao","vacina","vermifugo","medicamento animal"], "3.1.3", "despesa", None),
+    (["salario","funcionario","diarista","mao de obra"], "3.1.4", "despesa", None),
+    (["manutencao","reparo","conserto","peca"], "3.1.5", "despesa", None),
+    (["energia","luz","conta de luz"], "3.1.6", "despesa", None),
+    (["arrendamento","aluguel rural"], "3.1.7", "despesa", None),
+    (["trator","maquina","equipamento","implemento"], "5.1", "investimento", None),
+    (["obra","benfeitoria","cerca","curral"], "5.2", "investimento", None),
+    (["novilho","bezerra","matriz","plantel","compra animal","compra ovelha","compra cabra"], "5.3", "investimento", None),
+    (["soja"], "1.1.1", "receita", "Soja"),
+    (["milho"], "1.1.1", "receita", "Milho"),
+    (["cafe","café"], "1.1.1", "receita", "Cafe"),
+    (["cana"], "1.1.1", "receita", "Cana-de-acucar"),
+    (["algodao","algodão"], "1.1.1", "receita", "Algodao"),
+    (["arroz"], "1.1.1", "receita", "Arroz"),
+    (["feijao","feijão"], "1.1.1", "receita", "Feijao"),
+    (["trigo"], "1.1.1", "receita", "Trigo"),
+    (["boi","vaca","gado","bovino","bezerro","novilho"], "1.1.2", "receita", "Bovino"),
+    (["suino","suíno","porco"], "1.1.2", "receita", "Suino"),
+    (["frango","galinha","ave"], "1.1.2", "receita", "Aves"),
+    (["ovelha","carneiro","ovino"], "1.1.2", "receita", "Ovino"),
+    (["cabra","bode","caprino"], "1.1.2", "receita", "Caprino"),
+    (["leite"], "1.1.2", "receita", "Leite"),
+    (["venda","vendi","recebi","entregue"], "1.1", "receita", None),
 ]
 
+PRODUTOS = {
+    "Soja": ["soja"],
+    "Milho": ["milho"],
+    "Cafe": ["cafe","café"],
+    "Cana-de-acucar": ["cana"],
+    "Algodao": ["algodao","algodão"],
+    "Arroz": ["arroz"],
+    "Feijao": ["feijao","feijão"],
+    "Trigo": ["trigo"],
+    "Bovino": ["boi","vaca","gado","bovino","bezerro","novilho","bois","vacas"],
+    "Suino": ["suino","suíno","porco","leitao"],
+    "Aves": ["frango","galinha","ave","pinto"],
+    "Ovino": ["ovelha","carneiro","ovino","cordeiro"],
+    "Caprino": ["cabra","bode","caprino"],
+    "Leite": ["leite"],
+}
 
 def extrair_valor(texto):
-    # remove pontos de milhar antes de buscar
     texto_limpo = re.sub(r'(\d)\.(\d{3})', r'\1\2', texto)
     padrao = r'\b(\d+(?:,\d{2})?)\b'
     matches = re.findall(padrao, texto_limpo)
@@ -36,23 +63,29 @@ def normalizar(texto):
     texto = unicodedata.normalize("NFD", texto.lower())
     return "".join(c for c in texto if unicodedata.category(c) != "Mn")
 
+def detectar_produto(texto_norm):
+    for produto, palavras in PRODUTOS.items():
+        if any(p in texto_norm for p in palavras):
+            return produto
+    return None
 
 def classificar(texto):
     texto_norm = normalizar(texto)
     melhor = None
     melhor_score = 0
 
-    for palavras, conta, tipo in REGRAS:
+    for palavras, conta, tipo, produto in REGRAS:
         score = sum(1 for p in palavras if p in texto_norm)
         if score > melhor_score:
             melhor_score = score
-            melhor = (conta, tipo)
+            melhor = (conta, tipo, produto)
 
     if not melhor or melhor_score == 0:
         return None
 
     valor = extrair_valor(texto)
     confianca = min(95, 60 + melhor_score * 15)
+    produto = melhor[2] or detectar_produto(texto_norm)
 
     return {
         "conta": melhor[0],
@@ -60,4 +93,5 @@ def classificar(texto):
         "valor": valor,
         "data": date.today().isoformat(),
         "confianca": confianca,
+        "produto": produto,
     }
