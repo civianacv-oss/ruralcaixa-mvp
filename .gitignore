@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+postgres/
+node/
+git/
+frontend/node_modules/
+*.zip
+*.exe
+*.msi
+ngrok.exe

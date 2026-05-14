@@ -1,0 +1,145 @@
+﻿"use client";
+import { useState } from "react";
+
+const produtores = [
+  { id: 1, nome: "Joao Batista Neves", cpf: "123.456.789-00", cidade: "Barretos-SP", status: "em_apuracao", pendentes: 12, receita: 42300, despesa: 23850 },
+  { id: 2, nome: "Maria Aparecida Costa", cpf: "987.654.321-00", cidade: "Ribeirao Preto-SP", status: "pronto", pendentes: 0, receita: 31200, despesa: 18400 },
+  { id: 3, nome: "Carlos Eduardo Souza", cpf: "111.222.333-00", cidade: "Uberaba-MG", status: "atrasado", pendentes: 8, receita: 0, despesa: 0 },
+  { id: 4, nome: "Antonio Lima Filho", cpf: "555.444.333-00", cidade: "Sorriso-MT", status: "fechado", pendentes: 0, receita: 98000, despesa: 54000 },
+];
+
+const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
+  em_apuracao: { label: "Em apuracao", bg: "bg-yellow-100", text: "text-yellow-700" },
+  pronto: { label: "Pronto", bg: "bg-green-100", text: "text-green-700" },
+  atrasado: { label: "Atrasado", bg: "bg-red-100", text: "text-red-700" },
+  fechado: { label: "Fechado", bg: "bg-gray-100", text: "text-gray-600" },
+};
+
+const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+export default function Contador() {
+  const [selecionado, setSelecionado] = useState<number | null>(null);
+  const produtor = produtores.find(p => p.id === selecionado);
+
+  return (
+    <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-6">
+      <div className="bg-green-800 text-white px-4 py-4">
+        <a href="/" className="text-xs opacity-70">← Voltar</a>
+        <div className="text-lg font-medium mt-1">Painel do Contador</div>
+        <div className="text-xs opacity-70">Dra. Ana Lima — CRC-SP 1234567</div>
+      </div>
+
+      {!selecionado ? (
+        <div className="p-4 space-y-4">
+          {/* Metricas */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Produtores", valor: "4" },
+              { label: "Pendentes", valor: "2", destaque: true },
+              { label: "Fechados", valor: "1" },
+            ].map(m => (
+              <div key={m.label} className="bg-white rounded-xl p-3 text-center shadow-sm">
+                <div className="text-xs text-gray-500">{m.label}</div>
+                <div className={`text-2xl font-semibold mt-1 ${m.destaque ? "text-orange-500" : "text-gray-800"}`}>
+                  {m.valor}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Clientes — Maio 2025
+          </div>
+
+          {produtores.map(p => {
+            const sc = statusConfig[p.status];
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelecionado(p.id)}
+                className="w-full bg-white rounded-xl p-4 shadow-sm text-left flex items-center justify-between"
+              >
+                <div>
+                  <div className="text-sm font-medium">{p.nome}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} · {p.cidade}</div>
+                </div>
+                <div className="text-right">
+                  <span className={`text-xs px-2 py-1 rounded-full ${sc.bg} ${sc.text}`}>
+                    {sc.label}
+                  </span>
+                  {p.pendentes > 0 && (
+                    <div className="text-xs text-orange-500 mt-1">{p.pendentes} pendentes</div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="p-4 space-y-4">
+          <button onClick={() => setSelecionado(null)} className="text-green-800 text-sm font-medium">
+            ← Todos os produtores
+          </button>
+
+          {produtor && (
+            <>
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">
+                    👨‍🌾
+                  </div>
+                  <div>
+                    <div className="font-medium">{produtor.nome}</div>
+                    <div className="text-xs text-gray-400">{produtor.cpf}</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">Receitas</div>
+                    <div className="text-sm font-semibold text-green-700 mt-1">{fmt(produtor.receita)}</div>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">Despesas</div>
+                    <div className="text-sm font-semibold text-red-600 mt-1">{fmt(produtor.despesa)}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+                <div className="text-sm font-medium text-gray-600">Acoes do contador</div>
+                {[
+                  { icon: "📋", label: "Ver todos os lancamentos" },
+                  { icon: "✏️", label: "Corrigir classificacao" },
+                  { icon: "📄", label: "Gerar LCDPR PDF" },
+                  { icon: "✅", label: "Fechar mes" },
+                ].map(a => (
+                  <button key={a.label} className="w-full flex items-center gap-3 py-2 border-b last:border-0 text-sm text-left">
+                    <span className="text-lg">{a.icon}</span>
+                    <span>{a.label}</span>
+                    <span className="ml-auto text-gray-400">›</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="text-sm font-medium text-gray-600 mb-3">Status do fechamento</div>
+                {[
+                  { label: "Lancamentos capturados", ok: true },
+                  { label: "Classificacao aplicada", ok: true },
+                  { label: "Confirmacao do produtor", ok: produtor.pendentes === 0 },
+                  { label: "Revisao do contador", ok: false },
+                  { label: "Fechamento LCDPR", ok: produtor.status === "fechado" },
+                ].map(s => (
+                  <div key={s.label} className="flex items-center gap-2 text-sm py-1">
+                    <span>{s.ok ? "✅" : "⏳"}</span>
+                    <span className={s.ok ? "text-gray-700" : "text-gray-400"}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
