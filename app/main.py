@@ -71,7 +71,16 @@ async def processar(payload: dict):
                     sess["numero"] = numero
                     from app.db import gravar_lancamento
                     lancamento_id = gravar_lancamento(sess)
-                    await send_msg(numero, f"Lancamento #{lancamento_id} gravado!\nTipo: {sess['tipo'].upper()}\nConta: {sess['conta']}\nValor: R$ {sess['valor']:,.2f}\nData: {sess['data']}")
+                    produto_txt = sess.get("produto") or "N/A"
+                    resposta = (
+                        f"Lancamento #{lancamento_id} gravado!\n"
+                        f"Tipo: {sess['tipo'].upper()}\n"
+                        f"Conta: {sess['conta']}\n"
+                        f"Produto: {produto_txt}\n"
+                        f"Valor: R$ {sess['valor']:,.2f}\n"
+                        f"Data: {sess['data']}"
+                    )
+                    await send_msg(numero, resposta)
                     return
                 elif texto_upper in ("NAO", "N", "CANCELA"):
                     sessoes.pop(numero)
@@ -91,7 +100,17 @@ async def processar(payload: dict):
             else:
                 tipo_label = "[INVESTIMENTO]"
 
-            await send_msg(numero, f"Recebi! Lancamento sugerido:\n\n{tipo_label} {resultado['tipo'].upper()}\nValor: R$ {resultado['valor']:,.2f}\nConta: {resultado['conta']}\nConfianca: {resultado['confianca']}%\n\nResponda SIM para confirmar ou NAO para cancelar.")
+            produto_txt = resultado.get("produto") or "N/A"
+            msg_resposta = (
+                f"Recebi! Lancamento sugerido:\n\n"
+                f"{tipo_label} {resultado['tipo'].upper()}\n"
+                f"Valor: R$ {resultado['valor']:,.2f}\n"
+                f"Conta: {resultado['conta']}\n"
+                f"Produto: {produto_txt}\n"
+                f"Confianca: {resultado['confianca']}%\n\n"
+                f"Responda SIM para confirmar ou NAO para cancelar."
+            )
+            await send_msg(numero, msg_resposta)
 
         elif tipo in ("image", "document"):
             await send_msg(numero, "Documento recebido! Em breve processaremos sua nota fiscal.")
