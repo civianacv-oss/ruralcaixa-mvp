@@ -1,128 +1,67 @@
 ﻿"use client";
 import { useState } from "react";
 
+const API = "https://ruralcaixa-mvp-production.up.railway.app";
+
 export default function Cadastro() {
   const [step, setStep] = useState(1);
-  const [produtor, setProdutor] = useState({
-    nome: "", cpf: "", telefone: "", nirf: ""
-  });
-  const [imovel, setImovel] = useState({
-    nome: "", nirf: "", area_ha: "", municipio: "", uf: ""
-  });
+  const [loading, setLoading] = useState(false);
+  const [produtor, setProdutor] = useState({ nome: "", cpf: "", telefone: "", nirf: "" });
+  const [imovel, setImovel] = useState({ nome: "", nirf: "", area_ha: "", municipio: "", uf: "" });
   const [salvo, setSalvo] = useState(false);
-
+  const [produtorId, setProdutorId] = useState(null);
   const ufs = ["AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"];
-
-  function formatCPF(v: string) {
-    return v.replace(/\D/g,"").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2").slice(0,14);
-  }
-
-  function formatTel(v: string) {
-    return v.replace(/\D/g,"").replace(/^(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2").slice(0,15);
-  }
-
+  function formatCPF(v) { return v.replace(/\D/g,"").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2").slice(0,14); }
+  function formatTel(v) { return v.replace(/\D/g,"").replace(/^(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2").slice(0,15); }
   async function salvar() {
-    setSalvo(true);
+    setLoading(true);
+    try {
+      const res = await fetch(API + "/cadastro", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ produtor: { nome: produtor.nome, cpf: produtor.cpf, telefone: "55" + produtor.telefone.replace(/\D/g,""), nirf: produtor.nirf || null }, imovel: { nome: imovel.nome, nirf: imovel.nirf || null, area_ha: imovel.area_ha ? parseFloat(imovel.area_ha) : null, municipio: imovel.municipio, uf: imovel.uf } }) });
+      const data = await res.json();
+      if (data.produtor_id) { setProdutorId(data.produtor_id); setSalvo(true); } else { alert("Erro ao salvar."); }
+    } catch { alert("Erro de conexao."); } finally { setLoading(false); }
   }
-
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-10">
       <div className="bg-green-800 text-white px-4 py-4">
         <a href="/contador" className="text-xs opacity-70">← Painel do contador</a>
         <div className="text-lg font-medium mt-1">Cadastrar produtor</div>
-        <div className="text-xs opacity-70">Novo produtor rural</div>
       </div>
-
-      {/* Steps */}
       <div className="flex px-4 pt-4 gap-2">
-        {["Dados pessoais","Imóvel rural","Confirmar"].map((s,i) => (
+        {["Dados pessoais","Imovel rural","Confirmar"].map((s,i) => (
           <div key={i} className="flex-1">
-            <div className={`h-1 rounded ${step > i ? "bg-green-700" : step === i+1 ? "bg-green-500" : "bg-gray-200"}`}></div>
-            <div className={`text-xs mt-1 text-center ${step === i+1 ? "text-green-800 font-medium" : "text-gray-400"}`}>{s}</div>
+            <div className={"h-1 rounded " + (step > i ? "bg-green-700" : step === i+1 ? "bg-green-500" : "bg-gray-200")}></div>
+            <div className={"text-xs mt-1 text-center " + (step === i+1 ? "text-green-800 font-medium" : "text-gray-400")}>{s}</div>
           </div>
         ))}
       </div>
-
       <div className="p-4 space-y-4">
-
         {step === 1 && (
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-            <div className="text-sm font-medium text-gray-600 mb-2">Dados do produtor</div>
-            <div>
-              <label className="text-xs text-gray-500">Nome completo *</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="João Batista Neves"
-                value={produtor.nome} onChange={e => setProdutor({...produtor, nome: e.target.value})} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">CPF *</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="000.000.000-00"
-                value={produtor.cpf} onChange={e => setProdutor({...produtor, cpf: formatCPF(e.target.value)})} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">WhatsApp *</label>
-              <div className="flex gap-2 mt-1">
-                <div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">+55</div>
-                <input className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="(98) 99200-2705"
-                  value={produtor.telefone} onChange={e => setProdutor({...produtor, telefone: formatTel(e.target.value)})} />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">NIRF (opcional)</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="0000000-0"
-                value={produtor.nirf} onChange={e => setProdutor({...produtor, nirf: e.target.value})} />
-            </div>
-            <button
-              onClick={() => produtor.nome && produtor.cpf && produtor.telefone && setStep(2)}
-              className={`w-full py-3 rounded-lg text-sm font-medium text-white ${produtor.nome && produtor.cpf && produtor.telefone ? "bg-green-800" : "bg-gray-300"}`}>
-              Próximo →
-            </button>
+            <div className="text-sm font-medium text-gray-600">Dados do produtor</div>
+            <div><label className="text-xs text-gray-500">Nome completo *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Joao Batista Neves" value={produtor.nome} onChange={e => setProdutor({...produtor, nome: e.target.value})} /></div>
+            <div><label className="text-xs text-gray-500">CPF *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="000.000.000-00" value={produtor.cpf} onChange={e => setProdutor({...produtor, cpf: formatCPF(e.target.value)})} /></div>
+            <div><label className="text-xs text-gray-500">WhatsApp *</label><div className="flex gap-2 mt-1"><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">+55</div><input className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="(98) 99200-2705" value={produtor.telefone} onChange={e => setProdutor({...produtor, telefone: formatTel(e.target.value)})} /></div></div>
+            <div><label className="text-xs text-gray-500">NIRF (opcional)</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="0000000-0" value={produtor.nirf} onChange={e => setProdutor({...produtor, nirf: e.target.value})} /></div>
+            <button onClick={() => produtor.nome && produtor.cpf && produtor.telefone && setStep(2)} className={"w-full py-3 rounded-lg text-sm font-medium text-white " + (produtor.nome && produtor.cpf && produtor.telefone ? "bg-green-800" : "bg-gray-300")}>Proximo →</button>
           </div>
         )}
-
         {step === 2 && (
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-            <div className="text-sm font-medium text-gray-600 mb-2">Imóvel rural principal</div>
-            <div>
-              <label className="text-xs text-gray-500">Nome do imóvel *</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Fazenda Boa Esperança"
-                value={imovel.nome} onChange={e => setImovel({...imovel, nome: e.target.value})} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">NIRF do imóvel</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="0000000-0"
-                value={imovel.nirf} onChange={e => setImovel({...imovel, nirf: e.target.value})} />
-            </div>
+            <div className="text-sm font-medium text-gray-600">Imovel rural principal</div>
+            <div><label className="text-xs text-gray-500">Nome do imovel *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Fazenda Boa Esperanca" value={imovel.nome} onChange={e => setImovel({...imovel, nome: e.target.value})} /></div>
+            <div><label className="text-xs text-gray-500">NIRF do imovel</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="0000000-0" value={imovel.nirf} onChange={e => setImovel({...imovel, nirf: e.target.value})} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500">Área (ha)</label>
-                <input type="number" className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="450"
-                  value={imovel.area_ha} onChange={e => setImovel({...imovel, area_ha: e.target.value})} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">UF *</label>
-                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
-                  value={imovel.uf} onChange={e => setImovel({...imovel, uf: e.target.value})}>
-                  <option value="">Selecione</option>
-                  {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
-                </select>
-              </div>
+              <div><label className="text-xs text-gray-500">Area (ha)</label><input type="number" className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="450" value={imovel.area_ha} onChange={e => setImovel({...imovel, area_ha: e.target.value})} /></div>
+              <div><label className="text-xs text-gray-500">UF *</label><select className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" value={imovel.uf} onChange={e => setImovel({...imovel, uf: e.target.value})}><option value="">Selecione</option>{ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}</select></div>
             </div>
-            <div>
-              <label className="text-xs text-gray-500">Município *</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Barretos"
-                value={imovel.municipio} onChange={e => setImovel({...imovel, municipio: e.target.value})} />
-            </div>
+            <div><label className="text-xs text-gray-500">Municipio *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Barretos" value={imovel.municipio} onChange={e => setImovel({...imovel, municipio: e.target.value})} /></div>
             <div className="flex gap-3">
               <button onClick={() => setStep(1)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">← Voltar</button>
-              <button
-                onClick={() => imovel.nome && imovel.uf && imovel.municipio && setStep(3)}
-                className={`flex-1 py-3 rounded-lg text-sm font-medium text-white ${imovel.nome && imovel.uf && imovel.municipio ? "bg-green-800" : "bg-gray-300"}`}>
-                Próximo →
-              </button>
+              <button onClick={() => imovel.nome && imovel.uf && imovel.municipio && setStep(3)} className={"flex-1 py-3 rounded-lg text-sm font-medium text-white " + (imovel.nome && imovel.uf && imovel.municipio ? "bg-green-800" : "bg-gray-300")}>Proximo →</button>
             </div>
           </div>
         )}
-
         {step === 3 && !salvo && (
           <div className="space-y-4">
             <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -131,45 +70,26 @@ export default function Cadastro() {
                 <div className="flex justify-between"><span className="text-gray-500">Nome</span><span className="font-medium">{produtor.nome}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">CPF</span><span>{produtor.cpf}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">WhatsApp</span><span>+55 {produtor.telefone}</span></div>
-                {produtor.nirf && <div className="flex justify-between"><span className="text-gray-500">NIRF</span><span>{produtor.nirf}</span></div>}
                 <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between"><span className="text-gray-500">Imóvel</span><span className="font-medium">{imovel.nome}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Município</span><span>{imovel.municipio}-{imovel.uf}</span></div>
-                  {imovel.area_ha && <div className="flex justify-between"><span className="text-gray-500">Área</span><span>{imovel.area_ha} ha</span></div>}
+                  <div className="flex justify-between"><span className="text-gray-500">Imovel</span><span className="font-medium">{imovel.nome}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Municipio</span><span>{imovel.municipio}-{imovel.uf}</span></div>
                 </div>
               </div>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-              O produtor poderá enviar lançamentos pelo WhatsApp assim que o cadastro for salvo.
-            </div>
             <div className="flex gap-3">
               <button onClick={() => setStep(2)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">← Voltar</button>
-              <button onClick={salvar} className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800">
-                Salvar cadastro
-              </button>
+              <button onClick={salvar} disabled={loading} className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400">{loading ? "Salvando..." : "Salvar cadastro"}</button>
             </div>
           </div>
         )}
-
         {salvo && (
           <div className="bg-white rounded-xl p-6 shadow-sm text-center space-y-4">
             <div className="text-4xl">✅</div>
             <div className="text-lg font-medium text-green-800">Cadastro realizado!</div>
-            <div className="text-sm text-gray-500">
-              {produtor.nome} foi cadastrado com sucesso.<br/>
-              WhatsApp: +55 {produtor.telefone}
-            </div>
-            <div className="bg-green-50 rounded-lg p-3 text-xs text-green-700">
-              O produtor já pode enviar mensagens para o número do Rural Caixa PF e os lançamentos serão processados automaticamente.
-            </div>
+            <div className="text-sm text-gray-500">{produtor.nome} cadastrado! ID #{produtorId}</div>
             <div className="flex gap-3">
-              <button onClick={() => { setStep(1); setProdutor({nome:"",cpf:"",telefone:"",nirf:""}); setImovel({nome:"",nirf:"",area_ha:"",municipio:"",uf:""}); setSalvo(false); }}
-                className="flex-1 py-3 rounded-lg text-sm border border-gray-200">
-                Novo cadastro
-              </button>
-              <a href="/contador" className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 text-center">
-                Voltar ao painel
-              </a>
+              <button onClick={() => { setStep(1); setProdutor({nome:"",cpf:"",telefone:"",nirf:""}); setImovel({nome:"",nirf:"",area_ha:"",municipio:"",uf:""}); setSalvo(false); }} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">Novo cadastro</button>
+              <a href="/contador" className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 text-center">Voltar ao painel</a>
             </div>
           </div>
         )}

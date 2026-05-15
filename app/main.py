@@ -3,6 +3,25 @@ from fastapi.responses import PlainTextResponse
 import hmac, hashlib, json, os, httpx
 from dotenv import load_dotenv
 from app.services.classifier import classificar
+from pydantic import BaseModel
+from typing import Optional
+
+class ProdutorCreate(BaseModel):
+    nome: str
+    cpf: str
+    telefone: str
+    nirf: Optional[str] = None
+
+class ImovelCreate(BaseModel):
+    nome: str
+    nirf: Optional[str] = None
+    area_ha: Optional[float] = None
+    municipio: str
+    uf: str
+
+class CadastroRequest(BaseModel):
+    produtor: ProdutorCreate
+    imovel: ImovelCreate
 
 load_dotenv()
 
@@ -44,6 +63,12 @@ async def send_msg(to: str, body: str):
             headers={"Authorization": f"Bearer {WAPP_TOKEN}", "Content-Type": "application/json"},
             json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
         )
+
+@app.post("/cadastro")
+async def cadastrar_produtor(data: CadastroRequest):
+    from app.db import cadastrar
+    result = cadastrar(data.produtor.dict(), data.imovel.dict())
+    return {"status": "ok", "produtor_id": result}
 
 async def processar(payload: dict):
     try:
