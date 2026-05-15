@@ -8,14 +8,12 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 
 def gravar_lancamento(dados: dict) -> int:
     with engine.connect() as conn:
-        # busca produtor pelo telefone
         prod = conn.execute(text(
             "SELECT id FROM produtores WHERE telefone = :tel"
         ), {"tel": dados.get("numero", "")}).fetchone()
 
         produtor_id = prod[0] if prod else 1
 
-        # busca primeiro imovel do produtor
         imovel = conn.execute(text(
             "SELECT id FROM imoveis_rurais WHERE produtor_id = :pid LIMIT 1"
         ), {"pid": produtor_id}).fetchone()
@@ -24,9 +22,9 @@ def gravar_lancamento(dados: dict) -> int:
 
         result = conn.execute(text("""
             INSERT INTO lancamentos
-                (produtor_id, imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, texto_original, produto) 
-		VALUES
-		(:produtor_id, :imovel_id, :conta, :tipo, :descricao, :valor, :data, :origem, :texto, :produto)
+                (produtor_id, imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, texto_original, produto)
+            VALUES
+                (:produtor_id, :imovel_id, :conta, :tipo, :descricao, :valor, :data, :origem, :texto, :produto)
             RETURNING id
         """), {
             "produtor_id": produtor_id,
@@ -37,14 +35,13 @@ def gravar_lancamento(dados: dict) -> int:
             "valor":       dados.get("valor", 0),
             "data":        dados.get("data"),
             "origem":      dados.get("origem", "whatsapp"),
-	    "produto":     dados.get("produto"),
+            "produto":     dados.get("produto"),
             "texto":       dados.get("texto_original", ""),
         })
         conn.commit()
 
         lancamento_id = result.fetchone()[0]
 
-        # audit log
         import json as _json
         conn.execute(text("""
             INSERT INTO audit_log (tabela, registro_id, acao, usuario, payload)
@@ -58,6 +55,38 @@ def gravar_lancamento(dados: dict) -> int:
 
         return lancamento_id
 
+
+def get_ultimo_lancamento(telefone: str):
+    """Retorna o ID do último lançamento do produtor pelo telefone."""
+    with engine.connect() as conn:
+        prod = conn.execute(text(
+            "SELECT id FROM produtores WHERE telefone = :tel"
+        ), {"tel": telefone}).fetchone()
+
+        if not prod:
+            return None
+
+        result = conn.execute(text("""
+            SELECT id FROM lancamentos
+            WHERE produtor_id = :pid
+            ORDER BY created_at DESC
+            LIMIT 1
+        """), {"pid": prod[0]}).fetchone()
+
+        return result[0] if result else None
+
+
+def vincular_documento(lancamento_id: int, url_drive: str):
+    """Vincula URL do documento ao lançamento."""
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE lancamentos
+            SET documento_url = :url
+            WHERE id = :id
+        """), {"url": url_drive, "id": lancamento_id})
+        conn.commit()
+
+
 def buscar_saldo_mes(produtor_id: int) -> float:
     with engine.connect() as conn:
         result = conn.execute(text("""
@@ -70,6 +99,7 @@ def buscar_saldo_mes(produtor_id: int) -> float:
         """), {"pid": produtor_id}).fetchone()
         return float(result[0]) if result else 0.0
 
+
 def buscar_produtor_por_numero(telefone: str):
     with engine.connect() as conn:
         result = conn.execute(text(
@@ -78,6 +108,7 @@ def buscar_produtor_por_numero(telefone: str):
         if result:
             return {"id": result[0], "nome": result[1]}
         return None
+
 
 def cadastrar(produtor: dict, imovel: dict) -> int:
     with engine.connect() as conn:

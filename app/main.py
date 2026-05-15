@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 import hmac, hashlib, json, os, httpx
 from dotenv import load_dotenv
@@ -103,7 +103,8 @@ async def processar(payload: dict):
                         f"Conta: {sess['conta']}\n"
                         f"Produto: {produto_txt}\n"
                         f"Valor: R$ {sess['valor']:,.2f}\n"
-                        f"Data: {sess['data']}"
+                        f"Data: {sess['data']}\n\n"
+                        f"📎 Envie a foto ou PDF do comprovante para vincular ao lançamento."
                     )
                     await send_msg(numero, resposta)
                     return
@@ -138,7 +139,37 @@ async def processar(payload: dict):
             await send_msg(numero, msg_resposta)
 
         elif tipo in ("image", "document"):
-            await send_msg(numero, "Documento recebido! Em breve processaremos sua nota fiscal.")
+            await send_msg(numero, "📎 Documento recebido! Fazendo upload...")
+            try:
+                from app.services.drive_handler import baixar_midia_whatsapp, upload_para_drive, extensao_por_mime
+                from app.db import get_ultimo_lancamento, vincular_documento
+
+                if tipo == "image":
+                    media_id  = msg["image"]["id"]
+                    mime_type = msg["image"].get("mime_type", "image/jpeg")
+                else:
+                    media_id  = msg["document"]["id"]
+                    mime_type = msg["document"].get("mime_type", "application/pdf")
+
+                conteudo, mime_type = await baixar_midia_whatsapp(media_id, WAPP_TOKEN)
+
+                from datetime import datetime
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                ext = extensao_por_mime(mime_type)
+                nome_arquivo = f"{numero}_{ts}{ext}"
+
+                url_drive = upload_para_drive(conteudo, nome_arquivo, mime_type, subfolder_name=numero)
+
+                lancamento_id = get_ultimo_lancamento(numero)
+                if lancamento_id:
+                    vincular_documento(lancamento_id, url_drive)
+                    await send_msg(numero, f"✅ Documento vinculado ao lançamento #{lancamento_id}!\n🔗 {url_drive}")
+                else:
+                    await send_msg(numero, f"✅ Documento salvo!\n🔗 {url_drive}\n\n(Nenhum lançamento recente para vincular)")
+
+            except Exception as e:
+                print(f"Erro no upload: {e}")
+                await send_msg(numero, "❌ Erro ao processar documento. Tente novamente.")
 
     except Exception as e:
         print(f"Erro: {e}")
