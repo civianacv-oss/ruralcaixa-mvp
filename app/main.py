@@ -35,6 +35,16 @@ GRAPH        = "https://graph.facebook.com/v23.0"
 
 sessoes = {}
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://ruralcaixa-mvp.vercel.app", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/")
 def root():
     return {"status": "Rural Caixa PF online"}
