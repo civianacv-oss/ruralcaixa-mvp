@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -11,16 +11,53 @@ export default function Cadastro() {
   const [salvo, setSalvo] = useState(false);
   const [produtorId, setProdutorId] = useState(null);
   const ufs = ["AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"];
-  function formatCPF(v: string) { return v.replace(/\D/g,"").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2").slice(0,14); }
-  function formatTel(v: string) {return v.replace(/\D/g,"").replace(/^(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2").slice(0,15); }
+
+  function formatCPF(v: string) {
+    return v.replace(/\D/g,"").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2").slice(0,14);
+  }
+
+  function formatTel(v: string) {
+    return v.replace(/\D/g,"").replace(/^(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2").slice(0,15);
+  }
+
   async function salvar() {
     setLoading(true);
     try {
-      const res = await fetch(API + "/cadastro", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ produtor: { nome: produtor.nome, cpf: produtor.cpf, telefone: "55" + produtor.telefone.replace(/\D/g,""), nirf: produtor.nirf || null }, imovel: { nome: imovel.nome, nirf: imovel.nirf || null, area_ha: imovel.area_ha ? parseFloat(imovel.area_ha) : null, municipio: imovel.municipio, uf: imovel.uf } }) });
+      const res = await fetch(API + "/cadastro", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          produtor: {
+            nome: produtor.nome,
+            cpf: produtor.cpf,
+            telefone: "55" + produtor.telefone.replace(/\D/g,""),
+            nirf: produtor.nirf || null
+          },
+          imovel: {
+            nome: imovel.nome,
+            nirf: imovel.nirf || null,
+            area_ha: imovel.area_ha ? parseFloat(imovel.area_ha) : null,
+            municipio: imovel.municipio,
+            uf: imovel.uf
+          }
+        })
+      });
       const data = await res.json();
-      if (data.produtor_id) { setProdutorId(data.produtor_id); setSalvo(true); } else { alert("Erro ao salvar."); }
-    } catch { alert("Erro de conexao."); } finally { setLoading(false); }
+      if (data.produtor_id) {
+        setProdutorId(data.produtor_id);
+        setSalvo(true);
+      } else {
+        alert("Erro ao salvar.");
+      }
+    } catch {
+      alert("Erro de conexao.");
+    } finally {
+      setLoading(false);
+    }
   }
+
+  const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm bg-white text-gray-900";
+
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-10">
       <div className="bg-green-800 text-white px-4 py-4">
@@ -39,25 +76,98 @@ export default function Cadastro() {
         {step === 1 && (
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div className="text-sm font-medium text-gray-600">Dados do produtor</div>
-            <div><label className="text-xs text-gray-500">Nome completo *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Joao Batista Neves" value={produtor.nome} onChange={e => setProdutor({...produtor, nome: e.target.value})} /></div>
-            <div><label className="text-xs text-gray-500">CPF *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="000.000.000-00" value={produtor.cpf} onChange={e => setProdutor({...produtor, cpf: formatCPF(e.target.value)})} /></div>
-            <div><label className="text-xs text-gray-500">WhatsApp *</label><div className="flex gap-2 mt-1"><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">+55</div><input className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="(98) 99200-2705" value={produtor.telefone} inputMode="numeric" type="tel" onChange={e => setProdutor({...produtor, telefone: formatTel(e.target.value)})} /></div></div>            <div><label className="text-xs text-gray-500">NIRF (opcional)</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="0000000-0" value={produtor.nirf} onChange={e => setProdutor({...produtor, nirf: e.target.value})} /></div>
-            <button onClick={() => produtor.nome && produtor.cpf && produtor.telefone && setStep(2)} className={"w-full py-3 rounded-lg text-sm font-medium text-white " + (produtor.nome && produtor.cpf && produtor.telefone ? "bg-green-800" : "bg-gray-300")}>Proximo →</button>
+            <div>
+              <label className="text-xs text-gray-500">Nome completo *</label>
+              <input
+                className={inputClass}
+                placeholder="Joao Batista Neves"
+                value={produtor.nome}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="words"
+                onChange={e => setProdutor({...produtor, nome: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">CPF *</label>
+              <input
+                className={inputClass}
+                placeholder="000.000.000-00"
+                value={produtor.cpf}
+                autoComplete="off"
+                inputMode="numeric"
+                onChange={e => setProdutor({...produtor, cpf: formatCPF(e.target.value)})}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">WhatsApp *</label>
+              <div className="flex gap-2 mt-1">
+                <div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">+55</div>
+                <input
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                  placeholder="(98) 99200-2705"
+                  value={produtor.telefone}
+                  inputMode="numeric"
+                  type="tel"
+                  autoComplete="off"
+                  onChange={e => setProdutor({...produtor, telefone: formatTel(e.target.value)})}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">NIRF (opcional)</label>
+              <input
+                className={inputClass}
+                placeholder="0000000-0"
+                value={produtor.nirf}
+                autoComplete="off"
+                onChange={e => setProdutor({...produtor, nirf: e.target.value})}
+              />
+            </div>
+            <button
+              onClick={() => produtor.nome && produtor.cpf && produtor.telefone && setStep(2)}
+              className={"w-full py-3 rounded-lg text-sm font-medium text-white " + (produtor.nome && produtor.cpf && produtor.telefone ? "bg-green-800" : "bg-gray-300")}
+            >
+              Proximo →
+            </button>
           </div>
         )}
         {step === 2 && (
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div className="text-sm font-medium text-gray-600">Imovel rural principal</div>
-            <div><label className="text-xs text-gray-500">Nome do imovel *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Fazenda Boa Esperanca" value={imovel.nome} onChange={e => setImovel({...imovel, nome: e.target.value})} /></div>
-            <div><label className="text-xs text-gray-500">NIRF do imovel</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="0000000-0" value={imovel.nirf} onChange={e => setImovel({...imovel, nirf: e.target.value})} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-xs text-gray-500">Area (ha)</label><input type="number" className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="450" value={imovel.area_ha} onChange={e => setImovel({...imovel, area_ha: e.target.value})} /></div>
-              <div><label className="text-xs text-gray-500">UF *</label><select className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" value={imovel.uf} onChange={e => setImovel({...imovel, uf: e.target.value})}><option value="">Selecione</option>{ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}</select></div>
+            <div>
+              <label className="text-xs text-gray-500">Nome do imovel *</label>
+              <input className={inputClass} placeholder="Fazenda Boa Esperanca" value={imovel.nome} autoComplete="off" onChange={e => setImovel({...imovel, nome: e.target.value})} />
             </div>
-            <div><label className="text-xs text-gray-500">Municipio *</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Barretos" value={imovel.municipio} onChange={e => setImovel({...imovel, municipio: e.target.value})} /></div>
+            <div>
+              <label className="text-xs text-gray-500">NIRF do imovel</label>
+              <input className={inputClass} placeholder="0000000-0" value={imovel.nirf} autoComplete="off" onChange={e => setImovel({...imovel, nirf: e.target.value})} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500">Area (ha)</label>
+                <input type="number" className={inputClass} placeholder="450" value={imovel.area_ha} onChange={e => setImovel({...imovel, area_ha: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">UF *</label>
+                <select className={inputClass} value={imovel.uf} onChange={e => setImovel({...imovel, uf: e.target.value})}>
+                  <option value="">Selecione</option>
+                  {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Municipio *</label>
+              <input className={inputClass} placeholder="Barretos" value={imovel.municipio} autoComplete="off" onChange={e => setImovel({...imovel, municipio: e.target.value})} />
+            </div>
             <div className="flex gap-3">
               <button onClick={() => setStep(1)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">← Voltar</button>
-              <button onClick={() => imovel.nome && imovel.uf && imovel.municipio && setStep(3)} className={"flex-1 py-3 rounded-lg text-sm font-medium text-white " + (imovel.nome && imovel.uf && imovel.municipio ? "bg-green-800" : "bg-gray-300")}>Proximo →</button>
+              <button
+                onClick={() => imovel.nome && imovel.uf && imovel.municipio && setStep(3)}
+                className={"flex-1 py-3 rounded-lg text-sm font-medium text-white " + (imovel.nome && imovel.uf && imovel.municipio ? "bg-green-800" : "bg-gray-300")}
+              >
+                Proximo →
+              </button>
             </div>
           </div>
         )}
@@ -77,7 +187,9 @@ export default function Cadastro() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setStep(2)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">← Voltar</button>
-              <button onClick={salvar} disabled={loading} className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400">{loading ? "Salvando..." : "Salvar cadastro"}</button>
+              <button onClick={salvar} disabled={loading} className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400">
+                {loading ? "Salvando..." : "Salvar cadastro"}
+              </button>
             </div>
           </div>
         )}
