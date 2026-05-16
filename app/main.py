@@ -183,6 +183,21 @@ async def processar(payload: dict):
                     sess["numero"] = numero
                     from app.db import gravar_lancamento
                     lancamento_id = gravar_lancamento(sess)
+
+                    # Upload do documento se vier de OCR
+                    if "_midia" in sess:
+                        try:
+                            from app.services.drive_handler import upload_para_drive, extensao_por_mime
+                            from app.db import vincular_documento
+                            from datetime import datetime
+                            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            ext = extensao_por_mime(sess["_mime"])
+                            nome_arquivo = f"{numero}_{ts}{ext}"
+                            url_drive = upload_para_drive(sess["_midia"], nome_arquivo, sess["_mime"], subfolder_name=numero)
+                            vincular_documento(lancamento_id, url_drive)
+                        except Exception as e:
+                            print(f"Erro upload drive: {e}")
+                            
                     produto_txt = sess.get("produto") or "N/A"
                     resposta = (
                         f"Lancamento #{lancamento_id} gravado!\n"
@@ -228,37 +243,33 @@ async def processar(payload: dict):
             await send_msg(numero, msg_resposta)
 
         elif tipo in ("image", "document"):
-            await send_msg(numero, "📎 Documento recebido! Fazendo upload...")
-            try:
-                from app.services.drive_handler import baixar_midia_whatsapp, upload_para_drive, extensao_por_mime
-                from app.db import get_ultimo_lancamento, vincular_documento
+    await send_msg(numero, "🔍 Documento recebido! Analisando...")
+    try:
+        from app.services.drive_handler import baixar_midia_whatsapp, upload_para_drive, extensao_por_mime
+        from app.services.ocr_handler import extrair_dados_documento, montar_mensagem_ocr, ocr_para_lancamento
 
-                if tipo == "image":
-                    media_id  = msg["image"]["id"]
-                    mime_type = msg["image"].get("mime_type", "image/jpeg")
-                else:
-                    media_id  = msg["document"]["id"]
-                    mime_type = msg["document"].get("mime_type", "application/pdf")
+        if tipo == "image":
+            media_id  = msg["image"]["id"]
+            mime_type = msg["image"].get("mime_type", "image/jpeg")
+        else:
+            media_id  = msg["document"]["id"]
+            mime_type = msg["document"].get("mime_type", "application/pdf")
 
-                conteudo, mime_type = await baixar_midia_whatsapp(media_id, WAPP_TOKEN)
+        conteudo, mime_type = await baixar_midia_whatsapp(media_id, WAPP_TOKEN)
 
-                from datetime import datetime
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                ext = extensao_por_mime(mime_type)
-                nome_arquivo = f"{numero}_{ts}{ext}"
+        # OCR com Claude Vision
+        dados_ocr = await extrair_dados_documento(conteudo, mime_type)
+        lancamento = ocr_para_lancamento(dados_ocr)
+        sessoes[numero] = {**lancamento, "_ocr": dados_ocr, "_midia": conteudo, "_mime": mime_type}
 
-                url_drive = upload_para_drive(conteudo, nome_arquivo, mime_type, subfolder_name=numero)
+        msg_confirmacao = montar_mensagem_ocr(dados_ocr, numero)
+        await send_msg(numero, msg_confirmacao)
 
-                lancamento_id = get_ultimo_lancamento(numero)
-                if lancamento_id:
-                    vincular_documento(lancamento_id, url_drive)
-                    await send_msg(numero, f"✅ Documento vinculado ao lançamento #{lancamento_id}!\n🔗 {url_drive}")
-                else:
-                    await send_msg(numero, f"✅ Documento salvo!\n🔗 {url_drive}\n\n(Nenhum lançamento recente para vincular)")
-
-            except Exception as e:
-                print(f"Erro no upload: {e}")
-                await send_msg(numero, "❌ Erro ao processar documento. Tente novamente.")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Erro no OCR: {e}")
+        await send_msg(numero, "❌ Não consegui ler o documento. Tente uma foto mais nítida ou digite o lançamento.")
 
     except Exception as e:
         import traceback
