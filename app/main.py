@@ -88,13 +88,12 @@ async def cadastrar_produtor(data: CadastroRequest):
     result = cadastrar(data.produtor.dict(), data.imovel.dict())
     return {"status": "ok", "produtor_id": result}
 
-# ─── Endpoints do painel do contador ─────────────────────────────────────────
+# Endpoints do painel do contador
 
 @app.get("/produtores")
 def get_produtores():
     from app.db import listar_produtores
     produtores = listar_produtores()
-    # Converte tipos para serialização JSON
     result = []
     for p in produtores:
         result.append({
@@ -152,11 +151,10 @@ def fechar_mes_produtor(produtor_id: int):
     fechar_mes(produtor_id)
     return {"status": "ok"}
 
-# ─── Processamento WhatsApp ───────────────────────────────────────────────────
-
+# Processamento WhatsApp
 
 async def processar(payload: dict):
-    print(f">>> processar chamado: {json.dumps(payload)[:200]}")  # ← adicione esta linha
+    print(f">>> processar chamado: {json.dumps(payload)[:200]}")
     try:
         value = payload["entry"][0]["changes"][0]["value"]
         msgs  = value.get("messages", [])
@@ -166,25 +164,27 @@ async def processar(payload: dict):
         numero = msg["from"]
         tipo   = msg["type"]
 
+        # AUDIO
         if tipo == "audio":
             await send_msg(numero, "Audio recebido! Transcrevendo...")
             from app.services.audio_handler import processar_audio
             await processar_audio(numero, msg, WAPP_TOKEN, sessoes, send_msg)
             return
 
+        # TEXTO
         if tipo == "text":
             texto = msg["text"]["body"].strip()
             print(f">>> texto recebido: {texto}")
             texto_upper = texto.upper()
 
-            if numero in sessoes:
+            # Confirmacao de lancamento pendente (nao-cadastro)
+            if numero in sessoes and sessoes[numero].get("_tipo") != "cadastro":
                 if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
                     sess = sessoes.pop(numero)
                     sess["numero"] = numero
                     from app.db import gravar_lancamento
                     lancamento_id = gravar_lancamento(sess)
 
-                    # Upload do documento se vier de OCR
                     if "_midia" in sess:
                         try:
                             from app.services.drive_handler import upload_para_drive, extensao_por_mime
@@ -197,7 +197,7 @@ async def processar(payload: dict):
                             vincular_documento(lancamento_id, url_drive)
                         except Exception as e:
                             print(f"Erro upload drive: {e}")
-                            
+
                     produto_txt = sess.get("produto") or "N/A"
                     resposta = (
                         f"Lancamento #{lancamento_id} gravado!\n"
@@ -206,7 +206,7 @@ async def processar(payload: dict):
                         f"Produto: {produto_txt}\n"
                         f"Valor: R$ {sess['valor']:,.2f}\n"
                         f"Data: {sess['data']}\n\n"
-                        f"📎 Envie a foto ou PDF do comprovante para vincular ao lançamento."
+                        f"Envie a foto ou PDF do comprovante para vincular ao lancamento."
                     )
                     await send_msg(numero, resposta)
                     return
@@ -215,6 +215,49 @@ async def processar(payload: dict):
                     await send_msg(numero, "Cancelado. Pode mandar de novo quando quiser.")
                     return
 
+            # Cadastro pelo WhatsApp
+            from app.services.cadastro_handler import (
+                iniciar_cadastro, processar_etapa, confirmar_cadastro, is_cadastro_ativo
+            )
+
+            if is_cadastro_ativo(sessoes, numero):
+                if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
+                    dados = confirmar_cadastro(sessoes, numero)
+                    if dados:
+                        from app.db import cadastrar
+                        try:
+                            produtor_id = cadastrar(dados["produtor"], dados["imovel"])
+                            await send_msg(numero,
+                                f"Cadastro realizado com sucesso!\n"
+                                f"Seu ID: #{produtor_id}\n\n"
+                                f"Agora voce pode enviar lancamentos por texto ou audio.\n"
+                                f"Ex: 'vendi 10 sacas de soja por 3000 reais'"
+                            )
+                        except Exception as e:
+                            print(f"Erro cadastro: {e}")
+                            await send_msg(numero, "Erro ao cadastrar. Tente novamente.")
+                else:
+                    resposta = processar_etapa(sessoes, numero, texto)
+                    if resposta:
+                        await send_msg(numero, resposta)
+                return
+
+            # Iniciar cadastro
+            if texto_upper in ("CADASTRAR", "CADASTRO", "ME CADASTRAR", "QUERO ME CADASTRAR",
+                               "OI", "OLA", "INICIO"):
+                from app.db import buscar_produtor_por_numero
+                prod = buscar_produtor_por_numero(numero)
+                if prod:
+                    await send_msg(numero,
+                        f"Ola, {prod['nome']}! Voce ja esta cadastrado.\n\n"
+                        f"Envie um lancamento por texto ou audio, ou mande a foto de uma nota fiscal."
+                    )
+                    return
+                resposta = iniciar_cadastro(sessoes, numero)
+                await send_msg(numero, resposta)
+                return
+
+            # Classificacao de lancamento
             resultado = classificar(texto)
             print(f">>> resultado classificar: {resultado}")
             if not resultado:
@@ -223,6 +266,7 @@ async def processar(payload: dict):
 
             sessoes[numero] = resultado
             print(f">>> sessao salva, enviando mensagem para {numero}")
+
             if resultado["tipo"] == "receita":
                 tipo_label = "[RECEITA]"
             elif resultado["tipo"] == "despesa":
@@ -242,34 +286,37 @@ async def processar(payload: dict):
             )
             await send_msg(numero, msg_resposta)
 
+        # IMAGEM / DOCUMENTO (OCR)
         elif tipo in ("image", "document"):
-    await send_msg(numero, "🔍 Documento recebido! Analisando...")
-    try:
-        from app.services.drive_handler import baixar_midia_whatsapp, upload_para_drive, extensao_por_mime
-        from app.services.ocr_handler import extrair_dados_documento, montar_mensagem_ocr, ocr_para_lancamento
+            await send_msg(numero, "Documento recebido! Analisando...")
+            try:
+                from app.services.drive_handler import baixar_midia_whatsapp, upload_para_drive, extensao_por_mime
+                from app.services.ocr_handler import extrair_dados_documento, montar_mensagem_ocr, ocr_para_lancamento
 
-        if tipo == "image":
-            media_id  = msg["image"]["id"]
-            mime_type = msg["image"].get("mime_type", "image/jpeg")
+                if tipo == "image":
+                    media_id  = msg["image"]["id"]
+                    mime_type = msg["image"].get("mime_type", "image/jpeg")
+                else:
+                    media_id  = msg["document"]["id"]
+                    mime_type = msg["document"].get("mime_type", "application/pdf")
+
+                conteudo, mime_type = await baixar_midia_whatsapp(media_id, WAPP_TOKEN)
+
+                dados_ocr = await extrair_dados_documento(conteudo, mime_type)
+                lancamento = ocr_para_lancamento(dados_ocr)
+                sessoes[numero] = {**lancamento, "_ocr": dados_ocr, "_midia": conteudo, "_mime": mime_type}
+
+                msg_confirmacao = montar_mensagem_ocr(dados_ocr, numero)
+                await send_msg(numero, msg_confirmacao)
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"Erro no OCR: {e}")
+                await send_msg(numero, "Nao consegui ler o documento. Tente uma foto mais nitida ou digite o lancamento.")
+
         else:
-            media_id  = msg["document"]["id"]
-            mime_type = msg["document"].get("mime_type", "application/pdf")
-
-        conteudo, mime_type = await baixar_midia_whatsapp(media_id, WAPP_TOKEN)
-
-        # OCR com Claude Vision
-        dados_ocr = await extrair_dados_documento(conteudo, mime_type)
-        lancamento = ocr_para_lancamento(dados_ocr)
-        sessoes[numero] = {**lancamento, "_ocr": dados_ocr, "_midia": conteudo, "_mime": mime_type}
-
-        msg_confirmacao = montar_mensagem_ocr(dados_ocr, numero)
-        await send_msg(numero, msg_confirmacao)
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Erro no OCR: {e}")
-        await send_msg(numero, "❌ Não consegui ler o documento. Tente uma foto mais nítida ou digite o lançamento.")
+            await send_msg(numero, "Envie texto, audio ou foto de documento.")
 
     except Exception as e:
         import traceback
