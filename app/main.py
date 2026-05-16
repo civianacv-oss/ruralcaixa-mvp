@@ -156,6 +156,7 @@ def fechar_mes_produtor(produtor_id: int):
 
 
 async def processar(payload: dict):
+    print(f">>> processar chamado: {json.dumps(payload)[:200]}")  # ← adicione esta linha
     try:
         value = payload["entry"][0]["changes"][0]["value"]
         msgs  = value.get("messages", [])
@@ -173,6 +174,7 @@ async def processar(payload: dict):
 
         if tipo == "text":
             texto = msg["text"]["body"].strip()
+            print(f">>> texto recebido: {texto}")
             texto_upper = texto.upper()
 
             if numero in sessoes:
@@ -199,11 +201,13 @@ async def processar(payload: dict):
                     return
 
             resultado = classificar(texto)
+            print(f">>> resultado classificar: {resultado}")
             if not resultado:
                 await send_msg(numero, "Nao entendi. Tente: 'vendi 5 bois por 10000 reais'")
                 return
 
             sessoes[numero] = resultado
+            print(f">>> sessao salva, enviando mensagem para {numero}")
             if resultado["tipo"] == "receita":
                 tipo_label = "[RECEITA]"
             elif resultado["tipo"] == "despesa":
@@ -257,4 +261,6 @@ async def processar(payload: dict):
                 await send_msg(numero, "❌ Erro ao processar documento. Tente novamente.")
 
     except Exception as e:
+        import traceback
         print(f"Erro: {e}")
+        traceback.print_exc()
