@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 import hmac, hashlib, json, os, httpx
 from dotenv import load_dotenv
 from app.services.classifier import classificar
@@ -23,6 +24,10 @@ class CadastroRequest(BaseModel):
     produtor: ProdutorCreate
     imovel: ImovelCreate
 
+class ClassificacaoUpdate(BaseModel):
+    conta: str
+    tipo: str
+
 load_dotenv()
 
 app = FastAPI(title="Rural Caixa PF")
@@ -34,8 +39,6 @@ PHONE_ID     = os.getenv("WHATSAPP_PHONE_ID")
 GRAPH        = "https://graph.facebook.com/v23.0"
 
 sessoes = {}
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +82,72 @@ async def cadastrar_produtor(data: CadastroRequest):
     from app.db import cadastrar
     result = cadastrar(data.produtor.dict(), data.imovel.dict())
     return {"status": "ok", "produtor_id": result}
+
+# ─── Endpoints do painel do contador ─────────────────────────────────────────
+
+@app.get("/produtores")
+def get_produtores():
+    from app.db import listar_produtores
+    produtores = listar_produtores()
+    # Converte tipos para serialização JSON
+    result = []
+    for p in produtores:
+        result.append({
+            "id": p["id"],
+            "nome": p["nome"],
+            "cpf": p["cpf"],
+            "telefone": p["telefone"],
+            "municipio": p.get("municipio", ""),
+            "uf": p.get("uf", ""),
+            "receita": float(p["receita"]),
+            "despesa": float(p["despesa"]),
+            "pendentes": int(p["pendentes"]),
+        })
+    return result
+
+@app.get("/produtores/{produtor_id}/lancamentos")
+def get_lancamentos(produtor_id: int, mes: Optional[str] = None):
+    from app.db import buscar_lancamentos
+    lancamentos = buscar_lancamentos(produtor_id, mes)
+    result = []
+    for l in lancamentos:
+        result.append({
+            "id": l["id"],
+            "tipo": l["tipo"],
+            "conta_codigo": l["conta_codigo"],
+            "descricao": l["descricao"],
+            "valor": float(l["valor"]),
+            "data_lancamento": str(l["data_lancamento"]),
+            "produto": l.get("produto"),
+            "documento_url": l.get("documento_url"),
+            "confirmado": l.get("confirmado", False),
+        })
+    return result
+
+@app.get("/produtores/{produtor_id}/resumo")
+def get_resumo(produtor_id: int):
+    from app.db import buscar_resumo_mes
+    resumo = buscar_resumo_mes(produtor_id)
+    return {
+        "receita": float(resumo.get("receita", 0)),
+        "despesa": float(resumo.get("despesa", 0)),
+        "total_lancamentos": int(resumo.get("total_lancamentos", 0)),
+        "pendentes": int(resumo.get("pendentes", 0)),
+    }
+
+@app.put("/lancamentos/{lancamento_id}/classificacao")
+def update_classificacao(lancamento_id: int, data: ClassificacaoUpdate):
+    from app.db import atualizar_classificacao
+    atualizar_classificacao(lancamento_id, data.conta, data.tipo)
+    return {"status": "ok"}
+
+@app.post("/produtores/{produtor_id}/fechar-mes")
+def fechar_mes_produtor(produtor_id: int):
+    from app.db import fechar_mes
+    fechar_mes(produtor_id)
+    return {"status": "ok"}
+
+# ─── Processamento WhatsApp ───────────────────────────────────────────────────
 
 async def processar(payload: dict):
     try:

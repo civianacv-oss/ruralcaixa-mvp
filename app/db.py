@@ -57,7 +57,6 @@ def gravar_lancamento(dados: dict) -> int:
 
 
 def get_ultimo_lancamento(telefone: str):
-    """Retorna o ID do último lançamento do produtor pelo telefone."""
     with engine.connect() as conn:
         prod = conn.execute(text(
             "SELECT id FROM produtores WHERE telefone = :tel"
@@ -77,7 +76,6 @@ def get_ultimo_lancamento(telefone: str):
 
 
 def vincular_documento(lancamento_id: int, url_drive: str):
-    """Vincula URL do documento ao lançamento."""
     with engine.connect() as conn:
         conn.execute(text("""
             UPDATE lancamentos
@@ -138,3 +136,83 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
         })
         conn.commit()
         return produtor_id
+
+
+# ─── Painel do contador ───────────────────────────────────────────────────────
+
+def listar_produtores():
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT
+                p.id, p.nome, p.cpf, p.telefone,
+                i.municipio, i.uf,
+                COALESCE(SUM(CASE WHEN l.tipo = 'receita' THEN l.valor ELSE 0 END), 0) as receita,
+                COALESCE(SUM(CASE WHEN l.tipo = 'despesa' THEN l.valor ELSE 0 END), 0) as despesa,
+                COUNT(CASE WHEN l.confirmado = false THEN 1 END) as pendentes
+            FROM produtores p
+            LEFT JOIN imoveis_rurais i ON i.produtor_id = p.id
+            LEFT JOIN lancamentos l ON l.produtor_id = p.id
+                AND date_trunc('month', l.data_lancamento) = date_trunc('month', CURRENT_DATE)
+            GROUP BY p.id, p.nome, p.cpf, p.telefone, i.municipio, i.uf
+            ORDER BY p.nome
+        """)).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+
+def buscar_lancamentos(produtor_id: int, mes: str = None):
+    with engine.connect() as conn:
+        if mes:
+            rows = conn.execute(text("""
+                SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
+                       produto, documento_url, confirmado, created_at
+                FROM lancamentos
+                WHERE produtor_id = :pid
+                AND to_char(data_lancamento, 'YYYY-MM') = :mes
+                ORDER BY data_lancamento DESC
+            """), {"pid": produtor_id, "mes": mes}).fetchall()
+        else:
+            rows = conn.execute(text("""
+                SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
+                       produto, documento_url, confirmado, created_at
+                FROM lancamentos
+                WHERE produtor_id = :pid
+                AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+                ORDER BY data_lancamento DESC
+            """), {"pid": produtor_id}).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+
+def buscar_resumo_mes(produtor_id: int):
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT
+                COALESCE(SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END), 0) as receita,
+                COALESCE(SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END), 0) as despesa,
+                COUNT(*) as total_lancamentos,
+                COUNT(CASE WHEN confirmado = false THEN 1 END) as pendentes
+            FROM lancamentos
+            WHERE produtor_id = :pid
+            AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+        """), {"pid": produtor_id}).fetchone()
+        return dict(result._mapping) if result else {}
+
+
+def atualizar_classificacao(lancamento_id: int, conta: str, tipo: str):
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE lancamentos
+            SET conta_codigo = :conta, tipo = :tipo
+            WHERE id = :id
+        """), {"conta": conta, "tipo": tipo, "id": lancamento_id})
+        conn.commit()
+
+
+def fechar_mes(produtor_id: int):
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE lancamentos
+            SET confirmado = true
+            WHERE produtor_id = :pid
+            AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+        """), {"pid": produtor_id})
+        conn.commit()
