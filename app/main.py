@@ -1,11 +1,16 @@
+import hmac, hashlib, json, os
+import httpx
+from datetime import date
+from typing import Optional
+
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
-import hmac, hashlib, json, os, httpx
-from dotenv import load_dotenv
-from app.services.classifier import classificar
 from pydantic import BaseModel
-from typing import Optional
+from dotenv import load_dotenv
+
+from app.services.classifier import classificar
+
 
 class ProdutorCreate(BaseModel):
     nome: str
@@ -148,6 +153,7 @@ def fechar_mes_produtor(produtor_id: int):
     return {"status": "ok"}
 
 # ─── Processamento WhatsApp ───────────────────────────────────────────────────
+
 
 async def processar(payload: dict):
     try:
