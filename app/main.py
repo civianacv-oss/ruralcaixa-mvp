@@ -10,14 +10,13 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.services.classifier import classificar
-from app.services.classifier import classificar as classificar_sync
 
 class ClassificarTexto(BaseModel):
     texto: str
 
 @app.post("/classificar-texto")
 def classificar_texto(data: ClassificarTexto):
-    resultado = classificar_sync(data.texto)
+    resultado = classificar(data.texto)
     if not resultado:
         return {"erro": "Nao foi possivel classificar"}
     return resultado
