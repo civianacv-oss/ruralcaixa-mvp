@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 
+const API = "https://ruralcaixa-mvp-production.up.railway.app";
+
 const lancamentos = [
   { id: 1, desc: "Venda de gado", tipo: "receita", valor: 28500, data: "02/05", status: "confirmado", conta: "1.1.2" },
   { id: 2, desc: "Combustivel Posto Agro", tipo: "despesa", valor: 1240, data: "28/04", status: "confirmado", conta: "3.1.2" },
@@ -10,10 +12,70 @@ const lancamentos = [
 
 export default function Home() {
   const [aba, setAba] = useState("dashboard");
+  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState("");
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [classificando, setClassificando] = useState(false);
+  const [resultado, setResultado] = useState<any>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
 
   const receitas = lancamentos.filter(l => l.tipo === "receita").reduce((s, l) => s + l.valor, 0);
   const despesas = lancamentos.filter(l => l.tipo === "despesa").reduce((s, l) => s + l.valor, 0);
   const saldo = receitas - despesas;
+
+  async function classificar() {
+    if (!descricao) return alert("Digite uma descricao");
+    setClassificando(true);
+    setResultado(null);
+    try {
+      const res = await fetch(`${API}/classificar-texto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto: descricao }),
+      });
+      const data = await res.json();
+      setResultado(data);
+    } catch {
+      alert("Erro ao classificar. Tente novamente.");
+    } finally {
+      setClassificando(false);
+    }
+  }
+
+  async function salvarLancamento() {
+    if (!resultado) return;
+    setSalvando(true);
+    try {
+      const res = await fetch(`${API}/lancamentos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          produtor_id: 1,
+          conta_codigo: resultado.conta,
+          tipo: resultado.tipo,
+          descricao: descricao,
+          valor: parseFloat(valor) || resultado.valor,
+          data_lancamento: data,
+          origem: "manual",
+          confirmado: true,
+        }),
+      });
+      if (res.ok) {
+        setSalvo(true);
+        setDescricao("");
+        setValor("");
+        setResultado(null);
+        setTimeout(() => { setSalvo(false); setAba("dashboard"); }, 2000);
+      } else {
+        alert("Erro ao salvar");
+      }
+    } catch {
+      alert("Erro de conexao");
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto">
@@ -56,7 +118,7 @@ export default function Home() {
               <span className="text-2xl">📷</span>
               <span className="text-xs text-gray-600">Foto NF</span>
             </button>
-            <a href="/relatorio" className="bg-white rounded-xl py-4 flex flex-col items-center gap-1 shadow-sm">
+            <a href="/relatorio" className="bg-white rounded-xl py-4 flex flex-col items-center gap-1 shadow-sm text-center">
               <span className="text-2xl">📄</span>
               <span className="text-xs text-gray-600">Relatorio</span>
             </a>
@@ -99,7 +161,7 @@ export default function Home() {
       {aba === "novo" && (
         <div className="p-4 space-y-4 pb-24">
           <div className="flex items-center gap-3">
-            <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">← Voltar</button>
+            <button onClick={() => { setAba("dashboard"); setResultado(null); }} className="text-green-800 font-medium">← Voltar</button>
             <div className="text-lg font-medium">Novo lancamento</div>
           </div>
 
@@ -119,32 +181,95 @@ export default function Home() {
             ))}
           </div>
 
+          {salvo && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center text-green-700 text-sm font-medium">
+              ✅ Lancamento salvo com sucesso!
+            </div>
+          )}
+
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div className="text-sm font-medium text-gray-600">Lancamento manual</div>
             <div>
-              <label className="text-xs text-gray-500">Descricao</label>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="Ex: vendi 5 bois por 10000 reais" />
+              <label className="text-xs text-gray-500">Descricao *</label>
+              <input
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
+                placeholder="Ex: vendi 5 bois por 10000 reais"
+                value={descricao}
+                onChange={e => { setDescricao(e.target.value); setResultado(null); }}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-gray-500">Valor</label>
-                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="R$ 0,00" />
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
+                  placeholder="R$ 0,00"
+                  value={valor}
+                  onChange={e => setValor(e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-xs text-gray-500">Data</label>
-                <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm" />
+                <input
+                  type="date"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
+                  value={data}
+                  onChange={e => setData(e.target.value)}
+                />
               </div>
             </div>
-            <div>
-              <label className="text-xs text-gray-500">Imovel</label>
-              <select className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm">
-                <option>Fazenda Boa Esperanca</option>
-                <option>Sitio Santa Luzia</option>
-              </select>
-            </div>
-            <button className="w-full bg-green-800 text-white py-3 rounded-lg text-sm font-medium">
-              Classificar e confirmar
-            </button>
+
+            {resultado && (
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm border border-gray-200">
+                <div className="font-medium text-gray-700">Classificacao sugerida:</div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Tipo</span>
+                  <span className={resultado.tipo === "receita" ? "text-green-700 font-medium" : resultado.tipo === "despesa" ? "text-red-600 font-medium" : "text-blue-700 font-medium"}>
+                    {resultado.tipo?.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Conta</span>
+                  <span className="font-medium">{resultado.conta}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Valor</span>
+                  <span className="font-medium">R$ {resultado.valor?.toLocaleString("pt-BR")}</span>
+                </div>
+                {resultado.produto && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Produto</span>
+                    <span className="font-medium">{resultado.produto}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!resultado ? (
+              <button
+                onClick={classificar}
+                disabled={classificando || !descricao}
+                className="w-full bg-green-800 text-white py-3 rounded-lg text-sm font-medium disabled:bg-gray-300"
+              >
+                {classificando ? "Classificando..." : "Classificar"}
+              </button>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setResultado(null)}
+                  className="flex-1 py-3 rounded-lg text-sm border border-gray-200"
+                >
+                  Corrigir
+                </button>
+                <button
+                  onClick={salvarLancamento}
+                  disabled={salvando}
+                  className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400"
+                >
+                  {salvando ? "Salvando..." : "Confirmar"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -203,10 +328,7 @@ export default function Home() {
             </a>
           </div>
 
-          <a
-            href="/cadastro"
-            className="w-full bg-green-800 text-white py-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 block text-center"
-          >
+          <a href="/cadastro" className="w-full bg-green-800 text-white py-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 block text-center">
             ➕ Cadastrar novo produtor
           </a>
         </div>
@@ -217,17 +339,28 @@ export default function Home() {
         {[
           { id: "dashboard", icon: "🏠", label: "Inicio" },
           { id: "novo", icon: "➕", label: "Lancar" },
-          { id: "relatorio", icon: "📊", label: "Relatorio" },
+          { id: "relatorio", icon: "📊", label: "Relatorio", href: "/relatorio" },
           { id: "perfil", icon: "👤", label: "Perfil" },
         ].map(n => (
-          <button
-            key={n.id}
-            onClick={() => setAba(n.id)}
-            className={`flex-1 py-3 flex flex-col items-center gap-1 ${aba === n.id ? "text-green-800" : "text-gray-400"}`}
-          >
-            <span className="text-xl">{n.icon}</span>
-            <span className="text-xs">{n.label}</span>
-          </button>
+          (n as any).href ? (
+            <a
+              key={n.id}
+              href={(n as any).href}
+              className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400"
+            >
+              <span className="text-xl">{n.icon}</span>
+              <span className="text-xs">{n.label}</span>
+            </a>
+          ) : (
+            <button
+              key={n.id}
+              onClick={() => setAba(n.id)}
+              className={`flex-1 py-3 flex flex-col items-center gap-1 ${aba === n.id ? "text-green-800" : "text-gray-400"}`}
+            >
+              <span className="text-xl">{n.icon}</span>
+              <span className="text-xs">{n.label}</span>
+            </button>
+          )
         ))}
       </div>
     </div>

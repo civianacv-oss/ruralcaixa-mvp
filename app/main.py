@@ -10,7 +10,27 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.services.classifier import classificar
+from app.services.classifier import classificar as classificar_sync
 
+class ClassificarTexto(BaseModel):
+    texto: str
+
+@app.post("/classificar-texto")
+def classificar_texto(data: ClassificarTexto):
+    resultado = classificar_sync(data.texto)
+    if not resultado:
+        return {"erro": "Nao foi possivel classificar"}
+    return resultado
+
+class LancamentoCreate(BaseModel):
+    produtor_id: int
+    conta_codigo: str
+    tipo: str
+    descricao: str
+    valor: float
+    data_lancamento: str
+    origem: str = "manual"
+    confirmado: bool = True
 
 class ProdutorCreate(BaseModel):
     nome: str
@@ -44,6 +64,28 @@ PHONE_ID     = os.getenv("WHATSAPP_PHONE_ID")
 GRAPH        = "https://graph.facebook.com/v23.0"
 
 sessoes = {}
+
+@app.post("/lancamentos")
+def criar_lancamento(data: LancamentoCreate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO lancamentos (produtor_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, confirmado)
+            VALUES (:pid, :conta, :tipo, :desc, :valor, :data, :origem, :confirmado)
+            RETURNING id
+        """), {
+            "pid": data.produtor_id,
+            "conta": data.conta_codigo,
+            "tipo": data.tipo,
+            "desc": data.descricao,
+            "valor": data.valor,
+            "data": data.data_lancamento,
+            "origem": data.origem,
+            "confirmado": data.confirmado,
+        })
+        conn.commit()
+        return {"id": result.fetchone()[0]}
 
 app.add_middleware(
     CORSMiddleware,
