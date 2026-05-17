@@ -1,79 +1,147 @@
-﻿"use client";
-import { useState } from "react";
+"use client";
+import { useState, useEffect } from "react";
 
-const produtores = [
-  { id: 1, nome: "Joao Batista Neves", cpf: "123.456.789-00", cidade: "Barretos-SP", status: "em_apuracao", pendentes: 12, receita: 42300, despesa: 23850 },
-  { id: 2, nome: "Maria Aparecida Costa", cpf: "987.654.321-00", cidade: "Ribeirao Preto-SP", status: "pronto", pendentes: 0, receita: 31200, despesa: 18400 },
-  { id: 3, nome: "Carlos Eduardo Souza", cpf: "111.222.333-00", cidade: "Uberaba-MG", status: "atrasado", pendentes: 8, receita: 0, despesa: 0 },
-  { id: 4, nome: "Antonio Lima Filho", cpf: "555.444.333-00", cidade: "Sorriso-MT", status: "fechado", pendentes: 0, receita: 98000, despesa: 54000 },
-];
+const API = "https://ruralcaixa-mvp-production.up.railway.app";
 
-const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
-  em_apuracao: { label: "Em apuracao", bg: "bg-yellow-100", text: "text-yellow-700" },
-  pronto: { label: "Pronto", bg: "bg-green-100", text: "text-green-700" },
-  atrasado: { label: "Atrasado", bg: "bg-red-100", text: "text-red-700" },
-  fechado: { label: "Fechado", bg: "bg-gray-100", text: "text-gray-600" },
+type Produtor = {
+  id: number;
+  nome: string;
+  cpf: string;
+  telefone: string;
+  municipio: string;
+  uf: string;
+  receita: number;
+  despesa: number;
+  pendentes: number;
+};
+
+type Lancamento = {
+  id: number;
+  tipo: string;
+  conta_codigo: string;
+  descricao: string;
+  valor: number;
+  data_lancamento: string;
+  produto: string | null;
+  documento_url: string | null;
+  confirmado: boolean;
 };
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export default function Contador() {
+  const [produtores, setProdutores] = useState<Produtor[]>([]);
   const [selecionado, setSelecionado] = useState<number | null>(null);
+  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingLanc, setLoadingLanc] = useState(false);
+  const [fechando, setFechando] = useState(false);
+  const [abaDetalhe, setAbaDetalhe] = useState<"lancamentos" | "acoes">("lancamentos");
+
   const produtor = produtores.find(p => p.id === selecionado);
+
+  useEffect(() => {
+    fetch(`${API}/produtores`)
+      .then(r => r.json())
+      .then(data => { setProdutores(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selecionado) return;
+    setLoadingLanc(true);
+    fetch(`${API}/produtores/${selecionado}/lancamentos`)
+      .then(r => r.json())
+      .then(data => { setLancamentos(data); setLoadingLanc(false); })
+      .catch(() => setLoadingLanc(false));
+  }, [selecionado]);
+
+  async function fecharMes() {
+    if (!selecionado) return;
+    if (!confirm("Confirma o fechamento do mês?")) return;
+    setFechando(true);
+    await fetch(`${API}/produtores/${selecionado}/fechar-mes`, { method: "POST" });
+    const updated = await fetch(`${API}/produtores`).then(r => r.json());
+    setProdutores(updated);
+    setFechando(false);
+    alert("Mês fechado com sucesso!");
+  }
+
+  const totalReceita = produtores.reduce((s, p) => s + p.receita, 0);
+  const totalDespesa = produtores.reduce((s, p) => s + p.despesa, 0);
+  const totalPendentes = produtores.reduce((s, p) => s + p.pendentes, 0);
 
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-6">
       <div className="bg-green-800 text-white px-4 py-4">
         <a href="/" className="text-xs opacity-70">← Voltar</a>
         <div className="text-lg font-medium mt-1">Painel do Contador</div>
-        <div className="text-xs opacity-70">Dra. Ana Lima — CRC-SP 1234567</div>
+        <div className="text-xs opacity-70">RuralCaixa</div>
       </div>
 
       {!selecionado ? (
         <div className="p-4 space-y-4">
-          {/* Metricas */}
           <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: "Produtores", valor: "4" },
-              { label: "Pendentes", valor: "2", destaque: true },
-              { label: "Fechados", valor: "1" },
-            ].map(m => (
-              <div key={m.label} className="bg-white rounded-xl p-3 text-center shadow-sm">
-                <div className="text-xs text-gray-500">{m.label}</div>
-                <div className={`text-2xl font-semibold mt-1 ${m.destaque ? "text-orange-500" : "text-gray-800"}`}>
-                  {m.valor}
-                </div>
+            <div className="bg-white rounded-xl p-3 text-center shadow-sm">
+              <div className="text-xs text-gray-500">Produtores</div>
+              <div className="text-2xl font-semibold mt-1 text-gray-800">{produtores.length}</div>
+            </div>
+            <div className="bg-white rounded-xl p-3 text-center shadow-sm">
+              <div className="text-xs text-gray-500">Pendentes</div>
+              <div className="text-2xl font-semibold mt-1 text-orange-500">{totalPendentes}</div>
+            </div>
+            <div className="bg-white rounded-xl p-3 text-center shadow-sm">
+              <div className="text-xs text-gray-500">Saldo</div>
+              <div className={`text-sm font-semibold mt-1 ${totalReceita - totalDespesa >= 0 ? "text-green-700" : "text-red-600"}`}>
+                {fmt(totalReceita - totalDespesa)}
               </div>
-            ))}
+            </div>
           </div>
 
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Clientes — Maio 2025
+            Clientes — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
           </div>
 
-          {produtores.map(p => {
-            const sc = statusConfig[p.status];
-            return (
+          {loading ? (
+            <div className="text-center text-gray-400 py-8">Carregando...</div>
+          ) : produtores.length === 0 ? (
+            <div className="text-center text-gray-400 py-8">
+              <div className="text-4xl mb-2">👨‍🌾</div>
+              <div>Nenhum produtor cadastrado</div>
+              <a href="/cadastro" className="text-green-700 text-sm mt-2 block">+ Cadastrar produtor</a>
+            </div>
+          ) : (
+            produtores.map(p => (
               <button
                 key={p.id}
-                onClick={() => setSelecionado(p.id)}
+                onClick={() => { setSelecionado(p.id); setAbaDetalhe("lancamentos"); }}
                 className="w-full bg-white rounded-xl p-4 shadow-sm text-left flex items-center justify-between"
               >
                 <div>
                   <div className="text-sm font-medium">{p.nome}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} · {p.cidade}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} · {p.municipio}-{p.uf}</div>
+                  <div className="flex gap-3 mt-1">
+                    <span className="text-xs text-green-700">↑ {fmt(p.receita)}</span>
+                    <span className="text-xs text-red-500">↓ {fmt(p.despesa)}</span>
+                  </div>
                 </div>
                 <div className="text-right">
-                  <span className={`text-xs px-2 py-1 rounded-full ${sc.bg} ${sc.text}`}>
-                    {sc.label}
-                  </span>
-                  {p.pendentes > 0 && (
-                    <div className="text-xs text-orange-500 mt-1">{p.pendentes} pendentes</div>
+                  {p.pendentes > 0 ? (
+                    <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700">
+                      {p.pendentes} pend.
+                    </span>
+                  ) : (
+                    <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Ok</span>
                   )}
+                  <div className="text-gray-400 mt-1">›</div>
                 </div>
               </button>
-            );
-          })}
+            ))
+          )}
+
+          <a href="/cadastro" className="block w-full py-3 rounded-xl text-sm font-medium text-white bg-green-800 text-center">
+            + Cadastrar novo produtor
+          </a>
         </div>
       ) : (
         <div className="p-4 space-y-4">
@@ -85,12 +153,11 @@ export default function Contador() {
             <>
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">
-                    👨‍🌾
-                  </div>
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">👨‍🌾</div>
                   <div>
                     <div className="font-medium">{produtor.nome}</div>
                     <div className="text-xs text-gray-400">{produtor.cpf}</div>
+                    <div className="text-xs text-gray-400">{produtor.municipio}-{produtor.uf}</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-4">
@@ -105,37 +172,81 @@ export default function Contador() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-                <div className="text-sm font-medium text-gray-600">Acoes do contador</div>
-                {[
-                  { icon: "📋", label: "Ver todos os lancamentos" },
-                  { icon: "✏️", label: "Corrigir classificacao" },
-                  { icon: "📄", label: "Gerar LCDPR PDF" },
-                  { icon: "✅", label: "Fechar mes" },
-                ].map(a => (
-                  <button key={a.label} className="w-full flex items-center gap-3 py-2 border-b last:border-0 text-sm text-left">
-                    <span className="text-lg">{a.icon}</span>
-                    <span>{a.label}</span>
-                    <span className="ml-auto text-gray-400">›</span>
-                  </button>
-                ))}
+              {/* Abas */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAbaDetalhe("lancamentos")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium ${abaDetalhe === "lancamentos" ? "bg-green-800 text-white" : "bg-white text-gray-600 border"}`}
+                >
+                  Lançamentos
+                </button>
+                <button
+                  onClick={() => setAbaDetalhe("acoes")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium ${abaDetalhe === "acoes" ? "bg-green-800 text-white" : "bg-white text-gray-600 border"}`}
+                >
+                  Ações
+                </button>
               </div>
 
-              <div className="bg-white rounded-xl p-4 shadow-sm">
-                <div className="text-sm font-medium text-gray-600 mb-3">Status do fechamento</div>
-                {[
-                  { label: "Lancamentos capturados", ok: true },
-                  { label: "Classificacao aplicada", ok: true },
-                  { label: "Confirmacao do produtor", ok: produtor.pendentes === 0 },
-                  { label: "Revisao do contador", ok: false },
-                  { label: "Fechamento LCDPR", ok: produtor.status === "fechado" },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center gap-2 text-sm py-1">
-                    <span>{s.ok ? "✅" : "⏳"}</span>
-                    <span className={s.ok ? "text-gray-700" : "text-gray-400"}>{s.label}</span>
-                  </div>
-                ))}
-              </div>
+              {abaDetalhe === "lancamentos" && (
+                <div className="bg-white rounded-xl p-4 shadow-sm space-y-2">
+                  <div className="text-sm font-medium text-gray-600 mb-3">Lançamentos do mês</div>
+                  {loadingLanc ? (
+                    <div className="text-gray-400 text-sm text-center py-4">Carregando...</div>
+                  ) : lancamentos.length === 0 ? (
+                    <div className="text-gray-400 text-sm text-center py-4">Nenhum lançamento este mês</div>
+                  ) : (
+                    lancamentos.map(l => (
+                      <div key={l.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                        <div>
+                          <div className="text-xs font-medium">{l.descricao || l.produto || l.conta_codigo}</div>
+                          <div className="text-xs text-gray-400">{new Date(l.data_lancamento).toLocaleDateString("pt-BR")} · {l.conta_codigo}</div>
+                          {l.documento_url && (
+                            <a href={l.documento_url} target="_blank" className="text-xs text-blue-500">📎 Ver doc</a>
+                          )}
+                        </div>
+                        <div className={`text-sm font-medium ${l.tipo === "receita" ? "text-green-700" : "text-red-500"}`}>
+                          {l.tipo === "receita" ? "+" : "-"}{fmt(l.valor)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {abaDetalhe === "acoes" && (
+                <div className="bg-white rounded-xl p-4 shadow-sm space-y-1">
+                  <div className="text-sm font-medium text-gray-600 mb-3">Ações do contador</div>
+
+                  <a
+                    href={`/relatorio?produtor_id=${produtor.id}`}
+                    className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"
+                  >
+                    <span className="text-lg">📄</span>
+                    <span>Gerar LCDPR PDF</span>
+                    <span className="ml-auto text-gray-400">›</span>
+                  </a>
+
+                  <a
+                    href={`/cadastro`}
+                    className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"
+                  >
+                    <span className="text-lg">✏️</span>
+                    <span>Editar cadastro</span>
+                    <span className="ml-auto text-gray-400">›</span>
+                  </a>
+
+                  <button
+                    onClick={fecharMes}
+                    disabled={fechando}
+                    className="w-full flex items-center gap-3 py-3 text-sm hover:bg-gray-50"
+                  >
+                    <span className="text-lg">✅</span>
+                    <span>{fechando ? "Fechando..." : "Fechar mês"}</span>
+                    <span className="ml-auto text-gray-400">›</span>
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
