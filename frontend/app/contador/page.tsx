@@ -219,41 +219,28 @@ export default function Contador() {
                   <div className="text-sm font-medium text-gray-600 mb-3">Ações do contador</div>
 
                   <a href={`/analytics?produtor_id=${produtor.id}`}
-                  
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"
                   >
                     <span className="text-lg">📈</span>
                     <span>Relatórios analíticos</span>
                     <span className="ml-auto text-gray-400">›</span>
                   </a>
-                  <a
-                    href={`/relatorio?produtor_id=${produtor.id}`}
+
+                  <a href={`/relatorio?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"
                   >
-                    
                     <span className="text-lg">📄</span>
                     <span>Gerar LCDPR PDF</span>
                     <span className="ml-auto text-gray-400">›</span>
                   </a>
 
-                  <a
-                    href={`/cadastro`}
+                  <a href={`/cadastro?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"
                   >
                     <span className="text-lg">✏️</span>
                     <span>Editar cadastro</span>
                     <span className="ml-auto text-gray-400">›</span>
                   </a>
-
-                  <button
-                    onClick={fecharMes}
-                    disabled={fechando}
-                    className="w-full flex items-center gap-3 py-3 text-sm hover:bg-gray-50"
-                  >
-                    <span className="text-lg">✅</span>
-                    <span>{fechando ? "Fechando..." : "Fechar mês"}</span>
-                    <span className="ml-auto text-gray-400">›</span>
-                  </button>
 
                   <button
                     onClick={fecharMes}
