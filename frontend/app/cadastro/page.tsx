@@ -10,6 +10,9 @@ export default function Cadastro() {
   const [imovel, setImovel] = useState({ nome: "", nirf: "", area_ha: "", municipio: "", uf: "" });
   const [salvo, setSalvo] = useState(false);
   const [produtorId, setProdutorId] = useState(null);
+  const [imoveisExistentes, setImoveisExistentes] = useState<any[]>([]);
+  const [imovelSelecionado, setImovelSelecionado] = useState<number | null>(null);
+  const [novoImovel, setNovoImovel] = useState(false);
   const ufs = ["AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"];
 
   function formatCPF(v: string) {
@@ -73,6 +76,7 @@ export default function Cadastro() {
         ))}
       </div>
       <div className="p-4 space-y-4">
+
         {step === 1 && (
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div className="text-sm font-medium text-gray-600">Dados do produtor</div>
@@ -80,7 +84,7 @@ export default function Cadastro() {
               <label className="text-xs text-gray-500">Nome completo *</label>
               <input
                 className={inputClass}
-                placeholder="Joao Batista Neves"
+                placeholder="Nome completo"
                 value={produtor.nome}
                 autoComplete="off"
                 autoCorrect="off"
@@ -105,7 +109,7 @@ export default function Cadastro() {
                 <div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500">+55</div>
                 <input
                   className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
-                  placeholder="(98) 99200-2705"
+                  placeholder="(00) 00000-0000"
                   value={produtor.telefone}
                   inputMode="numeric"
                   type="tel"
@@ -125,52 +129,103 @@ export default function Cadastro() {
               />
             </div>
             <button
-              onClick={() => produtor.nome && produtor.cpf && produtor.telefone && setStep(2)}
+              onClick={async () => {
+                if (!produtor.nome || !produtor.cpf || !produtor.telefone) return;
+                const cpf = produtor.cpf.replace(/\D/g, "");
+                try {
+                  const res = await fetch(`${API}/produtor/imoveis?cpf=${cpf}`);
+                  const data = await res.json();
+                  setImoveisExistentes(data);
+                } catch (e) {
+                  console.log("Erro ao buscar imoveis:", e);
+                  setImoveisExistentes([]);
+                }
+                setNovoImovel(false);
+                setImovelSelecionado(null);
+                setStep(2);
+                }}
               className={"w-full py-3 rounded-lg text-sm font-medium text-white " + (produtor.nome && produtor.cpf && produtor.telefone ? "bg-green-800" : "bg-gray-300")}
             >
               Proximo →
             </button>
           </div>
         )}
+
         {step === 2 && (
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div className="text-sm font-medium text-gray-600">Imovel rural principal</div>
-            <div>
-              <label className="text-xs text-gray-500">Nome do imovel *</label>
-              <input className={inputClass} placeholder="Fazenda Boa Esperanca" value={imovel.nome} autoComplete="off" onChange={e => setImovel({...imovel, nome: e.target.value})} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">NIRF do imovel</label>
-              <input className={inputClass} placeholder="0000000-0" value={imovel.nirf} autoComplete="off" onChange={e => setImovel({...imovel, nirf: e.target.value})} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500">Area (ha)</label>
-                <input type="number" className={inputClass} placeholder="450" value={imovel.area_ha} onChange={e => setImovel({...imovel, area_ha: e.target.value})} />
+
+            {imoveisExistentes.length > 0 && !novoImovel && (
+              <div className="space-y-2">
+                <div className="text-xs text-gray-500 mb-1">Imóveis já cadastrados:</div>
+                {imoveisExistentes.map(im => (
+                  <button
+                    key={im.id}
+                    onClick={() => setImovelSelecionado(im.id)}
+                    className={`w-full text-left px-3 py-3 rounded-lg border text-sm ${
+                      imovelSelecionado === im.id
+                        ? "border-green-600 bg-green-50"
+                        : "border-gray-200 bg-white"
+                    }`}
+                  >
+                    <div className="font-medium">{im.nome}</div>
+                    <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setNovoImovel(true); setImovelSelecionado(null); }}
+                  className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500"
+                >
+                  + Cadastrar novo imóvel
+                </button>
               </div>
-              <div>
-                <label className="text-xs text-gray-500">UF *</label>
-                <select className={inputClass} value={imovel.uf} onChange={e => setImovel({...imovel, uf: e.target.value})}>
-                  <option value="">Selecione</option>
-                  {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Municipio *</label>
-              <input className={inputClass} placeholder="Barretos" value={imovel.municipio} autoComplete="off" onChange={e => setImovel({...imovel, municipio: e.target.value})} />
-            </div>
+            )}
+
+            {(novoImovel || imoveisExistentes.length === 0) && (
+              <>
+                <div>
+                  <label className="text-xs text-gray-500">Nome do imovel *</label>
+                  <input className={inputClass} placeholder="Fazenda Boa Esperanca" value={imovel.nome} autoComplete="off" onChange={e => setImovel({...imovel, nome: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">NIRF do imovel</label>
+                  <input className={inputClass} placeholder="0000000-0" value={imovel.nirf} autoComplete="off" onChange={e => setImovel({...imovel, nirf: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500">Area (ha)</label>
+                    <input type="number" className={inputClass} placeholder="450" value={imovel.area_ha} onChange={e => setImovel({...imovel, area_ha: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">UF *</label>
+                    <select className={inputClass} value={imovel.uf} onChange={e => setImovel({...imovel, uf: e.target.value})}>
+                      <option value="">Selecione</option>
+                      {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Municipio *</label>
+                  <input className={inputClass} placeholder="Nome do municipio" value={imovel.municipio} autoComplete="off" onChange={e => setImovel({...imovel, municipio: e.target.value})} />
+                </div>
+              </>
+            )}
+
             <div className="flex gap-3">
               <button onClick={() => setStep(1)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">← Voltar</button>
               <button
-                onClick={() => imovel.nome && imovel.uf && imovel.municipio && setStep(3)}
-                className={"flex-1 py-3 rounded-lg text-sm font-medium text-white " + (imovel.nome && imovel.uf && imovel.municipio ? "bg-green-800" : "bg-gray-300")}
+                onClick={() => {
+                  if (imovelSelecionado || (imovel.nome && imovel.uf && imovel.municipio)) setStep(3);
+                }}
+                className={"flex-1 py-3 rounded-lg text-sm font-medium text-white " +
+                  (imovelSelecionado || (imovel.nome && imovel.uf && imovel.municipio) ? "bg-green-800" : "bg-gray-300")}
               >
                 Proximo →
               </button>
             </div>
           </div>
         )}
+
         {step === 3 && !salvo && (
           <div className="space-y-4">
             <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -180,8 +235,14 @@ export default function Cadastro() {
                 <div className="flex justify-between"><span className="text-gray-500">CPF</span><span>{produtor.cpf}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">WhatsApp</span><span>+55 {produtor.telefone}</span></div>
                 <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between"><span className="text-gray-500">Imovel</span><span className="font-medium">{imovel.nome}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Municipio</span><span>{imovel.municipio}-{imovel.uf}</span></div>
+                  {imovelSelecionado ? (
+                    <div className="flex justify-between"><span className="text-gray-500">Imovel</span><span className="font-medium">Imóvel selecionado #{imovelSelecionado}</span></div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between"><span className="text-gray-500">Imovel</span><span className="font-medium">{imovel.nome}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">Municipio</span><span>{imovel.municipio}-{imovel.uf}</span></div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -193,17 +254,32 @@ export default function Cadastro() {
             </div>
           </div>
         )}
+
         {salvo && (
           <div className="bg-white rounded-xl p-6 shadow-sm text-center space-y-4">
             <div className="text-4xl">✅</div>
             <div className="text-lg font-medium text-green-800">Cadastro realizado!</div>
             <div className="text-sm text-gray-500">{produtor.nome} cadastrado! ID #{produtorId}</div>
             <div className="flex gap-3">
-              <button onClick={() => { setStep(1); setProdutor({nome:"",cpf:"",telefone:"",nirf:""}); setImovel({nome:"",nirf:"",area_ha:"",municipio:"",uf:""}); setSalvo(false); }} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">Novo cadastro</button>
+              <button
+                onClick={() => {
+                  setStep(1);
+                  setProdutor({nome:"",cpf:"",telefone:"",nirf:""});
+                  setImovel({nome:"",nirf:"",area_ha:"",municipio:"",uf:""});
+                  setSalvo(false);
+                  setImoveisExistentes([]);
+                  setImovelSelecionado(null);
+                  setNovoImovel(false);
+                }}
+                className="flex-1 py-3 rounded-lg text-sm border border-gray-200"
+              >
+                Novo cadastro
+              </button>
               <a href="/contador" className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 text-center">Voltar ao painel</a>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState } from "react";
 
 const lancamentos = [
@@ -17,7 +17,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto">
-      {/* Header */}
       <div className="bg-green-800 text-white px-4 py-4">
         <div className="text-xs opacity-70">Rural Caixa PF</div>
         <div className="text-lg font-medium">Joao Batista Neves</div>
@@ -25,8 +24,7 @@ export default function Home() {
       </div>
 
       {aba === "dashboard" && (
-        <div className="p-4 space-y-4">
-          {/* Saldo */}
+        <div className="p-4 space-y-4 pb-24">
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <div className="text-xs text-gray-500 uppercase tracking-wide">Saldo do periodo</div>
             <div className="text-3xl font-semibold text-green-700 mt-1">
@@ -42,7 +40,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Botao principal */}
           <button
             onClick={() => setAba("novo")}
             className="w-full bg-green-800 text-white py-4 rounded-xl text-lg font-medium flex items-center justify-center gap-2"
@@ -50,21 +47,21 @@ export default function Home() {
             <span className="text-2xl">+</span> Novo lancamento
           </button>
 
-          {/* Acoes rapidas */}
           <div className="grid grid-cols-3 gap-3">
-            {[
-              { icon: "🎤", label: "Audio" },
-              { icon: "📷", label: "Foto NF" },
-              { icon: "📄", label: "Relatorio" },
-            ].map(a => (
-              <button key={a.label} className="bg-white rounded-xl py-4 flex flex-col items-center gap-1 shadow-sm">
-                <span className="text-2xl">{a.icon}</span>
-                <span className="text-xs text-gray-600">{a.label}</span>
-              </button>
-            ))}
+            <button onClick={() => setAba("novo")} className="bg-white rounded-xl py-4 flex flex-col items-center gap-1 shadow-sm">
+              <span className="text-2xl">🎤</span>
+              <span className="text-xs text-gray-600">Audio</span>
+            </button>
+            <button onClick={() => setAba("novo")} className="bg-white rounded-xl py-4 flex flex-col items-center gap-1 shadow-sm">
+              <span className="text-2xl">📷</span>
+              <span className="text-xs text-gray-600">Foto NF</span>
+            </button>
+            <a href="/relatorio" className="bg-white rounded-xl py-4 flex flex-col items-center gap-1 shadow-sm">
+              <span className="text-2xl">📄</span>
+              <span className="text-xs text-gray-600">Relatorio</span>
+            </a>
           </div>
 
-          {/* Lancamentos */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
               Ultimos lancamentos
@@ -81,7 +78,7 @@ export default function Home() {
                   <div className="text-sm font-medium truncate">{l.desc}</div>
                   <div className="text-xs text-gray-400 mt-0.5">
                     {l.data} · {l.conta} ·{" "}
-                    <span className={`${l.status === "pendente" ? "text-orange-500" : "text-green-600"}`}>
+                    <span className={l.status === "pendente" ? "text-orange-500" : "text-green-600"}>
                       {l.status}
                     </span>
                   </div>
@@ -100,7 +97,7 @@ export default function Home() {
       )}
 
       {aba === "novo" && (
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 pb-24">
           <div className="flex items-center gap-3">
             <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">← Voltar</button>
             <div className="text-lg font-medium">Novo lancamento</div>
@@ -113,15 +110,15 @@ export default function Home() {
               { icon: "⌨️", label: "Digitar", sub: "Lancamento manual" },
               { icon: "📄", label: "Upload arquivo", sub: "PDF ou imagem" },
             ].map(m => (
-              <button key={m.label} className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm">
+              <button key={m.label} className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm opacity-60">
                 <span className="text-3xl">{m.icon}</span>
                 <span className="text-sm font-medium text-center">{m.label}</span>
                 <span className="text-xs text-gray-400 text-center">{m.sub}</span>
+                <span className="text-xs text-orange-400">Via WhatsApp</span>
               </button>
             ))}
           </div>
 
-          {/* Formulario manual */}
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div className="text-sm font-medium text-gray-600">Lancamento manual</div>
             <div>
@@ -149,6 +146,69 @@ export default function Home() {
               Classificar e confirmar
             </button>
           </div>
+        </div>
+      )}
+
+      {aba === "perfil" && (
+        <div className="p-4 space-y-4 pb-24">
+          <div className="text-lg font-medium text-gray-700 px-1">Perfil</div>
+
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="px-4 py-4 border-b flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-2xl">👤</div>
+              <div>
+                <div className="font-medium text-gray-800">Joao Batista Neves</div>
+                <div className="text-xs text-gray-400">Produtor rural</div>
+              </div>
+            </div>
+
+            <a href="/cadastro" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">➕</span>
+                <span className="text-sm text-gray-700">Cadastrar novo produtor</span>
+              </div>
+              <span className="text-gray-400">→</span>
+            </a>
+
+            <a href="/cadastro" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🌾</span>
+                <span className="text-sm text-gray-700">Cadastrar imovel rural</span>
+              </div>
+              <span className="text-gray-400">→</span>
+            </a>
+
+            <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🧮</span>
+                <span className="text-sm text-gray-700">Cadastrar contador</span>
+              </div>
+              <span className="text-gray-400">→</span>
+            </a>
+
+            <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">📊</span>
+                <span className="text-sm text-gray-700">Painel do contador</span>
+              </div>
+              <span className="text-gray-400">→</span>
+            </a>
+
+            <a href="/relatorio" className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">📄</span>
+                <span className="text-sm text-gray-700">Relatorio LCDPR</span>
+              </div>
+              <span className="text-gray-400">→</span>
+            </a>
+          </div>
+
+          <a
+            href="/cadastro"
+            className="w-full bg-green-800 text-white py-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 block text-center"
+          >
+            ➕ Cadastrar novo produtor
+          </a>
         </div>
       )}
 
