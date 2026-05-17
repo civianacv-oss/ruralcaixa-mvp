@@ -128,6 +128,11 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None):
         })
     return result
 
+@app.get("/produtor/imoveis")
+def get_imoveis_por_cpf(cpf: str):
+    from app.db import buscar_imoveis_por_cpf
+    return buscar_imoveis_por_cpf(cpf)
+
 @app.get("/produtores/{produtor_id}/resumo")
 def get_resumo(produtor_id: int):
     from app.db import buscar_resumo_mes
@@ -138,6 +143,10 @@ def get_resumo(produtor_id: int):
         "total_lancamentos": int(resumo.get("total_lancamentos", 0)),
         "pendentes": int(resumo.get("pendentes", 0)),
     }
+@app.get("/produtor/imoveis")
+def get_imoveis_por_cpf(cpf: str):
+    from app.db import buscar_imoveis_por_cpf
+    return buscar_imoveis_por_cpf(cpf)
 
 @app.put("/lancamentos/{lancamento_id}/classificacao")
 def update_classificacao(lancamento_id: int, data: ClassificacaoUpdate):

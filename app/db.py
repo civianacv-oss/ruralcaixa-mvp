@@ -6,6 +6,17 @@ load_dotenv()
 
 engine = create_engine(os.getenv("DATABASE_URL"))
 
+def buscar_imoveis_por_cpf(cpf: str):
+    cpf_limpo = cpf.replace(".", "").replace("-", "").replace(" ", "")
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT i.id, i.nome, i.municipio, i.uf, i.area_ha, i.nirf
+            FROM imoveis_rurais i
+            JOIN produtores p ON p.id = i.produtor_id
+            WHERE p.cpf = :cpf
+        """), {"cpf": cpf_limpo}).fetchall()
+        return [dict(r._mapping) for r in result]
+
 def gravar_lancamento(dados: dict) -> int:
     with engine.connect() as conn:
         prod = conn.execute(text(
@@ -216,3 +227,14 @@ def fechar_mes(produtor_id: int):
             AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
         """), {"pid": produtor_id})
         conn.commit()
+
+def buscar_imoveis_por_cpf(cpf: str):
+    cpf_limpo = cpf.replace(".", "").replace("-", "").replace(" ", "")
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT i.id, i.nome, i.municipio, i.uf, i.area_ha, i.nirf
+            FROM imoveis_rurais i
+            JOIN produtores p ON p.id = i.produtor_id
+            WHERE p.cpf = :cpf
+        """), {"cpf": cpf_limpo}).fetchall()
+        return [dict(r._mapping) for r in result]
