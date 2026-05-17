@@ -251,6 +251,17 @@ def fechar_mes_produtor(produtor_id: int):
     fechar_mes(produtor_id)
     return {"status": "ok"}
 
+@app.delete("/produtores/{produtor_id}")
+def excluir_produtor(produtor_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM lancamentos WHERE produtor_id = :pid"), {"pid": produtor_id})
+        conn.execute(text("DELETE FROM imoveis_rurais WHERE produtor_id = :pid"), {"pid": produtor_id})
+        conn.execute(text("DELETE FROM produtores WHERE id = :pid"), {"pid": produtor_id})
+        conn.commit()
+    return {"status": "ok"}
+    
 # ─── WhatsApp helpers ─────────────────────────────────────────────────────────
 
 async def send_msg(to: str, body: str):

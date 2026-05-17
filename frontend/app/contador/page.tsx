@@ -254,6 +254,31 @@ export default function Contador() {
                     <span>{fechando ? "Fechando..." : "Fechar mês"}</span>
                     <span className="ml-auto text-gray-400">›</span>
                   </button>
+
+                  <button
+                    onClick={fecharMes}
+                    disabled={fechando}
+                    className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"
+                  >
+                    <span className="text-lg">✅</span>
+                    <span>{fechando ? "Fechando..." : "Fechar mês"}</span>
+                    <span className="ml-auto text-gray-400">›</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Excluir ${produtor.nome}? Esta ação não pode ser desfeita.`)) return;
+                      await fetch(`${API}/produtores/${produtor.id}`, { method: "DELETE" });
+                      setSelecionado(null);
+                      const updated = await fetch(`${API}/produtores`).then(r => r.json());
+                      setProdutores(updated);
+                    }}
+                    className="w-full flex items-center gap-3 py-3 text-sm hover:bg-red-50 text-red-600"
+                  >
+                    <span className="text-lg">🗑️</span>
+                    <span>Excluir produtor</span>
+                    <span className="ml-auto text-gray-400">›</span>
+                  </button>
                 </div>
               )}
             </>
