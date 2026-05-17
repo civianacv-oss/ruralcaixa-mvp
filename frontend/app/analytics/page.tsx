@@ -57,7 +57,7 @@ function AnalyticsContent() {
   const margem = totalReceitas > 0 ? ((resultado / totalReceitas) * 100).toFixed(1) : "0";
 
   // Dados para gráfico de evolução mensal
-  const meses = [...new Set(data.evolucao_mensal.map((e: any) => e.mes as string))].sort();
+  const meses = ([...new Set(data.evolucao_mensal.map((e: any) => e.mes as string))] as string[]).sort();
   const evolucaoData = meses.map((mes: string) => {
     const rec = data.evolucao_mensal.find((e: any) => e.mes === mes && e.tipo === "receita");
     const desp = data.evolucao_mensal.find((e: any) => e.mes === mes && e.tipo === "despesa");
