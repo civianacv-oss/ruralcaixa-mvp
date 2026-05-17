@@ -143,7 +143,67 @@ def get_produtores():
             "pendentes": int(p["pendentes"]),
         })
     return result
+@app.get("/produtores/{produtor_id}/analytics")
+def get_analytics(produtor_id: int, mes: Optional[str] = None):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        filtro_mes = "AND to_char(data_lancamento, 'YYYY-MM') = :mes" if mes else "AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)"
+        params = {"pid": produtor_id}
+        if mes:
+            params["mes"] = mes
 
+        # Receitas por conta/produto
+        receitas = conn.execute(text(f"""
+            SELECT conta_codigo, COALESCE(produto, subconta, conta_codigo) as label,
+                   SUM(valor) as total
+            FROM lancamentos
+            WHERE produtor_id = :pid AND tipo = 'receita'
+            {filtro_mes}
+            GROUP BY conta_codigo, produto, subconta
+            ORDER BY total DESC
+        """), params).fetchall()
+
+        # Despesas por conta
+        despesas = conn.execute(text(f"""
+            SELECT conta_codigo, COALESCE(subconta, conta_codigo) as label,
+                   SUM(valor) as total
+            FROM lancamentos
+            WHERE produtor_id = :pid AND tipo = 'despesa'
+            {filtro_mes}
+            GROUP BY conta_codigo, subconta
+            ORDER BY total DESC
+        """), params).fetchall()
+
+        # Investimentos por conta
+        investimentos = conn.execute(text(f"""
+            SELECT conta_codigo, COALESCE(subconta, conta_codigo) as label,
+                   SUM(valor) as total
+            FROM lancamentos
+            WHERE produtor_id = :pid AND tipo = 'investimento'
+            {filtro_mes}
+            GROUP BY conta_codigo, subconta
+            ORDER BY total DESC
+        """), params).fetchall()
+
+        # Evolução mensal últimos 6 meses
+        evolucao = conn.execute(text("""
+            SELECT to_char(data_lancamento, 'YYYY-MM') as mes,
+                   tipo, SUM(valor) as total
+            FROM lancamentos
+            WHERE produtor_id = :pid
+            AND data_lancamento >= CURRENT_DATE - INTERVAL '6 months'
+            GROUP BY mes, tipo
+            ORDER BY mes
+        """), {"pid": produtor_id}).fetchall()
+
+        return {
+            "receitas_por_produto": [{"conta": r[0], "label": r[1], "total": float(r[2])} for r in receitas],
+            "despesas_por_categoria": [{"conta": d[0], "label": d[1], "total": float(d[2])} for d in despesas],
+            "investimentos": [{"conta": i[0], "label": i[1], "total": float(i[2])} for i in investimentos],
+            "evolucao_mensal": [{"mes": e[0], "tipo": e[1], "total": float(e[2])} for e in evolucao],
+        }
+        
 @app.get("/produtores/{produtor_id}/lancamentos")
 def get_lancamentos(produtor_id: int, mes: Optional[str] = None):
     from app.db import buscar_lancamentos
