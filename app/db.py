@@ -118,36 +118,46 @@ def buscar_produtor_por_numero(telefone: str):
             return {"id": result[0], "nome": result[1]}
         return None
 
-
 def cadastrar(produtor: dict, imovel: dict) -> int:
     with engine.connect() as conn:
-        result = conn.execute(text("""
-            INSERT INTO produtores (cpf, nome, telefone, nirf)
-            VALUES (:cpf, :nome, :telefone, :nirf)
-            RETURNING id
-        """), {
-            "cpf":      produtor.get("cpf"),
-            "nome":     produtor.get("nome"),
-            "telefone": produtor.get("telefone", "").replace("(","").replace(")","").replace("-","").replace(" ",""),
-            "nirf":     produtor.get("nirf"),
-        })
-        conn.commit()
-        produtor_id = result.fetchone()[0]
+        # Verifica se CPF já existe
+        cpf_limpo = produtor.get("cpf", "").replace(".", "").replace("-", "").replace(" ", "")
+        existente = conn.execute(text(
+            "SELECT id FROM produtores WHERE cpf = :cpf"
+        ), {"cpf": cpf_limpo}).fetchone()
 
-        conn.execute(text("""
-            INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf)
-            VALUES (:pid, :nome, :nirf, :area, :municipio, :uf)
-        """), {
-            "pid":       produtor_id,
-            "nome":      imovel.get("nome"),
-            "nirf":      imovel.get("nirf"),
-            "area":      imovel.get("area_ha"),
-            "municipio": imovel.get("municipio"),
-            "uf":        imovel.get("uf"),
-        })
-        conn.commit()
+        if existente:
+            produtor_id = existente[0]
+        else:
+            result = conn.execute(text("""
+                INSERT INTO produtores (cpf, nome, telefone, nirf)
+                VALUES (:cpf, :nome, :telefone, :nirf)
+                RETURNING id
+            """), {
+                "cpf":      cpf_limpo,
+                "nome":     produtor.get("nome"),
+                "telefone": produtor.get("telefone", "").replace("(","").replace(")","").replace("-","").replace(" ",""),
+                "nirf":     produtor.get("nirf"),
+            })
+            conn.commit()
+            produtor_id = result.fetchone()[0]
+
+        # Só cadastra imóvel se nome foi fornecido
+        if imovel.get("nome"):
+            conn.execute(text("""
+                INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf)
+                VALUES (:pid, :nome, :nirf, :area, :municipio, :uf)
+            """), {
+                "pid":       produtor_id,
+                "nome":      imovel.get("nome"),
+                "nirf":      imovel.get("nirf"),
+                "area":      imovel.get("area_ha"),
+                "municipio": imovel.get("municipio"),
+                "uf":        imovel.get("uf"),
+            })
+            conn.commit()
+
         return produtor_id
-
 
 # ─── Painel do contador ───────────────────────────────────────────────────────
 
