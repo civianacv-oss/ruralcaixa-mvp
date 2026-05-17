@@ -203,6 +203,10 @@ function RelatorioContent() {
             📊 Exportar CSV
           </button>
         </div>
+
+          <a href="/contador" className="block w-full py-3 rounded-xl text-sm font-medium text-white bg-green-800 text-center">
+            ← Voltar ao painel
+          </a>
       </div>
     </div>
   );
