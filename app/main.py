@@ -155,7 +155,15 @@ def get_analytics(produtor_id: int, mes: Optional[str] = None):
 
         # Receitas por conta/produto
         receitas = conn.execute(text(f"""
-            SELECT conta_codigo, COALESCE(produto, subconta, conta_codigo) as label,
+            SELECT conta_codigo, 
+                   COALESCE(produto, subconta,
+                     CASE conta_codigo
+                       WHEN '1.1.1' THEN 'Venda Agricola'
+                       WHEN '1.1.2' THEN 'Venda Pecuaria'
+                       WHEN '1.2' THEN 'Servicos'
+                       ELSE conta_codigo
+                     END
+                   ) as label,
                    SUM(valor) as total
             FROM lancamentos
             WHERE produtor_id = :pid AND tipo = 'receita'
@@ -164,9 +172,21 @@ def get_analytics(produtor_id: int, mes: Optional[str] = None):
             ORDER BY total DESC
         """), params).fetchall()
 
-        # Despesas por conta
+        # Despesas por conta       
         despesas = conn.execute(text(f"""
-            SELECT conta_codigo, COALESCE(subconta, conta_codigo) as label,
+            SELECT conta_codigo,
+                   COALESCE(subconta,
+                     CASE conta_codigo
+                       WHEN '3.1.1' THEN 'Custeio Agricola'
+                       WHEN '3.1.2' THEN 'Combustivel'
+                       WHEN '3.1.3' THEN 'Pecuaria'
+                       WHEN '3.1.4' THEN 'Mao de obra'
+                       WHEN '3.1.5' THEN 'Manutencao'
+                       WHEN '3.1.6' THEN 'Energia'
+                       WHEN '3.1.7' THEN 'Arrendamento'
+                       ELSE conta_codigo
+                     END
+                   ) as label,
                    SUM(valor) as total
             FROM lancamentos
             WHERE produtor_id = :pid AND tipo = 'despesa'
@@ -261,7 +281,7 @@ def excluir_produtor(produtor_id: int):
         conn.execute(text("DELETE FROM produtores WHERE id = :pid"), {"pid": produtor_id})
         conn.commit()
     return {"status": "ok"}
-    
+
 # ─── WhatsApp helpers ─────────────────────────────────────────────────────────
 
 async def send_msg(to: str, body: str):
