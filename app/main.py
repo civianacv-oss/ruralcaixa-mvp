@@ -11,15 +11,30 @@ from dotenv import load_dotenv
 
 from app.services.classifier import classificar
 
+load_dotenv()
+
+app = FastAPI(title="Rural Caixa PF")
+
+VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
+APP_SECRET   = os.getenv("WHATSAPP_APP_SECRET")
+WAPP_TOKEN   = os.getenv("WHATSAPP_TOKEN")
+PHONE_ID     = os.getenv("WHATSAPP_PHONE_ID")
+GRAPH        = "https://graph.facebook.com/v23.0"
+
+sessoes = {}
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─── Models ──────────────────────────────────────────────────────────────────
+
 class ClassificarTexto(BaseModel):
     texto: str
-
-@app.post("/classificar-texto")
-def classificar_texto(data: ClassificarTexto):
-    resultado = classificar(data.texto)
-    if not resultado:
-        return {"erro": "Nao foi possivel classificar"}
-    return resultado
 
 class LancamentoCreate(BaseModel):
     produtor_id: int
@@ -52,17 +67,18 @@ class ClassificacaoUpdate(BaseModel):
     conta: str
     tipo: str
 
-load_dotenv()
+# ─── Endpoints ───────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Rural Caixa PF")
+@app.get("/")
+def root():
+    return {"status": "Rural Caixa PF online"}
 
-VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
-APP_SECRET   = os.getenv("WHATSAPP_APP_SECRET")
-WAPP_TOKEN   = os.getenv("WHATSAPP_TOKEN")
-PHONE_ID     = os.getenv("WHATSAPP_PHONE_ID")
-GRAPH        = "https://graph.facebook.com/v23.0"
-
-sessoes = {}
+@app.post("/classificar-texto")
+def classificar_texto(data: ClassificarTexto):
+    resultado = classificar(data.texto)
+    if not resultado:
+        return {"erro": "Nao foi possivel classificar"}
+    return resultado
 
 @app.post("/lancamentos")
 def criar_lancamento(data: LancamentoCreate):
@@ -86,18 +102,6 @@ def criar_lancamento(data: LancamentoCreate):
         conn.commit()
         return {"id": result.fetchone()[0]}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.get("/")
-def root():
-    return {"status": "Rural Caixa PF online"}
-
 @app.get("/wapp/inbound")
 def wapp_verify(
     hub_mode: str = Query(alias="hub.mode"),
@@ -115,21 +119,11 @@ async def wapp_inbound(request: Request, background: BackgroundTasks):
     background.add_task(processar, payload)
     return {"status": "ok"}
 
-async def send_msg(to: str, body: str):
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"{GRAPH}/{PHONE_ID}/messages",
-            headers={"Authorization": f"Bearer {WAPP_TOKEN}", "Content-Type": "application/json"},
-            json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
-        )
-
 @app.post("/cadastro")
 async def cadastrar_produtor(data: CadastroRequest):
     from app.db import cadastrar
     result = cadastrar(data.produtor.dict(), data.imovel.dict())
     return {"status": "ok", "produtor_id": result}
-
-# Endpoints do painel do contador
 
 @app.get("/produtores")
 def get_produtores():
@@ -184,10 +178,6 @@ def get_resumo(produtor_id: int):
         "total_lancamentos": int(resumo.get("total_lancamentos", 0)),
         "pendentes": int(resumo.get("pendentes", 0)),
     }
-@app.get("/produtor/imoveis")
-def get_imoveis_por_cpf(cpf: str):
-    from app.db import buscar_imoveis_por_cpf
-    return buscar_imoveis_por_cpf(cpf)
 
 @app.put("/lancamentos/{lancamento_id}/classificacao")
 def update_classificacao(lancamento_id: int, data: ClassificacaoUpdate):
@@ -201,7 +191,17 @@ def fechar_mes_produtor(produtor_id: int):
     fechar_mes(produtor_id)
     return {"status": "ok"}
 
-# Processamento WhatsApp
+# ─── WhatsApp helpers ─────────────────────────────────────────────────────────
+
+async def send_msg(to: str, body: str):
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{GRAPH}/{PHONE_ID}/messages",
+            headers={"Authorization": f"Bearer {WAPP_TOKEN}", "Content-Type": "application/json"},
+            json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
+        )
+
+# ─── Processamento WhatsApp ───────────────────────────────────────────────────
 
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
@@ -214,20 +214,17 @@ async def processar(payload: dict):
         numero = msg["from"]
         tipo   = msg["type"]
 
-        # AUDIO
         if tipo == "audio":
             await send_msg(numero, "Audio recebido! Transcrevendo...")
             from app.services.audio_handler import processar_audio
             await processar_audio(numero, msg, WAPP_TOKEN, sessoes, send_msg)
             return
 
-        # TEXTO
         if tipo == "text":
             texto = msg["text"]["body"].strip()
             print(f">>> texto recebido: {texto}")
             texto_upper = texto.upper()
 
-            # Confirmacao de lancamento pendente (nao-cadastro)
             if numero in sessoes and sessoes[numero].get("_tipo") != "cadastro":
                 if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
                     sess = sessoes.pop(numero)
@@ -265,7 +262,6 @@ async def processar(payload: dict):
                     await send_msg(numero, "Cancelado. Pode mandar de novo quando quiser.")
                     return
 
-            # Cadastro pelo WhatsApp
             from app.services.cadastro_handler import (
                 iniciar_cadastro, processar_etapa, confirmar_cadastro, is_cadastro_ativo
             )
@@ -292,7 +288,6 @@ async def processar(payload: dict):
                         await send_msg(numero, resposta)
                 return
 
-            # Iniciar cadastro
             if texto_upper in ("CADASTRAR", "CADASTRO", "ME CADASTRAR", "QUERO ME CADASTRAR",
                                "OI", "OLA", "INICIO"):
                 from app.db import buscar_produtor_por_numero
@@ -307,7 +302,6 @@ async def processar(payload: dict):
                 await send_msg(numero, resposta)
                 return
 
-            # Classificacao de lancamento
             resultado = classificar(texto)
             print(f">>> resultado classificar: {resultado}")
             if not resultado:
@@ -315,8 +309,6 @@ async def processar(payload: dict):
                 return
 
             sessoes[numero] = resultado
-            print(f">>> sessao salva, enviando mensagem para {numero}")
-
             if resultado["tipo"] == "receita":
                 tipo_label = "[RECEITA]"
             elif resultado["tipo"] == "despesa":
@@ -336,7 +328,6 @@ async def processar(payload: dict):
             )
             await send_msg(numero, msg_resposta)
 
-        # IMAGEM / DOCUMENTO (OCR)
         elif tipo in ("image", "document"):
             await send_msg(numero, "Documento recebido! Analisando...")
             try:
@@ -351,11 +342,9 @@ async def processar(payload: dict):
                     mime_type = msg["document"].get("mime_type", "application/pdf")
 
                 conteudo, mime_type = await baixar_midia_whatsapp(media_id, WAPP_TOKEN)
-
                 dados_ocr = await extrair_dados_documento(conteudo, mime_type)
                 lancamento = ocr_para_lancamento(dados_ocr)
                 sessoes[numero] = {**lancamento, "_ocr": dados_ocr, "_midia": conteudo, "_mime": mime_type}
-
                 msg_confirmacao = montar_mensagem_ocr(dados_ocr, numero)
                 await send_msg(numero, msg_confirmacao)
 
