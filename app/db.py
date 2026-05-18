@@ -252,6 +252,6 @@ def buscar_imoveis_por_cpf(cpf: str):
             SELECT i.id, i.nome, i.municipio, i.uf, i.area_ha, i.nirf
             FROM imoveis_rurais i
             JOIN produtores p ON p.id = i.produtor_id
-            WHERE p.cpf = :cpf
+            WHERE REPLACE(REPLACE(REPLACE(p.cpf, '.', ''), '-', ''), ' ', '') = :cpf
         """), {"cpf": cpf_limpo}).fetchall()
         return [dict(r._mapping) for r in result]
