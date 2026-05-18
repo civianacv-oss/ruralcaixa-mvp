@@ -288,7 +288,11 @@ function TerceirosContent() {
 
               {terceiros.length === 0 ? (
                 <div className="text-center text-gray-400 py-2 text-sm">Nenhum participante</div>
-              terceiros.map(t => (
+              ) : (
+                terceiros.map(t => (
+                  ...
+                ))
+              )}
               <div key={t.id} className="py-3 border-b last:border-0">
                 {editando === t.id ? (
                   <div className="space-y-2">
