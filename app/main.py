@@ -282,6 +282,23 @@ def excluir_produtor(produtor_id: int):
         conn.commit()
     return {"status": "ok"}
 
+class ProdutorUpdate(BaseModel):
+    nome: str
+    telefone: str
+    nirf: Optional[str] = None
+
+@app.put("/produtores/{produtor_id}")
+def atualizar_produtor(produtor_id: int, data: ProdutorUpdate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE produtores SET nome = :nome, telefone = :telefone, nirf = :nirf
+            WHERE id = :pid
+        """), {"nome": data.nome, "telefone": data.telefone, "nirf": data.nirf, "pid": produtor_id})
+        conn.commit()
+    return {"status": "ok"}
+
 # ─── WhatsApp helpers ─────────────────────────────────────────────────────────
 
 async def send_msg(to: str, body: str):
