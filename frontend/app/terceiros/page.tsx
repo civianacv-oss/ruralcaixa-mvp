@@ -227,7 +227,19 @@ function TerceirosContent() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
                     placeholder="000.000.000-00"
                     value={novo.id_contraparte}
-                    onChange={e => setNovo({...novo, id_contraparte: e.target.value})}
+                    onChange={async e => {
+                      const cpf = e.target.value;
+                      setNovo({...novo, id_contraparte: cpf});
+                      const cpfLimpo = cpf.replace(/\D/g, "");
+                      if (cpfLimpo.length === 11) {
+                        try {
+                          const res = await fetch(`${API}/produtores`);
+                          const prods = await res.json();
+                          const found = prods.find((p: any) => p.cpf.replace(/\D/g, "") === cpfLimpo);
+                          if (found) setNovo(n => ({...n, nome_contraparte: found.nome, id_contraparte: cpf}));
+                        } catch {}
+                      }
+                    }}
                   />
                 </div>
                 <div>
