@@ -37,6 +37,7 @@ function TerceirosContent() {
   const [areaDeclarante, setAreaDeclarante] = useState("");
   const [invDeclarante, setInvDeclarante] = useState("");
   const [alfa, setAlfa] = useState(50); // % — alfa + beta = 100
+  const [editando, setEditando] = useState<number | null>(null);
 
   const [novo, setNovo] = useState({
     tipo_contraparte: "Condômino",
