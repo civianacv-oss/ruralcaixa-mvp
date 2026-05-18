@@ -33,9 +33,9 @@ def gravar_lancamento(dados: dict) -> int:
 
         result = conn.execute(text("""
             INSERT INTO lancamentos
-                (produtor_id, imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, texto_original, produto)
+                (produtor_id, imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, texto_original, produto, atividade)
             VALUES
-                (:produtor_id, :imovel_id, :conta, :tipo, :descricao, :valor, :data, :origem, :texto, :produto)
+                (:produtor_id, :imovel_id, :conta, :tipo, :descricao, :valor, :data, :origem, :texto, :produto, :atividade)
             RETURNING id
         """), {
             "produtor_id": produtor_id,
@@ -48,6 +48,7 @@ def gravar_lancamento(dados: dict) -> int:
             "origem":      dados.get("origem", "whatsapp"),
             "produto":     dados.get("produto"),
             "texto":       dados.get("texto_original", ""),
+            "atividade":   dados.get("atividade", "rural"),
         })
         conn.commit()
 

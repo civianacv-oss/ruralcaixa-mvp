@@ -87,6 +87,21 @@ def classificar(texto):
     confianca = min(95, 60 + melhor_score * 15)
     produto = melhor[2] or detectar_produto(texto_norm)
 
+    # Detectar atividade
+    INTERMEDIACAO = ["comissao", "corretagem", "intermediacao", "agenciamento", "honorario"]
+    SERVICO = ["consultoria", "assessoria", "prestacao de servico"]
+    
+    atividade = "rural"
+    for p in INTERMEDIACAO:
+        if p in texto_norm:
+            atividade = "intermediacao"
+            break
+    if atividade == "rural":
+        for p in SERVICO:
+            if p in texto_norm:
+                atividade = "servico"
+                break
+
     return {
         "conta": melhor[0],
         "tipo": melhor[1],
@@ -94,4 +109,5 @@ def classificar(texto):
         "data": date.today().isoformat(),
         "confianca": confianca,
         "produto": produto,
+        "atividade": atividade,
     }
