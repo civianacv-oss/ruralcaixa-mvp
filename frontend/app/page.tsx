@@ -18,6 +18,7 @@ export default function Home() {
   const [classificando, setClassificando] = useState(false);
   const [resultado, setResultado] = useState<any>(null);
   const [salvando, setSalvando] = useState(false);
+  const [atividade, setAtividade] = useState("rural");
   const [salvo, setSalvo] = useState(false);
 
   const receitas = lancamentos.filter(l => l.tipo === "receita").reduce((s, l) => s + l.valor, 0);
@@ -36,6 +37,7 @@ export default function Home() {
       });
       const data = await res.json();
       setResultado(data);
+      if (data.atividade) setAtividade(data.atividade);
     } catch {
       alert("Erro ao classificar. Tente novamente.");
     } finally {
