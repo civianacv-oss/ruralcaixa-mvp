@@ -172,7 +172,7 @@ function CadastroContent() {
                         <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
                       </div>
                       
-                        href={`/terceiros?imovel_id=${im.id}&produtor_id=${produtorId}`}
+                        <a href={`/terceiros?imovel_id=${im.id}&produtor_id=${produtorId}`}
                         className="text-xs text-green-700 font-medium whitespace-nowrap ml-2"
                       >
                         Parceiros →
