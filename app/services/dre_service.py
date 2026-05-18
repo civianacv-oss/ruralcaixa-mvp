@@ -47,21 +47,25 @@ def get_period_dates(
 
 CONTA_LABEL = {
     # Receitas
-    "1.1.1": "Venda Agrícola",
-    "1.1.2": "Venda Pecuária",
-    "1.2":   "Serviços Rurais",
+    "1.1.1": "Venda Agricola",
+    "1.1.2": "Venda Pecuaria",
+    "1.2":   "Servicos Rurais",
     "1.3":   "Receita de Aluguel/Arrendamento",
     # Despesas
-    "3.1.1": "Custeio Agrícola",
-    "3.1.2": "Combustível e Lubrificantes",
-    "3.1.3": "Pecuária",
-    "3.1.4": "Mão de Obra",
-    "3.1.5": "Manutenção de Máquinas",
-    "3.1.6": "Energia Elétrica",
+    "3.1.1": "Custeio Agricola",
+    "3.1.2": "Combustivel e Lubrificantes",
+    "3.1.3": "Pecuaria",
+    "3.1.4": "Mao de Obra",
+    "3.1.5": "Manutencao de Maquinas",
+    "3.1.6": "Energia Eletrica",
     "3.1.7": "Arrendamento Pago",
-    # Intermediação
-    "2.1":   "Comissão Recebida",
-    "2.2":   "Comissão Paga",
+    # Investimentos (plano_contas 5.x)
+    "5.1":   "Aquisicao de Maquinas",
+    "5.2":   "Obras e Benfeitorias",
+    "5.3":   "Aquisicao de Animais",
+    # Intermediacao
+    "2.1":   "Comissao Recebida",
+    "2.2":   "Comissao Paga",
 }
 
 def label_conta(conta_codigo: str, subconta: str = None, produto: str = None) -> str:
@@ -165,7 +169,7 @@ def gerar_dre(
 
             tipo_norm = tipo_from_conta(r["conta_codigo"], r["tipo"])
 
-            # Intermediação: ignorada na visão fiscal
+            # Intermediacao: ignorada na visão fiscal
             if tipo_norm == "intermediacao" and view_type == "fiscal":
                 continue
 
