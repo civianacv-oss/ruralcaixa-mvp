@@ -341,7 +341,7 @@ function TerceirosContent() {
                       {t.investimento > 0 && <div className="text-xs text-gray-500">{fmt(t.investimento)}</div>}
                     </div>
                     <div className="flex gap-2 ml-2">
-                      <button onClick={() => setEditando(t.id)} className="text-blue-400 text-xs hover:text-blue-600">✏️</button>
+                      <button onClick={() => setEditando(t.id)} className="text-blue-500 text-xs hover:text-blue-700 border border-blue-300 rounded px-1">editar</button>
                       <button onClick={() => excluirTerceiro(t.id)} className="text-red-400 text-xs hover:text-red-600">🗑️</button>
                     </div>
                   </div>
