@@ -46,6 +46,7 @@ class LancamentoCreate(BaseModel):
     origem: str = "manual"
     confirmado: bool = True
     atividade: str = "rural"
+    perc_participacao: float = 100.0
 
 class ProdutorCreate(BaseModel):
     nome: str
@@ -142,24 +143,28 @@ def criar_lancamento(data: LancamentoCreate):
     from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
+        valor_bruto = data.valor
+        valor_liquido = round(data.valor * data.perc_participacao / 100, 2)
         result = conn.execute(text("""
-            INSERT INTO lancamentos (produtor_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, confirmado, atividade)
-            VALUES (:pid, :conta, :tipo, :desc, :valor, :data, :origem, :confirmado, :atividade)
+            INSERT INTO lancamentos (produtor_id, conta_codigo, tipo, descricao, valor, valor_bruto, data_lancamento, origem, confirmado, atividade, perc_participacao)
+            VALUES (:pid, :conta, :tipo, :desc, :valor, :valor_bruto, :data, :origem, :confirmado, :atividade, :perc)
             RETURNING id
         """), {
             "pid": data.produtor_id,
             "conta": data.conta_codigo,
             "tipo": data.tipo,
             "desc": data.descricao,
-            "valor": data.valor,
+            "valor": valor_liquido,
+            "valor_bruto": valor_bruto,
             "data": data.data_lancamento,
             "origem": data.origem,
             "confirmado": data.confirmado,
             "atividade": data.atividade,
+            "perc": data.perc_participacao,
         })
         conn.commit()
         return {"id": result.fetchone()[0]}
-
+        
 @app.get("/wapp/inbound")
 def wapp_verify(
     hub_mode: str = Query(alias="hub.mode"),

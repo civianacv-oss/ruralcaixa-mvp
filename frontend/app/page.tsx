@@ -25,6 +25,7 @@ export default function Home() {
   const [resultado, setResultado] = useState<any>(null);
   const [salvando, setSalvando] = useState(false);
   const [atividade, setAtividade] = useState("rural");
+  const [participacao, setParticipacao] = useState("100");
   const [salvo, setSalvo] = useState(false);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [loadingLanc, setLoadingLanc] = useState(true);
@@ -84,6 +85,7 @@ export default function Home() {
           origem: "manual",
           confirmado: true,
           atividade: atividade,
+          "perc_participacao": parseFloat(participacao),
         }),
       });
       if (res.ok) {
@@ -260,6 +262,23 @@ export default function Home() {
                 <option value="intermediacao">Intermediação / Corretagem</option>
                 <option value="servico">Prestação de Serviços</option>
               </select>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500">Sua participação (%)</label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
+                value={participacao}
+                onChange={e => setParticipacao(e.target.value)}
+              />
+              {parseFloat(participacao) < 100 && valor && (
+                <div className="text-xs text-green-700 mt-1">
+                  Valor proporcional: R$ {(parseFloat(valor) * parseFloat(participacao) / 100).toLocaleString("pt-BR")}
+                </div>
+              )}
             </div>
 
             {resultado && (
