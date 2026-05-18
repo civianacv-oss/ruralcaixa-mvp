@@ -376,7 +376,14 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
     result = []
     for l in lancamentos:
         imovel_id = l.get("imovel_id")
-        perc = l.get("perc_participacao") or participacoes.get(imovel_id, 100)
+        perc_proprio = float(l.get("perc_participacao") or 0)
+        if perc_proprio > 0 and perc_proprio < 100:
+            perc = perc_proprio
+        elif participacoes:
+            perc = list(participacoes.values())[0]  # usa participacao do primeiro imovel
+        else:
+            
+    perc = 100
         valor_original = float(l["valor"])
         valor_proporcional = round(valor_original * perc / 100, 2) if perc != 100 else valor_original
         
@@ -395,7 +402,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
             "atividade": l.get("atividade", "rural"),
         })
     return result
-    
+
 @app.get("/produtor/imoveis")
 def get_imoveis_por_cpf(cpf: str):
     from app.db import buscar_imoveis_por_cpf
