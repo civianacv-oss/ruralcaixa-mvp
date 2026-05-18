@@ -127,6 +127,61 @@ def update_tipo_exploracao(imovel_id: int, tipo: int, participacao: float):
         conn.commit()
     return {"status": "ok"}
 
+@app.post("/imoveis/{imovel_id}/recalcular-participacoes")
+def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.5):
+    from app.db import engine
+    from sqlalchemy import text
+    if abs(alfa + beta - 1.0) > 0.01:
+        raise HTTPException(status_code=400, detail="alfa + beta deve ser igual a 1")
+    with engine.connect() as conn:
+        # Buscar imóvel e terceiros
+        imovel = conn.execute(text(
+            "SELECT area_declarante, investimento_declarante FROM imoveis_rurais WHERE id = :id"
+        ), {"id": imovel_id}).fetchone()
+        terceiros = conn.execute(text(
+            "SELECT id, area_ha, investimento FROM terceiros WHERE imovel_id = :id"
+        ), {"id": imovel_id}).fetchall()
+
+        if not imovel:
+            raise HTTPException(status_code=404, detail="Imóvel não encontrado")
+
+        # Calcular totais
+        area_total = float(imovel[0] or 0) + sum(float(t[1] or 0) for t in terceiros)
+        inv_total = float(imovel[1] or 0) + sum(float(t[2] or 0) for t in terceiros)
+
+        # Calcular participação do declarante
+        c_terra_decl = float(imovel[0] or 0) / area_total if area_total > 0 else 0
+        c_inv_decl = float(imovel[1] or 0) / inv_total if inv_total > 0 else 0
+        perc_decl = round((alfa * c_terra_decl + beta * c_inv_decl) * 100, 2)
+
+        # Atualizar imóvel
+        conn.execute(text("""
+            UPDATE imoveis_rurais 
+            SET participacao = :perc, alfa = :alfa, beta = :beta,
+                area_total = :area_total, investimento_total = :inv_total
+            WHERE id = :id
+        """), {"perc": perc_decl, "alfa": alfa, "beta": beta,
+               "area_total": area_total, "inv_total": inv_total, "id": imovel_id})
+
+        # Atualizar cada terceiro
+        resultados = []
+        for t in terceiros:
+            c_terra = float(t[1] or 0) / area_total if area_total > 0 else 0
+            c_inv = float(t[2] or 0) / inv_total if inv_total > 0 else 0
+            perc = round((alfa * c_terra + beta * c_inv) * 100, 2)
+            conn.execute(text(
+                "UPDATE terceiros SET perc_contraparte = :perc WHERE id = :id"
+            ), {"perc": perc, "id": t[0]})
+            resultados.append({"id": t[0], "perc": perc})
+
+        conn.commit()
+        return {
+            "declarante": perc_decl,
+            "terceiros": resultados,
+            "area_total": area_total,
+            "inv_total": inv_total,
+        }
+
 @app.get("/")
 def root():
     return {"status": "Rural Caixa PF online"}
@@ -164,7 +219,7 @@ def criar_lancamento(data: LancamentoCreate):
         })
         conn.commit()
         return {"id": result.fetchone()[0]}
-        
+
 @app.get("/wapp/inbound")
 def wapp_verify(
     hub_mode: str = Query(alias="hub.mode"),
