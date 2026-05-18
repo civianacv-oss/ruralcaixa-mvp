@@ -76,7 +76,25 @@ class TerceiroCreate(BaseModel):
     nome_contraparte: str
     perc_contraparte: float
 
+class TerceiroUpdate(BaseModel):
+    perc_contraparte: float
+    area_ha: float = 0
+    investimento: float = 0
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
+@app.put("/terceiros/{terceiro_id}")
+def update_terceiro(terceiro_id: int, data: TerceiroUpdate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE terceiros SET perc_contraparte = :perc, area_ha = :area, investimento = :inv
+            WHERE id = :id
+        """), {"perc": data.perc_contraparte, "area": data.area_ha, "inv": data.investimento, "id": terceiro_id})
+        conn.commit()
+    return {"status": "ok"}
+
+
 @app.get("/imoveis/{imovel_id}/terceiros")
 def get_terceiros(imovel_id: int):
     from app.db import engine

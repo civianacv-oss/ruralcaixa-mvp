@@ -287,18 +287,67 @@ function TerceirosContent() {
 
               {terceiros.length === 0 ? (
                 <div className="text-center text-gray-400 py-2 text-sm">Nenhum participante</div>
-              ) : terceiros.map(t => (
-                <div key={t.id} className="flex items-start justify-between py-3 border-b last:border-0">
-                  <div>
+              terceiros.map(t => (
+              <div key={t.id} className="py-3 border-b last:border-0">
+                {editando === t.id ? (
+                  <div className="space-y-2">
                     <div className="text-sm font-medium">{t.nome_contraparte}</div>
-                    <div className="text-xs text-gray-400">{t.tipo_contraparte} · {t.id_contraparte}</div>
-                    <div className="text-xs text-green-700 font-medium">{parseFloat(t.perc_contraparte).toFixed(1)}%</div>
-                    {t.area_ha > 0 && <div className="text-xs text-gray-500">{t.area_ha} ha</div>}
-                    {t.investimento > 0 && <div className="text-xs text-gray-500">{fmt(t.investimento)}</div>}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500">% part.</label>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm"
+                          defaultValue={t.perc_contraparte}
+                          id={`perc-${t.id}`} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Área (ha)</label>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm"
+                          defaultValue={t.area_ha || ""}
+                          id={`area-${t.id}`} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Inv. (R$)</label>
+                        <input type="number" className="w-full border rounded px-2 py-1 text-sm"
+                          defaultValue={t.investimento || ""}
+                          id={`inv-${t.id}`} />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditando(null)} className="flex-1 py-1 rounded text-xs border">Cancelar</button>
+                      <button
+                        onClick={async () => {
+                          const perc = parseFloat((document.getElementById(`perc-${t.id}`) as HTMLInputElement).value);
+                          const area = parseFloat((document.getElementById(`area-${t.id}`) as HTMLInputElement).value || "0");
+                          const inv = parseFloat((document.getElementById(`inv-${t.id}`) as HTMLInputElement).value || "0");
+                          await fetch(`${API}/terceiros/${t.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ perc_contraparte: perc, area_ha: area, investimento: inv }),
+                          });
+                          setTerceiros(terceiros.map(x => x.id === t.id ? {...x, perc_contraparte: perc, area_ha: area, investimento: inv} : x));
+                          setEditando(null);
+                        }}
+                        className="flex-1 py-1 rounded text-xs font-medium text-white bg-green-800"
+                      >Salvar</button>
+                    </div>
                   </div>
-                  <button onClick={() => excluirTerceiro(t.id)} className="text-red-400 text-xs hover:text-red-600 ml-2 mt-1">🗑️</button>
-                </div>
-              ))}
+                ) : (
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-sm font-medium">{t.nome_contraparte}</div>
+                      <div className="text-xs text-gray-400">{t.tipo_contraparte} · {t.id_contraparte}</div>
+                      <div className="text-xs text-green-700 font-medium">{parseFloat(t.perc_contraparte).toFixed(1)}%</div>
+                      {t.area_ha > 0 && <div className="text-xs text-gray-500">{t.area_ha} ha</div>}
+                      {t.investimento > 0 && <div className="text-xs text-gray-500">{fmt(t.investimento)}</div>}
+                    </div>
+                    <div className="flex gap-2 ml-2">
+                      <button onClick={() => setEditando(t.id)} className="text-blue-400 text-xs hover:text-blue-600">✏️</button>
+                      <button onClick={() => excluirTerceiro(t.id)} className="text-red-400 text-xs hover:text-red-600">🗑️</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
 
               {!showForm ? (
                 <button onClick={() => setShowForm(true)} disabled={minhaParticipacao <= 0 && abaCalculo === "manual"}
