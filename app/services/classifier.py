@@ -102,6 +102,18 @@ def classificar(texto):
                 atividade = "servico"
                 break
 
+    # Detectar compra vs venda
+    PALAVRAS_COMPRA = ["comprei", "compra", "adquiri", "paguei", "gastei", "comprado"]
+    is_compra = any(p in texto_norm for p in PALAVRAS_COMPRA)
+
+    # Se é compra de animal → investimento conta 5.3, não receita
+    if is_compra and melhor[1] == "receita":
+        animais = ["boi", "vaca", "gado", "bovino", "bezerro", "ovelha", "carneiro", "ovino", "cabra", "bode", "porco", "suino", "frango", "galinha"]
+        if any(p in texto_norm for p in animais):
+            melhor = ("5.3", "investimento", "Animais")
+        else:
+            melhor = ("3.9", "despesa", None)
+
     return {
         "conta": melhor[0],
         "tipo": melhor[1],
