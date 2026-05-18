@@ -629,3 +629,44 @@ async def processar(payload: dict):
         import traceback
         print(f"Erro: {e}")
         traceback.print_exc()
+
+@app.get("/produtores/{produtor_id}/dre")
+def get_dre(
+    produtor_id: int,
+    view_type: str = Query("managerial", regex="^(fiscal|managerial|custom)$"),
+    year: Optional[int] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    visao_integral: bool = Query(False),
+):
+    from app.db import engine
+    from app.services.dre_service import gerar_dre
+    try:
+        return gerar_dre(
+            engine=engine,
+            produtor_id=produtor_id,
+            view_type=view_type,
+            year=year,
+            start_date=start_date,
+            end_date=end_date,
+            visao_integral=visao_integral,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/produtores/{produtor_id}/dre/periodos")
+def get_dre_periodos(produtor_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT DISTINCT EXTRACT(YEAR FROM data_lancamento)::int AS ano
+            FROM lancamentos
+            WHERE produtor_id = :pid
+            ORDER BY ano
+        """), {"pid": produtor_id}).fetchall()
+        anos = [r[0] for r in rows]
+        safras = [f"{a}/{a+1}" for a in anos]
+        return {"anos_fiscais": anos, "safras": safras}
