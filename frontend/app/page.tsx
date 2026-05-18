@@ -1,14 +1,20 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
+const PRODUTOR_ID = 1; // TODO: pegar do contexto/auth
 
-const lancamentos = [
-  { id: 1, desc: "Venda de gado", tipo: "receita", valor: 28500, data: "02/05", status: "confirmado", conta: "1.1.2" },
-  { id: 2, desc: "Combustivel Posto Agro", tipo: "despesa", valor: 1240, data: "28/04", status: "confirmado", conta: "3.1.2" },
-  { id: 3, desc: "Adubo NPK", tipo: "despesa", valor: 3800, data: "25/04", status: "pendente", conta: "3.1.1" },
-  { id: 4, desc: "Trator leasing", tipo: "investimento", valor: 45000, data: "20/04", status: "confirmado", conta: "5.1" },
-];
+type Lancamento = {
+  id: number;
+  descricao: string;
+  tipo: string;
+  valor: number;
+  data_lancamento: string;
+  confirmado: boolean;
+  conta_codigo: string;
+  produto: string | null;
+  atividade: string | null;
+};
 
 export default function Home() {
   const [aba, setAba] = useState("dashboard");
@@ -20,10 +26,26 @@ export default function Home() {
   const [salvando, setSalvando] = useState(false);
   const [atividade, setAtividade] = useState("rural");
   const [salvo, setSalvo] = useState(false);
+  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [loadingLanc, setLoadingLanc] = useState(true);
+  const [resumo, setResumo] = useState({ receita: 0, despesa: 0 });
 
-  const receitas = lancamentos.filter(l => l.tipo === "receita").reduce((s, l) => s + l.valor, 0);
-  const despesas = lancamentos.filter(l => l.tipo === "despesa").reduce((s, l) => s + l.valor, 0);
-  const saldo = receitas - despesas;
+  useEffect(() => {
+    fetch(`${API}/produtores/${PRODUTOR_ID}/lancamentos`)
+      .then(r => r.json())
+      .then(data => { setLancamentos(data); setLoadingLanc(false); })
+      .catch(() => setLoadingLanc(false));
+
+    fetch(`${API}/produtores`)
+      .then(r => r.json())
+      .then(prods => {
+        const p = prods.find((x: any) => x.id === PRODUTOR_ID);
+        if (p) setResumo({ receita: p.receita, despesa: p.despesa });
+      })
+      .catch(() => {});
+  }, [salvo]);
+
+  const saldo = resumo.receita - resumo.despesa;
 
   async function classificar() {
     if (!descricao) return alert("Digite uma descricao");
@@ -53,7 +75,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          produtor_id: 1,
+          produtor_id: PRODUTOR_ID,
           conta_codigo: resultado.conta,
           tipo: resultado.tipo,
           descricao: descricao,
@@ -61,6 +83,7 @@ export default function Home() {
           data_lancamento: data,
           origem: "manual",
           confirmado: true,
+          atividade: atividade,
         }),
       });
       if (res.ok) {
@@ -68,6 +91,7 @@ export default function Home() {
         setDescricao("");
         setValor("");
         setResultado(null);
+        setAtividade("rural");
         setTimeout(() => { setSalvo(false); setAba("dashboard"); }, 2000);
       } else {
         alert("Erro ao salvar");
@@ -79,35 +103,30 @@ export default function Home() {
     }
   }
 
+  const fmt = (v: number) => `R$ ${v.toLocaleString("pt-BR")}`;
+
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto">
       <div className="bg-green-800 text-white px-4 py-4">
         <div className="text-xs opacity-70">Rural Caixa PF</div>
         <div className="text-lg font-medium">Joao Batista Neves</div>
-        <div className="text-xs opacity-70 mt-1">Maio 2025</div>
+        <div className="text-xs opacity-70 mt-1">{new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</div>
       </div>
 
       {aba === "dashboard" && (
         <div className="p-4 space-y-4 pb-24">
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <div className="text-xs text-gray-500 uppercase tracking-wide">Saldo do periodo</div>
-            <div className="text-3xl font-semibold text-green-700 mt-1">
-              R$ {saldo.toLocaleString("pt-BR")}
+            <div className={`text-3xl font-semibold mt-1 ${saldo >= 0 ? "text-green-700" : "text-red-600"}`}>
+              {fmt(saldo)}
             </div>
             <div className="flex gap-3 mt-3">
-              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                + R$ {receitas.toLocaleString("pt-BR")}
-              </span>
-              <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                - R$ {despesas.toLocaleString("pt-BR")}
-              </span>
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">+ {fmt(resumo.receita)}</span>
+              <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">- {fmt(resumo.despesa)}</span>
             </div>
           </div>
 
-          <button
-            onClick={() => setAba("novo")}
-            className="w-full bg-green-800 text-white py-4 rounded-xl text-lg font-medium flex items-center justify-center gap-2"
-          >
+          <button onClick={() => setAba("novo")} className="w-full bg-green-800 text-white py-4 rounded-xl text-lg font-medium flex items-center justify-center gap-2">
             <span className="text-2xl">+</span> Novo lancamento
           </button>
 
@@ -130,32 +149,41 @@ export default function Home() {
             <div className="px-4 py-3 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
               Ultimos lancamentos
             </div>
-            {lancamentos.map(l => (
-              <div key={l.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg ${
-                  l.tipo === "receita" ? "bg-green-100" :
-                  l.tipo === "despesa" ? "bg-red-100" : "bg-blue-100"
-                }`}>
-                  {l.tipo === "receita" ? "🐄" : l.tipo === "despesa" ? "⛽" : "🚜"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{l.desc}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    {l.data} · {l.conta} ·{" "}
-                    <span className={l.status === "pendente" ? "text-orange-500" : "text-green-600"}>
-                      {l.status}
-                    </span>
+            {loadingLanc ? (
+              <div className="text-center text-gray-400 py-6 text-sm">Carregando...</div>
+            ) : lancamentos.length === 0 ? (
+              <div className="text-center text-gray-400 py-6 text-sm">Nenhum lançamento este mês</div>
+            ) : (
+              lancamentos.slice(0, 5).map(l => (
+                <div key={l.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg ${
+                    l.tipo === "receita" ? "bg-green-100" :
+                    l.tipo === "despesa" ? "bg-red-100" : "bg-blue-100"
+                  }`}>
+                    {l.tipo === "receita" ? "🐄" : l.tipo === "despesa" ? "⛽" : "🚜"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{l.descricao || l.produto || l.conta_codigo}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {new Date(l.data_lancamento).toLocaleDateString("pt-BR")} · {l.conta_codigo} ·{" "}
+                      <span className={l.confirmado ? "text-green-600" : "text-orange-500"}>
+                        {l.confirmado ? "confirmado" : "pendente"}
+                      </span>
+                      {l.atividade && l.atividade !== "rural" && (
+                        <span className="ml-1 text-purple-500">· {l.atividade}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className={`text-sm font-medium ${
+                    l.tipo === "receita" ? "text-green-700" :
+                    l.tipo === "despesa" ? "text-red-600" : "text-blue-700"
+                  }`}>
+                    {l.tipo === "receita" ? "+" : l.tipo === "despesa" ? "-" : ""}
+                    {fmt(l.valor)}
                   </div>
                 </div>
-                <div className={`text-sm font-medium ${
-                  l.tipo === "receita" ? "text-green-700" :
-                  l.tipo === "despesa" ? "text-red-600" : "text-blue-700"
-                }`}>
-                  {l.tipo === "receita" ? "+" : l.tipo === "despesa" ? "-" : ""}
-                  R$ {l.valor.toLocaleString("pt-BR")}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
@@ -221,6 +249,19 @@ export default function Home() {
               </div>
             </div>
 
+            <div>
+              <label className="text-xs text-gray-500">Tipo de atividade</label>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
+                value={atividade}
+                onChange={e => setAtividade(e.target.value)}
+              >
+                <option value="rural">Atividade Rural (LCDPR)</option>
+                <option value="intermediacao">Intermediação / Corretagem</option>
+                <option value="servico">Prestação de Serviços</option>
+              </select>
+            </div>
+
             {resultado && (
               <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm border border-gray-200">
                 <div className="font-medium text-gray-700">Classificacao sugerida:</div>
@@ -244,6 +285,12 @@ export default function Home() {
                     <span className="font-medium">{resultado.produto}</span>
                   </div>
                 )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Atividade</span>
+                  <span className={`font-medium ${atividade === "rural" ? "text-green-700" : "text-purple-600"}`}>
+                    {atividade === "rural" ? "Rural (LCDPR)" : atividade === "intermediacao" ? "Intermediação" : "Serviço"}
+                  </span>
+                </div>
               </div>
             )}
 
@@ -257,17 +304,8 @@ export default function Home() {
               </button>
             ) : (
               <div className="flex gap-3">
-                <button
-                  onClick={() => setResultado(null)}
-                  className="flex-1 py-3 rounded-lg text-sm border border-gray-200"
-                >
-                  Corrigir
-                </button>
-                <button
-                  onClick={salvarLancamento}
-                  disabled={salvando}
-                  className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400"
-                >
+                <button onClick={() => setResultado(null)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">Corrigir</button>
+                <button onClick={salvarLancamento} disabled={salvando} className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400">
                   {salvando ? "Salvando..." : "Confirmar"}
                 </button>
               </div>
@@ -279,7 +317,6 @@ export default function Home() {
       {aba === "perfil" && (
         <div className="p-4 space-y-4 pb-24">
           <div className="text-lg font-medium text-gray-700 px-1">Perfil</div>
-
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-4 border-b flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-2xl">👤</div>
@@ -288,48 +325,27 @@ export default function Home() {
                 <div className="text-xs text-gray-400">Produtor rural</div>
               </div>
             </div>
-
             <a href="/cadastro" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">➕</span>
-                <span className="text-sm text-gray-700">Cadastrar novo produtor</span>
-              </div>
+              <div className="flex items-center gap-3"><span className="text-xl">➕</span><span className="text-sm text-gray-700">Cadastrar novo produtor</span></div>
               <span className="text-gray-400">→</span>
             </a>
-
             <a href="/cadastro" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">🌾</span>
-                <span className="text-sm text-gray-700">Cadastrar imovel rural</span>
-              </div>
+              <div className="flex items-center gap-3"><span className="text-xl">🌾</span><span className="text-sm text-gray-700">Cadastrar imovel rural</span></div>
               <span className="text-gray-400">→</span>
             </a>
-
             <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">🧮</span>
-                <span className="text-sm text-gray-700">Cadastrar contador</span>
-              </div>
+              <div className="flex items-center gap-3"><span className="text-xl">🧮</span><span className="text-sm text-gray-700">Cadastrar contador</span></div>
               <span className="text-gray-400">→</span>
             </a>
-
             <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">📊</span>
-                <span className="text-sm text-gray-700">Painel do contador</span>
-              </div>
+              <div className="flex items-center gap-3"><span className="text-xl">📊</span><span className="text-sm text-gray-700">Painel do contador</span></div>
               <span className="text-gray-400">→</span>
             </a>
-
             <a href="/relatorio" className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">📄</span>
-                <span className="text-sm text-gray-700">Relatorio LCDPR</span>
-              </div>
+              <div className="flex items-center gap-3"><span className="text-xl">📄</span><span className="text-sm text-gray-700">Relatorio LCDPR</span></div>
               <span className="text-gray-400">→</span>
             </a>
           </div>
-
           <a href="/cadastro" className="w-full bg-green-800 text-white py-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 block text-center">
             ➕ Cadastrar novo produtor
           </a>
@@ -345,20 +361,12 @@ export default function Home() {
           { id: "perfil", icon: "👤", label: "Perfil" },
         ].map(n => (
           (n as any).href ? (
-            <a
-              key={n.id}
-              href={(n as any).href}
-              className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400"
-            >
+            <a key={n.id} href={(n as any).href} className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
               <span className="text-xl">{n.icon}</span>
               <span className="text-xs">{n.label}</span>
             </a>
           ) : (
-            <button
-              key={n.id}
-              onClick={() => setAba(n.id)}
-              className={`flex-1 py-3 flex flex-col items-center gap-1 ${aba === n.id ? "text-green-800" : "text-gray-400"}`}
-            >
+            <button key={n.id} onClick={() => setAba(n.id)} className={`flex-1 py-3 flex flex-col items-center gap-1 ${aba === n.id ? "text-green-800" : "text-gray-400"}`}>
               <span className="text-xl">{n.icon}</span>
               <span className="text-xs">{n.label}</span>
             </button>
