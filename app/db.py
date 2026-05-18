@@ -181,28 +181,34 @@ def listar_produtores():
         return [dict(r._mapping) for r in rows]
 
 
-def buscar_lancamentos(produtor_id: int, mes: str = None):
+def buscar_lancamentos(produtor_id: int, mes: str = None, atividade: str = None):
     with engine.connect() as conn:
+        filtro_atividade = " AND COALESCE(atividade, 'rural') = :atividade" if atividade else ""
+        params_base = {"pid": produtor_id}
+        if atividade:
+            params_base["atividade"] = atividade
+
         if mes:
-            rows = conn.execute(text("""
+            rows = conn.execute(text(f"""
                 SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
-                       produto, documento_url, confirmado, created_at
+                       produto, documento_url, confirmado, atividade, created_at
                 FROM lancamentos
                 WHERE produtor_id = :pid
                 AND to_char(data_lancamento, 'YYYY-MM') = :mes
+                {filtro_atividade}
                 ORDER BY data_lancamento DESC
-            """), {"pid": produtor_id, "mes": mes}).fetchall()
+            """), {**params_base, "mes": mes}).fetchall()
         else:
-            rows = conn.execute(text("""
+            rows = conn.execute(text(f"""
                 SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
-                       produto, documento_url, confirmado, created_at
+                       produto, documento_url, confirmado, atividade, created_at
                 FROM lancamentos
                 WHERE produtor_id = :pid
                 AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+                {filtro_atividade}
                 ORDER BY data_lancamento DESC
-            """), {"pid": produtor_id}).fetchall()
+            """), params_base).fetchall()
         return [dict(r._mapping) for r in rows]
-
 
 def buscar_resumo_mes(produtor_id: int):
     with engine.connect() as conn:

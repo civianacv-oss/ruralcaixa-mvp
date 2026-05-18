@@ -1,3 +1,4 @@
+
 "use client";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -34,7 +35,7 @@ function RelatorioContent() {
   useEffect(() => {
     const pid = produtorId || "1";
     Promise.all([
-      fetch(`${API}/produtores/${pid}/lancamentos`).then(r => r.json()),
+      fetch(`${API}/produtores/${pid}/lancamentos?atividade=rural`).then(r => r.json()),
       fetch(`${API}/produtores`).then(r => r.json()),
     ]).then(([lancs, prods]) => {
       setLancamentos(lancs);

@@ -103,7 +103,7 @@ def criar_lancamento(data: LancamentoCreate):
         })
         conn.commit()
         return {"id": result.fetchone()[0]}
-        
+
 @app.get("/wapp/inbound")
 def wapp_verify(
     hub_mode: str = Query(alias="hub.mode"),
@@ -227,9 +227,9 @@ def get_analytics(produtor_id: int, mes: Optional[str] = None):
         }
         
 @app.get("/produtores/{produtor_id}/lancamentos")
-def get_lancamentos(produtor_id: int, mes: Optional[str] = None):
+def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Optional[str] = None):
     from app.db import buscar_lancamentos
-    lancamentos = buscar_lancamentos(produtor_id, mes)
+    lancamentos = buscar_lancamentos(produtor_id, mes, atividade)
     result = []
     for l in lancamentos:
         result.append({
@@ -242,6 +242,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None):
             "produto": l.get("produto"),
             "documento_url": l.get("documento_url"),
             "confirmado": l.get("confirmado", False),
+            "atividade": l.get("atividade", "rural"),
         })
     return result
 
