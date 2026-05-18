@@ -81,7 +81,7 @@ class TerceiroUpdate(BaseModel):
     area_ha: float = 0
     investimento: float = 0
 
-# ─── Endpoints ───────────────────────────────────────────────────────────────
+# ─── Endpoints ─────────────────────────────────────────────────────────────── 
 @app.put("/terceiros/{terceiro_id}")
 def update_terceiro(terceiro_id: int, data: TerceiroUpdate):
     from app.db import engine
@@ -362,16 +362,32 @@ def get_analytics(produtor_id: int, mes: Optional[str] = None):
         
 @app.get("/produtores/{produtor_id}/lancamentos")
 def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Optional[str] = None):
-    from app.db import buscar_lancamentos
+    from app.db import buscar_lancamentos, engine
+    from sqlalchemy import text
     lancamentos = buscar_lancamentos(produtor_id, mes, atividade)
+    
+    # Buscar participação do produtor nos imóveis
+    with engine.connect() as conn:
+        imoveis = conn.execute(text("""
+            SELECT id, participacao FROM imoveis_rurais WHERE produtor_id = :pid
+        """), {"pid": produtor_id}).fetchall()
+        participacoes = {i[0]: float(i[1] or 100) for i in imoveis}
+    
     result = []
     for l in lancamentos:
+        imovel_id = l.get("imovel_id")
+        perc = l.get("perc_participacao") or participacoes.get(imovel_id, 100)
+        valor_original = float(l["valor"])
+        valor_proporcional = round(valor_original * perc / 100, 2) if perc != 100 else valor_original
+        
         result.append({
             "id": l["id"],
             "tipo": l["tipo"],
             "conta_codigo": l["conta_codigo"],
             "descricao": l["descricao"],
-            "valor": float(l["valor"]),
+            "valor": valor_proporcional,
+            "valor_bruto": valor_original,
+            "perc_participacao": perc,
             "data_lancamento": str(l["data_lancamento"]),
             "produto": l.get("produto"),
             "documento_url": l.get("documento_url"),
@@ -379,7 +395,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
             "atividade": l.get("atividade", "rural"),
         })
     return result
-
+    
 @app.get("/produtor/imoveis")
 def get_imoveis_por_cpf(cpf: str):
     from app.db import buscar_imoveis_por_cpf

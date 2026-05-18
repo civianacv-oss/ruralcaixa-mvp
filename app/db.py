@@ -191,7 +191,7 @@ def buscar_lancamentos(produtor_id: int, mes: str = None, atividade: str = None)
         if mes:
             rows = conn.execute(text(f"""
                 SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
-                       produto, documento_url, confirmado, atividade, created_at
+                       produto, documento_url, confirmado, atividade, imovel_id, perc_participacao, created_at
                 FROM lancamentos
                 WHERE produtor_id = :pid
                 AND to_char(data_lancamento, 'YYYY-MM') = :mes
