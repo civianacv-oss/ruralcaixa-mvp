@@ -372,6 +372,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
             SELECT id, participacao FROM imoveis_rurais WHERE produtor_id = :pid
         """), {"pid": produtor_id}).fetchall()
         participacoes = {i[0]: float(i[1] or 100) for i in imoveis}
+    	print(f">>> participacoes: {participacoes}")
     
     result = []
     for l in lancamentos:
