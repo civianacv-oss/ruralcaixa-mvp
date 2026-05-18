@@ -383,10 +383,9 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
         elif participacoes:
             perc = list(participacoes.values())[0]  # usa participacao do primeiro imovel
         else:
-            
-    perc = 100
+            perc = 100
         valor_original = float(l["valor"])
-        valor_proporcional = round(valor_original * perc / 100, 2) if perc != 100 else valor_original
+        valor_proporcional = round(valor_original * perc / 100, 2)
         
         result.append({
             "id": l["id"],
