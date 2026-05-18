@@ -65,7 +65,7 @@ function TerceirosContent() {
             .then(imoveis => {
               const im = imoveis.find((x: any) => x.id === imovelId);
               if (im) {
-                setImovel(im);
+                setImovel({...im, nome_produtor: p.nome});  
                 setTipoExploracao(im.tipo_exploracao || 1);
                 setAreaDeclarante(String(im.area_declarante || im.area_ha || ""));
                 setInvDeclarante(String(im.investimento_declarante || ""));
@@ -278,7 +278,7 @@ function TerceirosContent() {
 
               <div className="flex items-start justify-between py-2 border-b bg-green-50 rounded-lg px-2">
                 <div>
-                  <div className="text-sm font-medium text-green-800">Você (declarante)</div>
+                  <div className="text-sm font-medium text-green-800">{imovel?.nome_produtor || "Você (declarante)"}</div>
                   <div className="text-xs text-green-700 font-medium">{minhaParticipacao.toFixed(1)}%</div>
                   {areaDeclarante && <div className="text-xs text-gray-500">{areaDeclarante} ha</div>}
                   {invDeclarante && <div className="text-xs text-gray-500">{fmt(parseFloat(invDeclarante))}</div>}
