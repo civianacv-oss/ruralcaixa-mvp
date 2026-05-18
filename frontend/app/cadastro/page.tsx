@@ -166,8 +166,18 @@ function CadastroContent() {
                 <div className="text-sm font-medium text-gray-600 mb-2">Imóveis cadastrados</div>
                 {imoveisExistentes.map(im => (
                   <div key={im.id} className="px-3 py-2 rounded-lg border border-gray-200 text-sm mb-2">
-                    <div className="font-medium">{im.nome}</div>
-                    <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium">{im.nome}</div>
+                        <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
+                      </div>
+                      
+                        href={`/terceiros?imovel_id=${im.id}&produtor_id=${produtorId}`}
+                        className="text-xs text-green-700 font-medium whitespace-nowrap ml-2"
+                      >
+                        Parceiros →
+                      </a>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -247,8 +257,8 @@ function CadastroContent() {
                 <button onClick={() => { setNovoImovel(true); setImovelSelecionado(null); }} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500">+ Cadastrar novo imóvel</button>
               </div>
             )}
-            {(novoImovel || imoveisExistentes.length === 0) && (
-              <>
+            {(novoImovel || imoveisExistentes.length === 0) && (          
+               <>
                 <div><label className="text-xs text-gray-500">Nome do imovel *</label><input className={inputClass} placeholder="Fazenda Boa Esperanca" value={imovel.nome} autoComplete="off" onChange={e => setImovel({...imovel, nome: e.target.value})} /></div>
                 <div><label className="text-xs text-gray-500">NIRF do imovel</label><input className={inputClass} placeholder="0000000-0" value={imovel.nirf} autoComplete="off" onChange={e => setImovel({...imovel, nirf: e.target.value})} /></div>
                 <div className="grid grid-cols-2 gap-3">

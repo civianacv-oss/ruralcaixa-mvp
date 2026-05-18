@@ -68,7 +68,63 @@ class ClassificacaoUpdate(BaseModel):
     conta: str
     tipo: str
 
+class TerceiroCreate(BaseModel):
+    imovel_id: int
+    tipo_contraparte: str
+    id_contraparte: str
+    nome_contraparte: str
+    perc_contraparte: float
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
+@app.get("/imoveis/{imovel_id}/terceiros")
+def get_terceiros(imovel_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT * FROM terceiros WHERE imovel_id = :iid ORDER BY id"
+        ), {"iid": imovel_id}).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+@app.post("/imoveis/{imovel_id}/terceiros")
+def add_terceiro(imovel_id: int, data: TerceiroCreate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO terceiros (imovel_id, tipo_contraparte, id_contraparte, nome_contraparte, perc_contraparte)
+            VALUES (:iid, :tipo, :id_cp, :nome, :perc)
+            RETURNING id
+        """), {
+            "iid": imovel_id,
+            "tipo": data.tipo_contraparte,
+            "id_cp": data.id_contraparte,
+            "nome": data.nome_contraparte,
+            "perc": data.perc_contraparte,
+        })
+        conn.commit()
+        return {"id": result.fetchone()[0]}
+
+@app.delete("/terceiros/{terceiro_id}")
+def del_terceiro(terceiro_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM terceiros WHERE id = :id"), {"id": terceiro_id})
+        conn.commit()
+    return {"status": "ok"}
+
+@app.put("/imoveis/{imovel_id}/tipo-exploracao")
+def update_tipo_exploracao(imovel_id: int, tipo: int, participacao: float):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE imoveis_rurais SET tipo_exploracao = :tipo, participacao = :part
+            WHERE id = :iid
+        """), {"tipo": tipo, "part": participacao, "iid": imovel_id})
+        conn.commit()
+    return {"status": "ok"}
 
 @app.get("/")
 def root():
