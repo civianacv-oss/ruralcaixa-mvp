@@ -202,7 +202,7 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
 
 @app.get("/")
 def root():
-    return {"status": "Rural Caixa PF online"}
+    return {"status": "Rural Caixa PF online", "version": "2.0"}
 
 @app.post("/classificar-texto")
 def classificar_texto(data: ClassificarTexto):
