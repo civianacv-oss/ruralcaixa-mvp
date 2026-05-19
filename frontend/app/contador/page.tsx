@@ -475,7 +475,7 @@ export default function Contador() {
                 <div className="bg-white rounded-xl p-4 shadow-sm space-y-1">
                   <div className="text-sm font-medium text-gray-600 mb-3">Acoes do contador</div>
 
-                  <a href={`/nfe?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"><span className="text-lg">??</span><span>Emitir NF-e</span><span className="ml-auto text-gray-400">›</span></a><a href={`/analytics?produtor_id=${produtor.id}`}
+                  <a href={`/analytics?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
                     <span className="text-lg">ðŸ“ˆ</span>
                     <span>Relatorios analiticos</span>
@@ -528,6 +528,3 @@ export default function Contador() {
     </div>
   );
 }
-
-// build-v3
-
