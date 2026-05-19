@@ -1,7 +1,7 @@
-﻿import hmac, hashlib, json, os
+import hmac, hashlib, json, os
 import httpx
 from datetime import date
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
@@ -31,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Models ──────────────────────────────────────────────────────────────────
 
 class ClassificarTexto(BaseModel):
     texto: str
@@ -81,7 +81,7 @@ class TerceiroUpdate(BaseModel):
     area_ha: float = 0
     investimento: float = 0
 
-# â”€â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ 
+# ─── Endpoints ─────────────────────────────────────────────────────────────── 
 @app.put("/terceiros/{terceiro_id}")
 def update_terceiro(terceiro_id: int, data: TerceiroUpdate):
     from app.db import engine
@@ -152,7 +152,7 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
     if abs(alfa + beta - 1.0) > 0.01:
         raise HTTPException(status_code=400, detail="alfa + beta deve ser igual a 1")
     with engine.connect() as conn:
-        # Buscar imÃ³vel e terceiros
+        # Buscar imóvel e terceiros
         imovel = conn.execute(text(
             "SELECT area_declarante, investimento_declarante FROM imoveis_rurais WHERE id = :id"
         ), {"id": imovel_id}).fetchone()
@@ -161,18 +161,18 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
         ), {"id": imovel_id}).fetchall()
 
         if not imovel:
-            raise HTTPException(status_code=404, detail="ImÃ³vel nÃ£o encontrado")
+            raise HTTPException(status_code=404, detail="Imóvel não encontrado")
 
         # Calcular totais
         area_total = float(imovel[0] or 0) + sum(float(t[1] or 0) for t in terceiros)
         inv_total = float(imovel[1] or 0) + sum(float(t[2] or 0) for t in terceiros)
 
-        # Calcular participaÃ§Ã£o do declarante
+        # Calcular participação do declarante
         c_terra_decl = float(imovel[0] or 0) / area_total if area_total > 0 else 0
         c_inv_decl = float(imovel[1] or 0) / inv_total if inv_total > 0 else 0
         perc_decl = round((alfa * c_terra_decl + beta * c_inv_decl) * 100, 2)
 
-        # Atualizar imÃ³vel
+        # Atualizar imóvel
         conn.execute(text("""
             UPDATE imoveis_rurais 
             SET participacao = :perc, alfa = :alfa, beta = :beta,
@@ -342,7 +342,7 @@ def get_analytics(produtor_id: int, mes: Optional[str] = None):
             ORDER BY total DESC
         """), params).fetchall()
 
-        # EvoluÃ§Ã£o mensal Ãºltimos 6 meses
+        # Evolução mensal últimos 6 meses
         evolucao = conn.execute(text("""
             SELECT to_char(data_lancamento, 'YYYY-MM') as mes,
                    tipo, SUM(valor) as total
@@ -366,7 +366,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
     from sqlalchemy import text
     lancamentos = buscar_lancamentos(produtor_id, mes, atividade)
     
-    # Buscar participaÃ§Ã£o do produtor nos imÃ³veis
+    # Buscar participação do produtor nos imóveis
     with engine.connect() as conn:
         imoveis = conn.execute(text("""
             SELECT id, participacao FROM imoveis_rurais WHERE produtor_id = :pid
@@ -459,7 +459,7 @@ def atualizar_produtor(produtor_id: int, data: ProdutorUpdate):
         conn.commit()
     return {"status": "ok"}
 
-# â”€â”€â”€ WhatsApp helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── WhatsApp helpers ─────────────────────────────────────────────────────────
 
 async def send_msg(to: str, body: str):
     async with httpx.AsyncClient() as client:
@@ -469,7 +469,7 @@ async def send_msg(to: str, body: str):
             json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
         )
 
-# â”€â”€â”€ Processamento WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─── Processamento WhatsApp ───────────────────────────────────────────────────
 
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
@@ -731,12 +731,12 @@ def get_terceiros_validacao(imovel_id: int):
                  "tipo": r[3], "percentual": float(r[4] or 0)}
                 for r in terceiros
             ]
-        }# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# PATCH main.py â€” NF-e Produtor Rural
-# Cole no final do main.py (antes da funÃ§Ã£o processar)
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        }# ════════════════════════════════════════════════════════════════════════════
+# PATCH main.py — NF-e Produtor Rural
+# Cole no final do main.py (antes da função processar)
+# ════════════════════════════════════════════════════════════════════════════
 
-# â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Models ───────────────────────────────────────────────────────────────────
 
 class NFeConfigUpdate(BaseModel):
     inscricao_estadual: Optional[str] = None
@@ -796,9 +796,9 @@ class NFeCreate(BaseModel):
     modalidade_frete: int = 9
     informacoes_adicionais: Optional[str] = None
     lancamento_id: Optional[int] = None
-    itens: list[ItemNFeCreate]
+    itens: List[ItemNFeCreate]
 
-# â”€â”€ Endpoints NF-e â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Endpoints NF-e ────────────────────────────────────────────────────────────
 
 @app.get("/produtores/{produtor_id}/nfe/config")
 def get_nfe_config(produtor_id: int):
@@ -915,7 +915,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
     from sqlalchemy import text
     from app.services.nfe_service import calcular_impostos
     with engine.connect() as conn:
-        # PrÃ³ximo nÃºmero
+        # Próximo número
         cfg = conn.execute(text(
             "SELECT serie, proxima_numero FROM nfe_config WHERE produtor_id=:pid"
         ), {"pid":produtor_id}).fetchone()
@@ -980,7 +980,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
                 "vdesc":item.valor_desconto,
             })
 
-        # Incrementa prÃ³ximo nÃºmero
+        # Incrementa próximo número
         conn.execute(text(
             "UPDATE nfe_config SET proxima_numero=:n WHERE produtor_id=:pid"
         ), {"n":numero+1,"pid":produtor_id})
@@ -1042,3 +1042,5 @@ def get_nota_pdf(nota_id: int):
         )
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
