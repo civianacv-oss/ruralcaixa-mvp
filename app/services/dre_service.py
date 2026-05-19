@@ -21,22 +21,19 @@ def get_period_dates(view_type, year=None, start_date=None, end_date=None):
     raise ValueError(f"view_type invalido: {view_type}")
 
 CONTA_LABEL = {
-    "1.1.1": "Venda Agricola",
-    "1.1.2": "Venda Pecuaria",
-    "1.2":   "Servicos Rurais",
-    "1.3":   "Receita de Aluguel",
-    "3.1.1": "Custeio Agricola",
-    "3.1.2": "Combustivel e Lubrificantes",
-    "3.1.3": "Pecuaria",
-    "3.1.4": "Mao de Obra",
-    "3.1.5": "Manutencao de Maquinas",
-    "3.1.6": "Energia Eletrica",
+    "1.1.1": "Venda Agricola", "1.1.2": "Venda Pecuaria",
+    "1.2": "Servicos Rurais", "1.3": "Receita de Aluguel",
+    "3.1.1": "Custeio Agricola", "3.1.2": "Combustivel e Lubrificantes",
+    "3.1.3": "Pecuaria", "3.1.4": "Mao de Obra",
+    "3.1.5": "Manutencao de Maquinas", "3.1.6": "Energia Eletrica",
     "3.1.7": "Arrendamento Pago",
-    "5.1":   "Aquisicao de Maquinas",
-    "5.2":   "Obras e Benfeitorias",
-    "5.3":   "Aquisicao de Animais",
-    "2.1":   "Comissao Recebida",
-    "2.2":   "Comissao Paga",
+    "5.1": "Aquisicao de Maquinas", "5.2": "Obras e Benfeitorias", "5.3": "Aquisicao de Animais",
+    "2.1": "Comissao Recebida", "2.2": "Comissao Paga",
+}
+
+TIPO_EXPLORACAO_MAP = {
+    1: "individual", 2: "condominio", 3: "arrendamento",
+    4: "parceria", 5: "comodato", 6: "outros"
 }
 
 def label_conta(conta_codigo, subconta=None, produto=None):
@@ -59,7 +56,8 @@ def gerar_dre(engine, produtor_id, view_type="managerial", year=None, start_date
         lancamentos = conn.execute(text("""
             SELECT l.id, l.conta_codigo, l.tipo, l.descricao, l.valor, l.valor_bruto,
                    l.perc_participacao, l.data_lancamento, l.subconta, l.produto, l.imovel_id,
-                   ir.nome AS imovel_nome, ir.nirf, ir.participacao AS participacao_imovel
+                   ir.nome AS imovel_nome, ir.nirf, ir.participacao AS participacao_imovel,
+                   ir.tipo_exploracao
             FROM lancamentos l
             LEFT JOIN imoveis_rurais ir ON ir.id = l.imovel_id
             WHERE l.produtor_id = :pid
@@ -70,7 +68,8 @@ def gerar_dre(engine, produtor_id, view_type="managerial", year=None, start_date
 
         try:
             participacoes_rows = conn.execute(text("""
-                SELECT pi.imovel_id, pi.percentual, pi.nome_participante, pi.produtor_id, ir.tipo_sociedade
+                SELECT pi.imovel_id, pi.percentual, pi.nome_participante, pi.produtor_id,
+                       ir.tipo_exploracao
                 FROM participacoes_imovel pi
                 JOIN imoveis_rurais ir ON ir.id = pi.imovel_id
                 WHERE pi.produtor_id = :pid
@@ -81,9 +80,9 @@ def gerar_dre(engine, produtor_id, view_type="managerial", year=None, start_date
             part_map = {}
             for r in participacoes_rows:
                 part_map.setdefault(r[0], []).append(r[2] or f"Produtor #{r[3]}")
-            tipo_soc_map = {r[0]: r[4] for r in participacoes_rows}
+            tipo_exp_map = {r[0]: r[4] for r in participacoes_rows}
         except Exception:
-            perc_map = {}; part_map = {}; tipo_soc_map = {}
+            perc_map = {}; part_map = {}; tipo_exp_map = {}
 
         imoveis = {}
         for row in lancamentos:
@@ -94,6 +93,7 @@ def gerar_dre(engine, produtor_id, view_type="managerial", year=None, start_date
             imovel_id   = r.get("imovel_id") or 0
             imovel_nome = r.get("imovel_nome") or "Imovel nao vinculado"
             nirf        = r.get("nirf") or ""
+
             if imovel_id and imovel_id in perc_map:
                 perc = perc_map[imovel_id]
             elif r.get("perc_participacao") and float(r["perc_participacao"]) > 0:
@@ -102,18 +102,22 @@ def gerar_dre(engine, produtor_id, view_type="managerial", year=None, start_date
                 perc = float(r["participacao_imovel"])
             else:
                 perc = 100.0
+
             valor_bruto = float(r.get("valor_bruto") or r.get("valor") or 0)
             valor_calc  = valor_bruto if (view_type == "managerial" and visao_integral) else round(valor_bruto * perc / 100, 2)
             sublabel = label_conta(r["conta_codigo"], r.get("subconta"), r.get("produto"))
+
             key = str(imovel_id)
             if key not in imoveis:
-                tipo_soc = tipo_soc_map.get(imovel_id, "individual")
+                tipo_exp_int = tipo_exp_map.get(imovel_id) or r.get("tipo_exploracao") or 1
+                tipo_exp_str = TIPO_EXPLORACAO_MAP.get(int(tipo_exp_int), "individual")
                 imoveis[key] = {
                     "imovel_id": imovel_id, "nome_imovel": imovel_nome, "nirf": nirf,
-                    "tipo_sociedade": f"{tipo_soc} ({perc:.0f}%)" if tipo_soc != "individual" else "Individual (100%)",
+                    "tipo_sociedade": f"{tipo_exp_str} ({perc:.0f}%)" if tipo_exp_str != "individual" else "Individual (100%)",
                     "participantes": part_map.get(imovel_id, []),
                     "_receitas": {}, "_despesas": {}, "_intermediacao": {}, "_investimentos": {},
                 }
+
             bucket = {"receita":"_receitas","despesa":"_despesas","intermediacao":"_intermediacao","investimento":"_investimentos"}.get(tipo_norm,"_despesas")
             d = imoveis[key][bucket]
             d[sublabel] = round(d.get(sublabel, 0) + valor_calc, 2)
