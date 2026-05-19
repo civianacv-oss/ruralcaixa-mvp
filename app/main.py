@@ -1045,3 +1045,4 @@ def get_nota_pdf(nota_id: int):
 
 
 # nfe-deploy-trigger
+# req-fix
