@@ -1,4 +1,4 @@
-import hmac, hashlib, json, os
+﻿import hmac, hashlib, json, os
 import httpx
 from datetime import date
 from typing import Optional
@@ -31,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Models ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ClassificarTexto(BaseModel):
     texto: str
@@ -81,7 +81,7 @@ class TerceiroUpdate(BaseModel):
     area_ha: float = 0
     investimento: float = 0
 
-# ─── Endpoints ─────────────────────────────────────────────────────────────── 
+# â”€â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ 
 @app.put("/terceiros/{terceiro_id}")
 def update_terceiro(terceiro_id: int, data: TerceiroUpdate):
     from app.db import engine
@@ -152,7 +152,7 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
     if abs(alfa + beta - 1.0) > 0.01:
         raise HTTPException(status_code=400, detail="alfa + beta deve ser igual a 1")
     with engine.connect() as conn:
-        # Buscar imóvel e terceiros
+        # Buscar imÃ³vel e terceiros
         imovel = conn.execute(text(
             "SELECT area_declarante, investimento_declarante FROM imoveis_rurais WHERE id = :id"
         ), {"id": imovel_id}).fetchone()
@@ -161,18 +161,18 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
         ), {"id": imovel_id}).fetchall()
 
         if not imovel:
-            raise HTTPException(status_code=404, detail="Imóvel não encontrado")
+            raise HTTPException(status_code=404, detail="ImÃ³vel nÃ£o encontrado")
 
         # Calcular totais
         area_total = float(imovel[0] or 0) + sum(float(t[1] or 0) for t in terceiros)
         inv_total = float(imovel[1] or 0) + sum(float(t[2] or 0) for t in terceiros)
 
-        # Calcular participação do declarante
+        # Calcular participaÃ§Ã£o do declarante
         c_terra_decl = float(imovel[0] or 0) / area_total if area_total > 0 else 0
         c_inv_decl = float(imovel[1] or 0) / inv_total if inv_total > 0 else 0
         perc_decl = round((alfa * c_terra_decl + beta * c_inv_decl) * 100, 2)
 
-        # Atualizar imóvel
+        # Atualizar imÃ³vel
         conn.execute(text("""
             UPDATE imoveis_rurais 
             SET participacao = :perc, alfa = :alfa, beta = :beta,
@@ -342,7 +342,7 @@ def get_analytics(produtor_id: int, mes: Optional[str] = None):
             ORDER BY total DESC
         """), params).fetchall()
 
-        # Evolução mensal últimos 6 meses
+        # EvoluÃ§Ã£o mensal Ãºltimos 6 meses
         evolucao = conn.execute(text("""
             SELECT to_char(data_lancamento, 'YYYY-MM') as mes,
                    tipo, SUM(valor) as total
@@ -366,7 +366,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
     from sqlalchemy import text
     lancamentos = buscar_lancamentos(produtor_id, mes, atividade)
     
-    # Buscar participação do produtor nos imóveis
+    # Buscar participaÃ§Ã£o do produtor nos imÃ³veis
     with engine.connect() as conn:
         imoveis = conn.execute(text("""
             SELECT id, participacao FROM imoveis_rurais WHERE produtor_id = :pid
@@ -459,7 +459,7 @@ def atualizar_produtor(produtor_id: int, data: ProdutorUpdate):
         conn.commit()
     return {"status": "ok"}
 
-# ─── WhatsApp helpers ─────────────────────────────────────────────────────────
+# â”€â”€â”€ WhatsApp helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def send_msg(to: str, body: str):
     async with httpx.AsyncClient() as client:
@@ -469,7 +469,7 @@ async def send_msg(to: str, body: str):
             json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
         )
 
-# ─── Processamento WhatsApp ───────────────────────────────────────────────────
+# â”€â”€â”€ Processamento WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
@@ -699,25 +699,33 @@ def get_participacoes_resumo(imovel_id: int):
             ]
         }
 
+
+
 @app.get("/imoveis/{imovel_id}/terceiros/validacao")
 def get_terceiros_validacao(imovel_id: int):
     from app.db import engine
     from sqlalchemy import text
-    import re
     with engine.connect() as conn:
         terceiros = conn.execute(text(
             "SELECT id, nome_contraparte, id_contraparte, tipo_contraparte, perc_contraparte FROM terceiros WHERE imovel_id = :iid"
         ), {"iid": imovel_id}).fetchall()
-        participacoes = conn.execute(text(
-            "SELECT SUM(percentual) FROM participacoes_imovel WHERE imovel_id = :iid AND (vigencia_fim IS NULL OR vigencia_fim >= CURRENT_DATE)"
-        ), {"iid": imovel_id}).scalar() or 0
-        total_terc = sum(float(r[4] or 0) for r in terceiros)
+        part = conn.execute(text(
+            "SELECT COALESCE(SUM(percentual),0) FROM participacoes_imovel WHERE imovel_id = :iid AND (vigencia_fim IS NULL OR vigencia_fim >= CURRENT_DATE)"
+        ), {"iid": imovel_id}).scalar()
+        part_count = conn.execute(text(
+            "SELECT COUNT(*) FROM participacoes_imovel WHERE imovel_id = :iid AND (vigencia_fim IS NULL OR vigencia_fim >= CURRENT_DATE)"
+        ), {"iid": imovel_id}).scalar()
+        if part_count > 0:
+            total_geral = round(float(part), 2)
+        else:
+            total_terc = sum(float(r[4] or 0) for r in terceiros)
+            total_geral = round(total_terc, 2)
         return {
             "imovel_id": imovel_id,
-            "total_participacoes": round(float(participacoes), 2),
-            "total_terceiros": round(total_terc, 2),
-            "total_geral": round(float(participacoes) + total_terc, 2),
-            "total_ok": abs(float(participacoes) + total_terc - 100) < 0.5,
+            "total_participacoes": round(float(part), 2),
+            "total_terceiros": round(sum(float(r[4] or 0) for r in terceiros), 2),
+            "total_geral": total_geral,
+            "total_ok": abs(total_geral - 100) < 0.5,
             "terceiros": [
                 {"id": r[0], "nome": r[1], "documento": r[2],
                  "tipo": r[3], "percentual": float(r[4] or 0)}
