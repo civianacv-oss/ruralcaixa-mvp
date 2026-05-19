@@ -192,34 +192,34 @@ export default function Contador() {
     ]).then(async ([lancs, imoveis]) => {
       setLancamentos(lancs);
 
-      // Busca terceiros de todos os imóveis
+      // Busca validacao completa de terceiros por imovel (soma real de todos)
       const todosImoveis = Array.isArray(imoveis) ? imoveis : [];
-      const terceirosPromises = todosImoveis.map((im: any) =>
-        fetch(`${API}/imoveis/${im.id}/terceiros`).then(r => r.json()).catch(() => [])
+      const validacaoPromises = todosImoveis.map((im: any) =>
+        fetch(`${API}/imoveis/${im.id}/terceiros/validacao`).then(r => r.json()).catch(() => null)
       );
-      const terceirosPorImovel = await Promise.all(terceirosPromises);
-      const todosTerceiros = terceirosPorImovel.flat();
+      const validacoes = (await Promise.all(validacaoPromises)).filter(Boolean);
+      const todosTerceiros = validacoes.flatMap((v: any) => v.terceiros || []);
       setTerceiros(todosTerceiros);
 
       // Gera alertas
       const novosAlertas: Alerta[] = [];
 
       // 1. CPF/CNPJ ausente ou inválido nos terceiros
-      todosTerceiros.forEach((t: Terceiro) => {
-        const doc = t.id_contraparte?.replace(/\D/g, "") || "";
+      todosTerceiros.forEach((t: any) => {
+        const doc = (t.documento || t.id_contraparte || "").replace(/\D/g, "");
         const { valido, tipo } = validarDocumento(doc);
 
         if (tipo === "ausente") {
           novosAlertas.push({
             nivel: "erro",
-            mensagem: `${t.nome_contraparte}: CPF/CNPJ ausente`,
-            detalhe: `${t.tipo_contraparte} com ${t.perc_contraparte}% — obrigatorio para o Registro 0045`,
+            mensagem: `${t.nome || t.nome_contraparte}: CPF/CNPJ ausente`,
+            detalhe: `${t.tipo || t.tipo_contraparte} com ${t.percentual || t.perc_contraparte}% — obrigatorio para o Registro 0045`,
             acao: { label: "Corrigir participante", href: `/terceiros?imovel_id=${todosImoveis[0]?.id || 1}&produtor_id=${selecionado}` },
           });
         } else if (!valido) {
           novosAlertas.push({
             nivel: "erro",
-            mensagem: `${t.nome_contraparte}: ${tipo} invalido (${doc})`,
+            mensagem: `${t.nome || t.nome_contraparte}: ${tipo} invalido (${doc})`,
             detalhe: `Digito verificador incorreto — Registro 0045 sera rejeitado pela Receita Federal`,
             acao: { label: "Corrigir participante", href: `/terceiros?imovel_id=${todosImoveis[0]?.id || 1}&produtor_id=${selecionado}` },
           });
@@ -247,12 +247,10 @@ export default function Contador() {
         });
       }
 
-      // 4. Total de participação diferente de 100%
-      if (todosTerceiros.length > 0) {
-        const totalTerc = todosTerceiros.reduce((s: number, t: Terceiro) => s + parseFloat(String(t.perc_contraparte || 0)), 0);
-        const imovelPart = todosImoveis[0]?.participacao ?? 0;
-        const totalGeral = totalTerc + parseFloat(String(imovelPart));
-        if (Math.abs(totalGeral - 100) > 0.5) {
+      // 4. Total de participação diferente de 100% — soma todos os participantes do imovel
+      for (const v of validacoes) {
+        const totalGeral = v.total_geral ?? 0;
+        if (!v.total_ok) {
           novosAlertas.push({
             nivel: "erro",
             mensagem: `Total de participacoes = ${totalGeral.toFixed(1)}% (deveria ser 100%)`,
@@ -444,7 +442,8 @@ export default function Contador() {
                         Participantes cadastrados
                       </div>
                       {terceiros.map((t, i) => {
-                        const { valido, tipo } = validarDocumento(t.id_contraparte || "");
+                        const doc = (t.documento || t.id_contraparte || "");
+                        const { valido, tipo } = validarDocumento(doc);
                         return (
                           <div key={i} className="flex items-start justify-between py-2.5 border-b last:border-0">
                             <div className="flex items-start gap-2">
@@ -452,14 +451,14 @@ export default function Contador() {
                                 {valido ? "✓" : "✕"}
                               </span>
                               <div>
-                                <div className="text-xs font-medium">{t.nome_contraparte}</div>
+                                <div className="text-xs font-medium">{t.nome || t.nome_contraparte}</div>
                                 <div className="text-xs text-gray-400">
-                                  {t.tipo_contraparte} · {parseFloat(String(t.perc_contraparte)).toFixed(1)}%
+                                  {t.tipo || t.tipo_contraparte} · {parseFloat(String(t.percentual || t.perc_contraparte || 0)).toFixed(1)}%
                                 </div>
                                 <div className={`text-xs mt-0.5 ${valido ? "text-gray-400" : "text-red-500"}`}>
                                   {tipo === "ausente" ? "CPF/CNPJ ausente" :
                                    !valido ? `${tipo} invalido` :
-                                   t.id_contraparte}
+                                   doc}
                                 </div>
                               </div>
                             </div>
