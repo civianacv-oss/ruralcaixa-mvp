@@ -1,3 +1,4 @@
+﻿// v2
 "use client";
 import { useState, useEffect } from "react";
 
@@ -28,7 +29,7 @@ type Alerta = {
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// ── Validação CPF ─────────────────────────────────────────────────────────────
+// â”€â”€ ValidaÃ§Ã£o CPF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -66,7 +67,7 @@ function validarDocumento(doc: string): { valido: boolean; tipo: string } {
   return { valido: false, tipo: "invalido" };
 }
 
-// ── Badge de alerta ───────────────────────────────────────────────────────────
+// â”€â”€ Badge de alerta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AlertaBadge({ alertas }: { alertas: Alerta[] }) {
   const erros = alertas.filter(a => a.nivel === "erro").length;
   const avisos = alertas.filter(a => a.nivel === "aviso").length;
@@ -87,13 +88,13 @@ function AlertaBadge({ alertas }: { alertas: Alerta[] }) {
   );
 }
 
-// ── Painel de alertas ─────────────────────────────────────────────────────────
+// â”€â”€ Painel de alertas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId: number }) {
   const [expandido, setExpandido] = useState(true);
   if (alertas.length === 0) {
     return (
       <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
-        <span className="text-green-600 text-lg">✓</span>
+        <span className="text-green-600 text-lg">âœ“</span>
         <div>
           <div className="text-sm font-medium text-green-800">Conformidade OK</div>
           <div className="text-xs text-green-600">Nenhuma pendencia para o Registro 0045</div>
@@ -107,9 +108,9 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
       <button onClick={() => setExpandido(e => !e)}
         className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 border-l-4 border-amber-400">
         <div className="flex items-center gap-2">
-          <span className="text-amber-600">⚠</span>
+          <span className="text-amber-600">âš </span>
           <span className="text-sm font-semibold text-amber-800">
-            Alertas de Conformidade — Reg. 0045
+            Alertas de Conformidade â€” Reg. 0045
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -130,7 +131,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
               <span className={`text-base mt-0.5 flex-shrink-0 ${
                 a.nivel === "erro" ? "text-red-500" : "text-amber-500"
               }`}>
-                {a.nivel === "erro" ? "✕" : "!"}
+                {a.nivel === "erro" ? "âœ•" : "!"}
               </span>
               <div className="flex-1 min-w-0">
                 <div className={`text-xs font-semibold ${
@@ -144,7 +145,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
                 {a.acao && (
                   <a href={a.acao.href}
                     className="inline-block mt-1.5 text-xs text-blue-600 underline underline-offset-2">
-                    {a.acao.label} →
+                    {a.acao.label} â†’
                   </a>
                 )}
               </div>
@@ -162,7 +163,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
   );
 }
 
-// ── Componente principal ──────────────────────────────────────────────────────
+// â”€â”€ Componente principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Contador() {
   const [produtores, setProdutores] = useState<Produtor[]>([]);
   const [selecionado, setSelecionado] = useState<number | null>(null);
@@ -204,7 +205,7 @@ export default function Contador() {
       // Gera alertas
       const novosAlertas: Alerta[] = [];
 
-      // 1. CPF/CNPJ ausente ou inválido nos terceiros
+      // 1. CPF/CNPJ ausente ou invÃ¡lido nos terceiros
       todosTerceiros.forEach((t: any) => {
         const doc = (t.documento || t.id_contraparte || "").replace(/\D/g, "");
         const { valido, tipo } = validarDocumento(doc);
@@ -213,20 +214,20 @@ export default function Contador() {
           novosAlertas.push({
             nivel: "erro",
             mensagem: `${t.nome || t.nome_contraparte}: CPF/CNPJ ausente`,
-            detalhe: `${t.tipo || t.tipo_contraparte} com ${t.percentual || t.perc_contraparte}% — obrigatorio para o Registro 0045`,
+            detalhe: `${t.tipo || t.tipo_contraparte} com ${t.percentual || t.perc_contraparte}% â€” obrigatorio para o Registro 0045`,
             acao: { label: "Corrigir participante", href: `/terceiros?imovel_id=${todosImoveis[0]?.id || 1}&produtor_id=${selecionado}` },
           });
         } else if (!valido) {
           novosAlertas.push({
             nivel: "erro",
             mensagem: `${t.nome || t.nome_contraparte}: ${tipo} invalido (${doc})`,
-            detalhe: `Digito verificador incorreto — Registro 0045 sera rejeitado pela Receita Federal`,
+            detalhe: `Digito verificador incorreto â€” Registro 0045 sera rejeitado pela Receita Federal`,
             acao: { label: "Corrigir participante", href: `/terceiros?imovel_id=${todosImoveis[0]?.id || 1}&produtor_id=${selecionado}` },
           });
         }
       });
 
-      // 2. Lançamentos sem imóvel vinculado (imovel_id null)
+      // 2. LanÃ§amentos sem imÃ³vel vinculado (imovel_id null)
       const semImovel = lancs.filter((l: any) => !l.imovel_id && l.confirmado);
       if (semImovel.length > 0) {
         novosAlertas.push({
@@ -237,7 +238,7 @@ export default function Contador() {
         });
       }
 
-      // 3. Lançamentos pendentes de confirmação
+      // 3. LanÃ§amentos pendentes de confirmaÃ§Ã£o
       const pendentes = lancs.filter((l: any) => !l.confirmado);
       if (pendentes.length > 0) {
         novosAlertas.push({
@@ -247,7 +248,7 @@ export default function Contador() {
         });
       }
 
-      // 4. Total de participação diferente de 100% — soma todos os participantes do imovel
+      // 4. Total de participaÃ§Ã£o diferente de 100% â€” soma todos os participantes do imovel
       for (const v of validacoes) {
         const totalGeral = v.total_geral ?? 0;
         if (!v.total_ok) {
@@ -284,7 +285,7 @@ export default function Contador() {
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-6">
       <div className="bg-green-800 text-white px-4 py-4">
-        <a href="/" className="text-xs opacity-70">← Voltar</a>
+        <a href="/" className="text-xs opacity-70">â† Voltar</a>
         <div className="text-lg font-medium mt-1">Painel do Contador</div>
         <div className="text-xs opacity-70">RuralCaixa</div>
       </div>
@@ -309,14 +310,14 @@ export default function Contador() {
           </div>
 
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Clientes — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            Clientes â€” {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
           </div>
 
           {loading ? (
             <div className="text-center text-gray-400 py-8">Carregando...</div>
           ) : produtores.length === 0 ? (
             <div className="text-center text-gray-400 py-8">
-              <div className="text-4xl mb-2">👨‍🌾</div>
+              <div className="text-4xl mb-2">ðŸ‘¨â€ðŸŒ¾</div>
               <div>Nenhum produtor cadastrado</div>
               <a href="/cadastro" className="text-green-700 text-sm mt-2 block">+ Cadastrar produtor</a>
             </div>
@@ -327,10 +328,10 @@ export default function Contador() {
                 className="w-full bg-white rounded-xl p-4 shadow-sm text-left flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">{p.nome}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} · {p.municipio}-{p.uf}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} Â· {p.municipio}-{p.uf}</div>
                   <div className="flex gap-3 mt-1">
-                    <span className="text-xs text-green-700">↑ {fmt(p.receita)}</span>
-                    <span className="text-xs text-red-500">↓ {fmt(p.despesa)}</span>
+                    <span className="text-xs text-green-700">â†‘ {fmt(p.receita)}</span>
+                    <span className="text-xs text-red-500">â†“ {fmt(p.despesa)}</span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -341,7 +342,7 @@ export default function Contador() {
                   ) : (
                     <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Ok</span>
                   )}
-                  <div className="text-gray-400 mt-1">›</div>
+                  <div className="text-gray-400 mt-1">â€º</div>
                 </div>
               </button>
             ))
@@ -354,14 +355,14 @@ export default function Contador() {
       ) : (
         <div className="p-4 space-y-4">
           <button onClick={() => setSelecionado(null)} className="text-green-800 text-sm font-medium">
-            ← Todos os produtores
+            â† Todos os produtores
           </button>
 
           {produtor && (
             <>
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">👨‍🌾</div>
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">ðŸ‘¨â€ðŸŒ¾</div>
                   <div className="flex-1">
                     <div className="font-medium">{produtor.nome}</div>
                     <div className="text-xs text-gray-400">{produtor.cpf}</div>
@@ -415,10 +416,10 @@ export default function Contador() {
                         <div>
                           <div className="text-xs font-medium">{l.descricao || l.produto || l.conta_codigo}</div>
                           <div className="text-xs text-gray-400">
-                            {new Date(l.data_lancamento).toLocaleDateString("pt-BR")} · {l.conta_codigo}
+                            {new Date(l.data_lancamento).toLocaleDateString("pt-BR")} Â· {l.conta_codigo}
                           </div>
                           {l.documento_url && (
-                            <a href={l.documento_url} target="_blank" className="text-xs text-blue-500">📎 Ver doc</a>
+                            <a href={l.documento_url} target="_blank" className="text-xs text-blue-500">ðŸ“Ž Ver doc</a>
                           )}
                         </div>
                         <div className={`text-sm font-medium ${l.tipo === "receita" ? "text-green-700" : "text-red-500"}`}>
@@ -448,12 +449,12 @@ export default function Contador() {
                           <div key={i} className="flex items-start justify-between py-2.5 border-b last:border-0">
                             <div className="flex items-start gap-2">
                               <span className={`mt-0.5 text-sm flex-shrink-0 ${valido ? "text-green-500" : "text-red-500"}`}>
-                                {valido ? "✓" : "✕"}
+                                {valido ? "âœ“" : "âœ•"}
                               </span>
                               <div>
                                 <div className="text-xs font-medium">{t.nome || t.nome_contraparte}</div>
                                 <div className="text-xs text-gray-400">
-                                  {t.tipo || t.tipo_contraparte} · {parseFloat(String(t.percentual || t.perc_contraparte || 0)).toFixed(1)}%
+                                  {t.tipo || t.tipo_contraparte} Â· {parseFloat(String(t.percentual || t.perc_contraparte || 0)).toFixed(1)}%
                                 </div>
                                 <div className={`text-xs mt-0.5 ${valido ? "text-gray-400" : "text-red-500"}`}>
                                   {tipo === "ausente" ? "CPF/CNPJ ausente" :
@@ -477,33 +478,33 @@ export default function Contador() {
 
                   <a href={`/analytics?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">📈</span>
+                    <span className="text-lg">ðŸ“ˆ</span>
                     <span>Relatorios analiticos</span>
-                    <span className="ml-auto text-gray-400">›</span>
+                    <span className="ml-auto text-gray-400">â€º</span>
                   </a>
 
                   <a href={`/relatorio?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">📄</span>
+                    <span className="text-lg">ðŸ“„</span>
                     <span>Gerar LCDPR PDF</span>
                     {errosCount > 0 && (
                       <span className="ml-2 text-xs text-red-500">({errosCount} erro{errosCount > 1 ? "s" : ""})</span>
                     )}
-                    <span className="ml-auto text-gray-400">›</span>
+                    <span className="ml-auto text-gray-400">â€º</span>
                   </a>
 
                   <a href={`/cadastro?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">✏️</span>
+                    <span className="text-lg">âœï¸</span>
                     <span>Editar cadastro</span>
-                    <span className="ml-auto text-gray-400">›</span>
+                    <span className="ml-auto text-gray-400">â€º</span>
                   </a>
 
                   <button onClick={fecharMes} disabled={fechando}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">✅</span>
+                    <span className="text-lg">âœ…</span>
                     <span>{fechando ? "Fechando..." : "Fechar mes"}</span>
-                    <span className="ml-auto text-gray-400">›</span>
+                    <span className="ml-auto text-gray-400">â€º</span>
                   </button>
 
                   <button
@@ -515,9 +516,9 @@ export default function Contador() {
                       setProdutores(updated);
                     }}
                     className="w-full flex items-center gap-3 py-3 text-sm hover:bg-red-50 text-red-600">
-                    <span className="text-lg">🗑️</span>
+                    <span className="text-lg">ðŸ—‘ï¸</span>
                     <span>Excluir produtor</span>
-                    <span className="ml-auto text-gray-400">›</span>
+                    <span className="ml-auto text-gray-400">â€º</span>
                   </button>
                 </div>
               )}
