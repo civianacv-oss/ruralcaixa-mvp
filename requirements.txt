@@ -11,3 +11,4 @@ google-auth
 google-auth-httplib2
 reportlab
 boto3
+# r2-trigger
