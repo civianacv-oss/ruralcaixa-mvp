@@ -17,6 +17,7 @@ type Lancamento = {
 type Terceiro = {
   id: number; nome_contraparte: string; id_contraparte: string;
   tipo_contraparte: string; perc_contraparte: number;
+  nome?: string; documento?: string; tipo?: string; percentual?: number;
 };
 
 type Alerta = {
