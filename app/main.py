@@ -670,3 +670,57 @@ def get_dre_periodos(produtor_id: int):
         anos = [r[0] for r in rows]
         safras = [f"{a}/{a+1}" for a in anos]
         return {"anos_fiscais": anos, "safras": safras}
+
+@app.get("/imoveis/{imovel_id}/participacoes/resumo")
+def get_participacoes_resumo(imovel_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT pi.produtor_id, pi.percentual, pi.nome_participante,
+                   COALESCE(p.nome, pi.nome_participante) as nome,
+                   pi.vigencia_inicio, pi.vigencia_fim
+            FROM participacoes_imovel pi
+            LEFT JOIN produtores p ON p.id = pi.produtor_id
+            WHERE pi.imovel_id = :iid
+              AND (pi.vigencia_fim IS NULL OR pi.vigencia_fim >= CURRENT_DATE)
+            ORDER BY pi.percentual DESC
+        """), {"iid": imovel_id}).fetchall()
+
+        total = sum(float(r[1]) for r in rows)
+        return {
+            "imovel_id": imovel_id,
+            "total_percentual": round(total, 2),
+            "ok": abs(total - 100) < 0.5,
+            "participantes": [
+                {"produtor_id": r[0], "percentual": float(r[1]),
+                 "nome": r[3], "vigencia_fim": str(r[5]) if r[5] else None}
+                for r in rows
+            ]
+        }
+
+@app.get("/imoveis/{imovel_id}/terceiros/validacao")
+def get_terceiros_validacao(imovel_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    import re
+    with engine.connect() as conn:
+        terceiros = conn.execute(text(
+            "SELECT id, nome_contraparte, id_contraparte, tipo_contraparte, perc_contraparte FROM terceiros WHERE imovel_id = :iid"
+        ), {"iid": imovel_id}).fetchall()
+        participacoes = conn.execute(text(
+            "SELECT SUM(percentual) FROM participacoes_imovel WHERE imovel_id = :iid AND (vigencia_fim IS NULL OR vigencia_fim >= CURRENT_DATE)"
+        ), {"iid": imovel_id}).scalar() or 0
+        total_terc = sum(float(r[4] or 0) for r in terceiros)
+        return {
+            "imovel_id": imovel_id,
+            "total_participacoes": round(float(participacoes), 2),
+            "total_terceiros": round(total_terc, 2),
+            "total_geral": round(float(participacoes) + total_terc, 2),
+            "total_ok": abs(float(participacoes) + total_terc - 100) < 0.5,
+            "terceiros": [
+                {"id": r[0], "nome": r[1], "documento": r[2],
+                 "tipo": r[3], "percentual": float(r[4] or 0)}
+                for r in terceiros
+            ]
+        }
