@@ -1044,3 +1044,4 @@ def get_nota_pdf(nota_id: int):
         raise HTTPException(500, str(e))
 
 
+# nfe-deploy-trigger
