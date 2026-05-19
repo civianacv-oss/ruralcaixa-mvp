@@ -1073,3 +1073,4 @@ def get_documento(lancamento_id: int):
         if not row: raise HTTPException(404, "Lancamento nao encontrado")
         return {"lancamento_id": lancamento_id, "descricao": row[1], "documento_url": row[0]}
 # r2-deploy
+# deploy-r2-v2
