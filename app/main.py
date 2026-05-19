@@ -731,4 +731,314 @@ def get_terceiros_validacao(imovel_id: int):
                  "tipo": r[3], "percentual": float(r[4] or 0)}
                 for r in terceiros
             ]
+        }# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# PATCH main.py â€” NF-e Produtor Rural
+# Cole no final do main.py (antes da funÃ§Ã£o processar)
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+# â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class NFeConfigUpdate(BaseModel):
+    inscricao_estadual: Optional[str] = None
+    caepf: Optional[str] = None
+    municipio: Optional[str] = None
+    uf: Optional[str] = None
+    cep: Optional[str] = None
+    endereco: Optional[str] = None
+    numero: Optional[str] = None
+    bairro: Optional[str] = None
+    serie: Optional[str] = "001"
+    ambiente: Optional[str] = "2"
+
+class DestinatarioCreate(BaseModel):
+    tipo_doc: str = "F"
+    documento: str
+    razao_social: str
+    ie: Optional[str] = None
+    municipio: Optional[str] = None
+    uf: Optional[str] = None
+    cep: Optional[str] = None
+    endereco: Optional[str] = None
+    numero: Optional[str] = None
+    bairro: Optional[str] = None
+    telefone: Optional[str] = None
+    email: Optional[str] = None
+
+class ProdutoNFeCreate(BaseModel):
+    codigo: Optional[str] = None
+    descricao: str
+    ncm: Optional[str] = None
+    cfop: str = "5101"
+    unidade: str = "KG"
+    preco_unitario: Optional[float] = None
+
+class ItemNFeCreate(BaseModel):
+    produto_id: Optional[int] = None
+    descricao: str
+    ncm: Optional[str] = None
+    cfop: str = "5101"
+    unidade: str = "KG"
+    quantidade: float
+    valor_unitario: float
+    valor_desconto: float = 0.0
+
+class NFeCreate(BaseModel):
+    destinatario_id: int
+    natureza_operacao: str = "Venda de Producao do Estabelecimento"
+    cfop: str = "5101"
+    data_emissao: Optional[str] = None
+    data_saida: Optional[str] = None
+    valor_frete: float = 0.0
+    valor_seguro: float = 0.0
+    valor_desconto: float = 0.0
+    aliquota_funrural: float = 1.50
+    aliquota_senar: float = 0.20
+    modalidade_frete: int = 9
+    informacoes_adicionais: Optional[str] = None
+    lancamento_id: Optional[int] = None
+    itens: list[ItemNFeCreate]
+
+# â”€â”€ Endpoints NF-e â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@app.get("/produtores/{produtor_id}/nfe/config")
+def get_nfe_config(produtor_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        p = conn.execute(text(
+            "SELECT id,nome,cpf,inscricao_estadual,caepf,municipio,uf,cep,endereco,numero,bairro FROM produtores WHERE id=:pid"
+        ), {"pid": produtor_id}).fetchone()
+        if not p: raise HTTPException(404, "Produtor nao encontrado")
+        cfg = conn.execute(text(
+            "SELECT serie,proxima_numero,ambiente FROM nfe_config WHERE produtor_id=:pid"
+        ), {"pid": produtor_id}).fetchone()
+        return {
+            "produtor": dict(p._mapping),
+            "config": dict(cfg._mapping) if cfg else {"serie":"001","proxima_numero":1,"ambiente":"2"},
         }
+
+@app.put("/produtores/{produtor_id}/nfe/config")
+def update_nfe_config(produtor_id: int, data: NFeConfigUpdate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE produtores SET
+                inscricao_estadual=COALESCE(:ie, inscricao_estadual),
+                caepf=COALESCE(:caepf, caepf),
+                municipio=COALESCE(:municipio, municipio),
+                uf=COALESCE(:uf, uf),
+                cep=COALESCE(:cep, cep),
+                endereco=COALESCE(:endereco, endereco),
+                numero=COALESCE(:numero, numero),
+                bairro=COALESCE(:bairro, bairro)
+            WHERE id=:pid
+        """), {"ie":data.inscricao_estadual,"caepf":data.caepf,"municipio":data.municipio,
+               "uf":data.uf,"cep":data.cep,"endereco":data.endereco,"numero":data.numero,
+               "bairro":data.bairro,"pid":produtor_id})
+        conn.execute(text("""
+            INSERT INTO nfe_config (produtor_id, serie, ambiente)
+            VALUES (:pid, :serie, :amb)
+            ON CONFLICT (produtor_id) DO UPDATE SET serie=:serie, ambiente=:amb
+        """), {"pid":produtor_id,"serie":data.serie,"amb":data.ambiente})
+        conn.commit()
+    return {"status":"ok"}
+
+@app.get("/produtores/{produtor_id}/nfe/destinatarios")
+def get_destinatarios(produtor_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT * FROM nfe_destinatarios WHERE produtor_id=:pid AND ativo=TRUE ORDER BY razao_social"
+        ), {"pid": produtor_id}).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+@app.post("/produtores/{produtor_id}/nfe/destinatarios")
+def create_destinatario(produtor_id: int, data: DestinatarioCreate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO nfe_destinatarios
+                (produtor_id,tipo_doc,documento,razao_social,ie,municipio,uf,cep,endereco,numero,bairro,telefone,email)
+            VALUES (:pid,:tipo,:doc,:nome,:ie,:mun,:uf,:cep,:end,:num,:bairro,:tel,:email)
+            RETURNING id
+        """), {"pid":produtor_id,"tipo":data.tipo_doc,"doc":data.documento,"nome":data.razao_social,
+               "ie":data.ie,"mun":data.municipio,"uf":data.uf,"cep":data.cep,
+               "end":data.endereco,"num":data.numero,"bairro":data.bairro,
+               "tel":data.telefone,"email":data.email})
+        conn.commit()
+        return {"id": result.fetchone()[0]}
+
+@app.get("/produtores/{produtor_id}/nfe/produtos")
+def get_produtos_nfe(produtor_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT * FROM nfe_produtos WHERE produtor_id=:pid AND ativo=TRUE ORDER BY descricao"
+        ), {"pid": produtor_id}).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+@app.post("/produtores/{produtor_id}/nfe/produtos")
+def create_produto_nfe(produtor_id: int, data: ProdutoNFeCreate):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO nfe_produtos (produtor_id,codigo,descricao,ncm,cfop,unidade,preco_unitario)
+            VALUES (:pid,:cod,:desc,:ncm,:cfop,:un,:preco) RETURNING id
+        """), {"pid":produtor_id,"cod":data.codigo,"desc":data.descricao,"ncm":data.ncm,
+               "cfop":data.cfop,"un":data.unidade,"preco":data.preco_unitario})
+        conn.commit()
+        return {"id": result.fetchone()[0]}
+
+@app.get("/produtores/{produtor_id}/nfe/notas")
+def get_notas(produtor_id: int, status: Optional[str] = None):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        filtro = "AND n.status=:status" if status else ""
+        rows = conn.execute(text(f"""
+            SELECT n.*, d.razao_social as destinatario_nome
+            FROM nfe_notas n
+            LEFT JOIN nfe_destinatarios d ON d.id=n.destinatario_id
+            WHERE n.produtor_id=:pid {filtro}
+            ORDER BY n.numero DESC
+        """), {"pid":produtor_id, "status":status}).fetchall()
+        return [dict(r._mapping) for r in rows]
+
+@app.post("/produtores/{produtor_id}/nfe/notas")
+def create_nota(produtor_id: int, data: NFeCreate):
+    from app.db import engine
+    from sqlalchemy import text
+    from app.services.nfe_service import calcular_impostos
+    with engine.connect() as conn:
+        # PrÃ³ximo nÃºmero
+        cfg = conn.execute(text(
+            "SELECT serie, proxima_numero FROM nfe_config WHERE produtor_id=:pid"
+        ), {"pid":produtor_id}).fetchone()
+        serie = cfg[0] if cfg else "001"
+        numero = cfg[1] if cfg else 1
+
+        # Calcula totais
+        valor_produtos = sum(
+            round(item.quantidade * item.valor_unitario - item.valor_desconto, 2)
+            for item in data.itens
+        )
+        funrural, senar = calcular_impostos(valor_produtos, data.aliquota_funrural, data.aliquota_senar)
+        valor_total = round(valor_produtos + data.valor_frete + data.valor_seguro - data.valor_desconto, 2)
+
+        # Insere nota
+        result = conn.execute(text("""
+            INSERT INTO nfe_notas (
+                produtor_id, destinatario_id, numero, serie, data_emissao, data_saida,
+                natureza_operacao, cfop, valor_produtos, valor_frete, valor_seguro,
+                valor_desconto, valor_total, valor_funrural, valor_senar,
+                aliquota_funrural, aliquota_senar, modalidade_frete,
+                informacoes_adicionais, lancamento_id, status
+            ) VALUES (
+                :pid,:dest,:num,:serie,:demissao,:dsaida,
+                :nat,:cfop,:vprod,:vfrete,:vseguro,
+                :vdesc,:vtotal,:vfunrural,:vsenar,
+                :afunrural,:asenar,:mfrete,
+                :info,:lanc,'rascunho'
+            ) RETURNING id
+        """), {
+            "pid":produtor_id,"dest":data.destinatario_id,"num":numero,"serie":serie,
+            "demissao":data.data_emissao or date.today().isoformat(),
+            "dsaida":data.data_saida,
+            "nat":data.natureza_operacao,"cfop":data.cfop,
+            "vprod":valor_produtos,"vfrete":data.valor_frete,"vseguro":data.valor_seguro,
+            "vdesc":data.valor_desconto,"vtotal":valor_total,
+            "vfunrural":funrural,"vsenar":senar,
+            "afunrural":data.aliquota_funrural,"asenar":data.aliquota_senar,
+            "mfrete":data.modalidade_frete,"info":data.informacoes_adicionais,
+            "lanc":data.lancamento_id,
+        })
+        nota_id = result.fetchone()[0]
+
+        # Insere itens
+        for i, item in enumerate(data.itens, 1):
+            prod = None
+            if item.produto_id:
+                prod = conn.execute(text(
+                    "SELECT ncm, cfop, unidade FROM nfe_produtos WHERE id=:id"
+                ), {"id": item.produto_id}).fetchone()
+            conn.execute(text("""
+                INSERT INTO nfe_itens
+                    (nota_id,produto_id,numero_item,descricao,ncm,cfop,unidade,quantidade,valor_unitario,valor_total,valor_desconto)
+                VALUES (:nota,:prod,:num,:desc,:ncm,:cfop,:un,:qtd,:vunit,:vtotal,:vdesc)
+            """), {
+                "nota":nota_id,"prod":item.produto_id,"num":i,"desc":item.descricao,
+                "ncm":item.ncm or (prod[0] if prod else None),
+                "cfop":item.cfop or (prod[1] if prod else "5101"),
+                "un":item.unidade or (prod[2] if prod else "KG"),
+                "qtd":item.quantidade,"vunit":item.valor_unitario,
+                "vtotal":round(item.quantidade*item.valor_unitario - item.valor_desconto, 2),
+                "vdesc":item.valor_desconto,
+            })
+
+        # Incrementa prÃ³ximo nÃºmero
+        conn.execute(text(
+            "UPDATE nfe_config SET proxima_numero=:n WHERE produtor_id=:pid"
+        ), {"n":numero+1,"pid":produtor_id})
+        conn.commit()
+        return {"id": nota_id, "numero": numero, "valor_total": valor_total,
+                "valor_funrural": funrural, "valor_senar": senar}
+
+@app.get("/nfe/notas/{nota_id}")
+def get_nota(nota_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        nota = conn.execute(text("SELECT * FROM nfe_notas WHERE id=:id"), {"id":nota_id}).fetchone()
+        if not nota: raise HTTPException(404, "Nota nao encontrada")
+        itens = conn.execute(text("SELECT * FROM nfe_itens WHERE nota_id=:id ORDER BY numero_item"), {"id":nota_id}).fetchall()
+        dest = conn.execute(text("SELECT * FROM nfe_destinatarios WHERE id=:id"), {"id":nota.destinatario_id}).fetchone() if nota.destinatario_id else None
+        return {
+            "nota": dict(nota._mapping),
+            "itens": [dict(i._mapping) for i in itens],
+            "destinatario": dict(dest._mapping) if dest else None,
+        }
+
+@app.put("/nfe/notas/{nota_id}/status")
+def update_nota_status(nota_id: int, status: str):
+    if status not in ("rascunho","emitida","cancelada"):
+        raise HTTPException(400, "Status invalido")
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE nfe_notas SET status=:s WHERE id=:id"), {"s":status,"id":nota_id})
+        conn.commit()
+    return {"status":"ok"}
+
+@app.get("/nfe/notas/{nota_id}/pdf")
+def get_nota_pdf(nota_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    from app.services.nfe_service import gerar_pdf_danfe
+    from fastapi.responses import Response
+    with engine.connect() as conn:
+        nota = conn.execute(text("SELECT * FROM nfe_notas WHERE id=:id"), {"id":nota_id}).fetchone()
+        if not nota: raise HTTPException(404, "Nota nao encontrada")
+        itens = conn.execute(text("SELECT * FROM nfe_itens WHERE nota_id=:id ORDER BY numero_item"), {"id":nota_id}).fetchall()
+        dest = conn.execute(text("SELECT * FROM nfe_destinatarios WHERE id=:id"), {"id":nota.destinatario_id}).fetchone() if nota.destinatario_id else {}
+        prod = conn.execute(text("SELECT * FROM produtores WHERE id=:id"), {"id":nota.produtor_id}).fetchone()
+
+    try:
+        pdf = gerar_pdf_danfe(
+            nota=dict(nota._mapping),
+            produtor=dict(prod._mapping),
+            destinatario=dict(dest._mapping) if dest else {},
+            itens=[dict(i._mapping) for i in itens],
+        )
+        numero = str(nota.numero).zfill(6)
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=nfe_{numero}.pdf"}
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
