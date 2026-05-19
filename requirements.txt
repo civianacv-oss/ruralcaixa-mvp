@@ -8,4 +8,5 @@ python-dotenv==1.1.0
 redis==7.4.0
 google-api-python-client
 google-auth
-google-auth-httplib2reportlab
+google-auth-httplib2
+reportlab
