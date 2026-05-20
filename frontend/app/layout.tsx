@@ -8,15 +8,15 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "RuralCaixa Tech — Gestao de LCDPR e NF-e para Produtor Rural",
-  description: "Solucoes tecnologicas para gestao de LCDPR, NF-e e analise de dados do agronegocio rural. RuralCaixa Tech simplifica a vida do produtor rural pessoa fisica.",
-  keywords: "LCDPR, NF-e produtor rural, gestao rural, agronegocio, RuralCaixa Tech",
+  title: "GestaoAgro Tech — Gestao de LCDPR e NF-e para Produtor Rural",
+  description: "Solucoes tecnologicas para gestao de LCDPR, NF-e e analise de dados do agronegocio rural. GestaoAgro Tech simplifica a vida do produtor rural pessoa fisica.",
+  keywords: "LCDPR, NF-e produtor rural, gestao rural, agronegocio, GestaoAgro Tech",
   manifest: "/manifest.json",
   themeColor: "#166534",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "RuralCaixa Tech",
+    title: "GestaoAgro Tech",
   },
   viewport: {
     width: "device-width",
@@ -24,10 +24,10 @@ export const metadata: Metadata = {
     maximumScale: 1,
   },
   openGraph: {
-    title: "RuralCaixa Tech",
+    title: "GestaoAgro Tech",
     description: "Solucoes tecnologicas para gestao de LCDPR, NF-e e analise de dados do agronegocio rural.",
     url: "https://ruralcaixa-mvp.vercel.app",
-    siteName: "RuralCaixa Tech",
+    siteName: "GestaoAgro Tech",
     locale: "pt_BR",
     type: "website",
   },
@@ -45,16 +45,16 @@ export default function RootLayout({
         <meta name="theme-color" content="#166534" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="RuralCaixa Tech" />
-        <meta name="author" content="RuralCaixa Tech" />
-        <meta property="og:site_name" content="RuralCaixa Tech" />
+        <meta name="apple-mobile-web-app-title" content="GestaoAgro Tech" />
+        <meta name="author" content="GestaoAgro Tech" />
+        <meta property="og:site_name" content="GestaoAgro Tech" />
       </head>
       <body className="min-h-full flex flex-col">
         {children}
         {/* Rodape — visivel para validacao Meta WhatsApp Business */}
         <footer className="bg-green-900 text-white text-center py-3 text-xs opacity-70 mt-auto">
           <p>
-            <strong>RuralCaixa Tech</strong> — Solucoes tecnologicas para gestao rural
+            <strong>GestaoAgro Tech</strong> — Solucoes tecnologicas para gestao rural
           </p>
           <p className="mt-0.5">
             LCDPR · NF-e Produtor Rural · DRE Gerencial · WhatsApp Bot
