@@ -3,6 +3,7 @@ export default function Privacidade() {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-green-800 text-white px-4 py-4">
         <div className="max-w-3xl mx-auto">
+          <a href="/" className="text-xs opacity-70 block mb-1">← Inicio</a>
           <div className="text-lg font-medium">RuralCaixa</div>
           <div className="text-sm opacity-70">Política de Privacidade</div>
         </div>

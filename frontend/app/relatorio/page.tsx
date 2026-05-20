@@ -104,6 +104,7 @@ function RelatorioContent() {
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-20">
       <div className="bg-green-800 text-white px-4 py-4">
         <a href="/contador" className="text-xs opacity-70">← Voltar</a>
+        <a href="/" className="text-xs opacity-70">← Inicio</a>
         <div className="text-lg font-medium mt-1">LCDPR — {mes}</div>
         <div className="text-xs opacity-70">{produtor?.nome || "Produtor"}</div>
       </div>
