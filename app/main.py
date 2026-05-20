@@ -1199,3 +1199,4 @@ def resumo_esocial(produtor_id: int, per_apur: str = None):
             "s1200": {"qtd": r2[0], "vr_salarios": float(r2[1]), "vr_inss": float(r2[2]), "vr_liquido": float(r2[3])},
             "trabalhadores_ativos": r3[0]
         }
+# esocial-deploy
