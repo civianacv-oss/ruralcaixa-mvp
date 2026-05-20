@@ -1078,6 +1078,8 @@ def get_documento(lancamento_id: int):
 
 # ── eSocial ────────────────────────────────────────────────────────────────────
 
+from fastapi import Body
+
 @app.get("/produtores/{produtor_id}/esocial/config")
 def get_esocial_config(produtor_id: int):
     from sqlalchemy import text
