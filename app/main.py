@@ -1200,3 +1200,4 @@ def resumo_esocial(produtor_id: int, per_apur: str = None):
             "trabalhadores_ativos": r3[0]
         }
 # esocial-deploy
+# esocial-v3
