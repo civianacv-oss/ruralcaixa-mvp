@@ -167,7 +167,7 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{l.descricao || l.produto || l.conta_codigo}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
-                      {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} · {l.conta_codigo} ·{" "}
+                      {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} ·{" "}
                       <span className="text-green-600">
                         {"RURAL" === l.atividade ? "rural" : l.atividade || ""}
                       </span>
