@@ -184,31 +184,27 @@ def listar_produtores():
 
 def buscar_lancamentos(produtor_id: int, mes: str = None, atividade: str = None):
     with engine.connect() as conn:
-        filtro_atividade = " AND COALESCE(atividade, 'rural') = :atividade" if atividade else ""
-        params_base = {"pid": produtor_id}
-        if atividade:
-            params_base["atividade"] = atividade
-
+        params = {'pid': produtor_id}
+        filtro_atv = ' AND s.atividade_tipo = :atv' if atividade else ''
+        if atividade: params['atv'] = atividade.upper()
         if mes:
-            rows = conn.execute(text(f"""
-                SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
-                       produto, documento_url, confirmado, atividade, imovel_id, perc_participacao, created_at
-                FROM lancamentos
-                WHERE produtor_id = :pid
-                AND to_char(data_lancamento, 'YYYY-MM') = :mes
-                {filtro_atividade}
-                ORDER BY data_lancamento DESC
-            """), {**params_base, "mes": mes}).fetchall()
+            filtro_data = "AND to_char(l.data, 'YYYY-MM') = :mes"
+            params['mes'] = mes
         else:
-            rows = conn.execute(text(f"""
-                SELECT id, tipo, conta_codigo, descricao, valor, data_lancamento,
-                       produto, documento_url, confirmado, atividade, created_at
-                FROM lancamentos
-                WHERE produtor_id = :pid
-                AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
-                {filtro_atividade}
-                ORDER BY data_lancamento DESC
-            """), params_base).fetchall()
+            filtro_data = "AND date_trunc('month', l.data) = date_trunc('month', CURRENT_DATE)"
+        sql = f"""
+            SELECT l.id, LOWER(s.tipo) as tipo, s.nome as descricao, l.valor,
+                   l.data as data_lancamento, l.documento_url, l.created_at,
+                   s.atividade_tipo as atividade, '' as conta_codigo,
+                   FALSE as confirmado
+            FROM lancamentos l
+            LEFT JOIN subcontas s ON s.id = l.subconta_id
+            WHERE l.produtor_id = :pid
+            {filtro_data}
+            {filtro_atv}
+            ORDER BY l.data DESC
+        """
+        rows = conn.execute(text(sql), params).fetchall()
         return [dict(r._mapping) for r in rows]
 
 def buscar_resumo_mes(produtor_id: int):
