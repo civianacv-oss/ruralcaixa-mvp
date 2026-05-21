@@ -33,6 +33,7 @@ function AnalyticsContent() {
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
+      <a href="/" className="text-xs text-green-700 opacity-70 block mb-1">← Inicio</a>
       <h1 className="text-xl font-bold text-green-800">Dashboard João Batista</h1>
       <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
         <p className="text-xs text-gray-500">Receita Total (Jan/Fev)</p>
