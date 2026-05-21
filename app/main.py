@@ -1218,3 +1218,4 @@ def resumo_esocial(produtor_id: int, per_apur: str = None):
         }
 # esocial-deploy
 # esocial-v3
+# dre-fix
