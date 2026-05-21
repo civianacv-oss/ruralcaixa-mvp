@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -167,9 +167,9 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{l.descricao || l.produto || l.conta_codigo}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
-                      {new Date(l.data_lancamento).toLocaleDateString("pt-BR")} · {l.conta_codigo} ·{" "}
+                      {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} · {l.conta_codigo} ·{" "}
                       <span className={l.confirmado ? "text-green-600" : "text-orange-500"}>
-                        {l.confirmado ? "confirmado" : "pendente"}
+                        {"RURAL" === l.atividade ? "rural" : l.atividade || ""}
                       </span>
                       {l.atividade && l.atividade !== "rural" && (
                         <span className="ml-1 text-purple-500">· {l.atividade}</span>
