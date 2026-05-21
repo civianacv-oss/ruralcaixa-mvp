@@ -238,15 +238,7 @@ export default function Contador() {
         });
       }
 
-      // 3. Lançamentos pendentes de confirmação
-      const pendentes = lancs.filter((l: any) => !l.confirmado);
-      if (pendentes.length > 0) {
-        novosAlertas.push({
-          nivel: "aviso",
-          mensagem: `${pendentes.length} lancamento(s) aguardando confirmacao`,
-          detalhe: "Lancamentos nao confirmados nao entram no DRE nem no LCDPR",
-        });
-      }
+      // 3. Lancamentos pendentes - desativado no schema novo (confirmado sempre true)
 
       // 4. Total de participação diferente de 100% — soma todos os participantes do imovel
       for (const v of validacoes) {
