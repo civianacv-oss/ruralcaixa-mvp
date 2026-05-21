@@ -80,11 +80,12 @@ def buscar_saldo_mes(produtor_id: int) -> float:
     with engine.connect() as conn:
         result = conn.execute(text("""
             SELECT
-                COALESCE(SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END), 0) -
-                COALESCE(SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END), 0)
-            FROM lancamentos
-            WHERE produtor_id = :pid
-            AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+                COALESCE(SUM(CASE WHEN s.tipo = 'RECEITA' THEN l.valor ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN s.tipo = 'DESPESA' THEN l.valor ELSE 0 END), 0)
+            FROM lancamentos l
+            LEFT JOIN subcontas s ON s.id = l.subconta_id
+            WHERE l.produtor_id = :pid
+            AND date_trunc('month', l.data) = date_trunc('month', CURRENT_DATE)
         """), {"pid": produtor_id}).fetchone()
         return float(result[0]) if result else 0.0
 
@@ -190,34 +191,28 @@ def buscar_resumo_mes(produtor_id: int):
     with engine.connect() as conn:
         result = conn.execute(text("""
             SELECT
-                COALESCE(SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END), 0) as receita,
-                COALESCE(SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END), 0) as despesa,
+                COALESCE(SUM(CASE WHEN s.tipo = 'RECEITA' THEN l.valor ELSE 0 END), 0) as receita,
+                COALESCE(SUM(CASE WHEN s.tipo = 'DESPESA' THEN l.valor ELSE 0 END), 0) as despesa,
                 COUNT(*) as total_lancamentos,
-                COUNT(CASE WHEN confirmado = false THEN 1 END) as pendentes
-            FROM lancamentos
-            WHERE produtor_id = :pid
-            AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+                0 as pendentes
+            FROM lancamentos l
+            LEFT JOIN subcontas s ON s.id = l.subconta_id
+            WHERE l.produtor_id = :pid
+            AND date_trunc('month', l.data) = date_trunc('month', CURRENT_DATE)
         """), {"pid": produtor_id}).fetchone()
         return dict(result._mapping) if result else {}
 
 
 def atualizar_classificacao(lancamento_id: int, conta: str, tipo: str):
-    with engine.connect() as conn:
-        conn.execute(text("""
-            UPDATE lancamentos
-            SET conta_codigo = :conta, tipo = :tipo
-            WHERE id = :id
-        """), {"conta": conta, "tipo": tipo, "id": lancamento_id})
-        conn.commit()
+    # Schema novo usa subcontas - classificacao e feita via subconta_id
+    pass
 
 
 def fechar_mes(produtor_id: int):
     with engine.connect() as conn:
         conn.execute(text("""
-            UPDATE lancamentos
-            SET confirmado = true
-            WHERE produtor_id = :pid
-            AND date_trunc('month', data_lancamento) = date_trunc('month', CURRENT_DATE)
+            -- fechar_mes: no schema novo nao ha campo confirmado
+            SELECT 1
         """), {"pid": produtor_id})
         conn.commit()
 
