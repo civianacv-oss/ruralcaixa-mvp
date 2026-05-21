@@ -168,7 +168,7 @@ export default function Home() {
                     <div className="text-sm font-medium truncate">{l.descricao || l.produto || l.conta_codigo}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
                       {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} · {l.conta_codigo} ·{" "}
-                      <span className={l.confirmado ? "text-green-600" : "text-orange-500"}>
+                      <span className="text-green-600">
                         {"RURAL" === l.atividade ? "rural" : l.atividade || ""}
                       </span>
                       {l.atividade && l.atividade !== "rural" && (
