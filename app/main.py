@@ -239,14 +239,21 @@ def criar_lancamento(data: LancamentoCreate):
         return {"id": result.fetchone()[0]}
 
 @app.get("/wapp/inbound")
-def wapp_verify(
-    hub_mode: str = Query(alias="hub.mode"),
-    hub_verify_token: str = Query(alias="hub.verify_token"),
-    hub_challenge: str = Query(alias="hub.challenge"),
+async def verify_webhook(
+    mode: str = Query(None, alias="hub.mode"),
+    token: str = Query(None, alias="hub.verify_token"),
+    challenge: str = Query(None, alias="hub.challenge")
 ):
-    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
-        return PlainTextResponse(hub_challenge)
-    raise HTTPException(status_code=403)
+    print(f"--- TENTATIVA DE VALIDAÇÃO ---")
+    print(f"Mode: {mode}, Token: {token}, Challenge: {challenge}")
+    
+    if mode == "subscribe" and token == "campo_digital_2026":
+        print("VALIDAÇÃO APROVADA!")
+        from fastapi.responses import Response
+        return Response(content=challenge, media_type="text/plain")
+    
+    print("VALIDAÇÃO FALHOU: Token incorreto ou parâmetros ausentes.")
+    raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/wapp/inbound")
 async def wapp_inbound(request: Request, background: BackgroundTasks):
@@ -1082,6 +1089,7 @@ from fastapi import Body
 
 @app.get("/produtores/{produtor_id}/esocial/config")
 def get_esocial_config(produtor_id: int):
+    from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         cfg = conn.execute(text("SELECT * FROM esocial_config WHERE produtor_id=:id"), {"id": produtor_id}).fetchone()
@@ -1094,6 +1102,7 @@ def get_esocial_config(produtor_id: int):
 
 @app.get("/produtores/{produtor_id}/esocial/trabalhadores")
 def listar_trabalhadores(produtor_id: int):
+    from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         sql = "SELECT id, nome, cpf, cargo, data_admissao, data_demissao, ativo, categoria, municipio, uf FROM esocial_trabalhadores WHERE produtor_id=:id ORDER BY nome"
@@ -1104,6 +1113,7 @@ def listar_trabalhadores(produtor_id: int):
 
 @app.post("/produtores/{produtor_id}/esocial/trabalhadores")
 def criar_trabalhador(produtor_id: int, dados: dict = Body(...)):
+    from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         sql = "INSERT INTO esocial_trabalhadores (produtor_id, imovel_id, cpf, nome, data_nascimento, data_admissao, cargo, cbo, categoria, municipio, uf) VALUES (:pid, :iid, :cpf, :nome, :nasc, :adm, :cargo, :cbo, :cat, :mun, :uf) RETURNING id"
@@ -1119,6 +1129,7 @@ def criar_trabalhador(produtor_id: int, dados: dict = Body(...)):
 
 @app.get("/produtores/{produtor_id}/esocial/s1260")
 def listar_s1260(produtor_id: int, per_apur: str = None):
+    from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         q = "SELECT id, per_apur, nif_adquirente, nome_adquirente, vr_bruto_comerc, vr_rat, vr_senar, status FROM esocial_s1260 WHERE produtor_id=:id"
@@ -1134,6 +1145,7 @@ def listar_s1260(produtor_id: int, per_apur: str = None):
 
 @app.post("/produtores/{produtor_id}/esocial/s1260")
 def criar_s1260(produtor_id: int, dados: dict = Body(...)):
+    from app.db import engine
     from sqlalchemy import text
     vr = float(dados["vr_bruto_comerc"])
     aliq_rat = float(dados.get("aliq_rat", 1.5))
@@ -1154,6 +1166,7 @@ def criar_s1260(produtor_id: int, dados: dict = Body(...)):
 
 @app.get("/produtores/{produtor_id}/esocial/s1200")
 def listar_s1200(produtor_id: int, per_apur: str = None):
+    from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         q = "SELECT s.id, s.per_apur, t.nome, t.cpf, s.vr_salario, s.vr_desconto_inss, s.vr_liquido, s.qtd_dias_trab, s.status FROM esocial_s1200 s JOIN esocial_trabalhadores t ON t.id=s.trabalhador_id WHERE s.produtor_id=:id"
@@ -1169,6 +1182,7 @@ def listar_s1200(produtor_id: int, per_apur: str = None):
 
 @app.post("/produtores/{produtor_id}/esocial/s1200")
 def criar_s1200(produtor_id: int, dados: dict = Body(...)):
+    from app.db import engine
     from sqlalchemy import text
     vr_sal = float(dados["vr_salario"])
     inss = round(vr_sal * 0.09, 2)
@@ -1187,6 +1201,7 @@ def criar_s1200(produtor_id: int, dados: dict = Body(...)):
 
 @app.get("/produtores/{produtor_id}/esocial/resumo")
 def resumo_esocial(produtor_id: int, per_apur: str = None):
+    from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         p = {"id": produtor_id}
