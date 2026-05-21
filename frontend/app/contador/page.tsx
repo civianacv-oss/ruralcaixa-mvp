@@ -483,6 +483,7 @@ export default function Contador() {
                     <span className="ml-auto text-gray-400">›</span>
                   </a>
 
+                  <a href={`/esocial?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"><span className="text-lg">ES</span><span>eSocial Rural</span><span className="ml-auto text-gray-400">›</span></a>
                   <a href={`/nfe?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"><span className="text-lg">NF</span><span>Emitir NF-e</span><span className="ml-auto text-gray-400">›</span></a>
                   <a href={`/relatorio?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
