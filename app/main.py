@@ -675,10 +675,10 @@ def get_terceiros_validacao(imovel_id: int):
             "SELECT id, nome_contraparte, id_contraparte, tipo_contraparte, perc_contraparte FROM terceiros WHERE imovel_id = :iid"
         ), {"iid": imovel_id}).fetchall()
         part = conn.execute(text(
-            "SELECT COALESCE(SUM(percentual),0) FROM participacoes_imovel WHERE imovel_id = :iid AND (vigencia_fim IS NULL OR vigencia_fim >= CURRENT_DATE)"
+            "SELECT COALESCE(SUM(percentual),0) FROM participacoes_imovel WHERE imovel_id = :iid AND vigencia_fim IS NULL"
         ), {"iid": imovel_id}).scalar()
         part_count = conn.execute(text(
-            "SELECT COUNT(*) FROM participacoes_imovel WHERE imovel_id = :iid AND (vigencia_fim IS NULL OR vigencia_fim >= CURRENT_DATE)"
+            "SELECT COUNT(*) FROM participacoes_imovel WHERE imovel_id = :iid AND vigencia_fim IS NULL"
         ), {"iid": imovel_id}).scalar()
         if part_count > 0:
             total_geral = round(float(part), 2)
