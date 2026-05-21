@@ -17,56 +17,35 @@ def buscar_imoveis_por_cpf(cpf: str):
         """), {"cpf": cpf_limpo}).fetchall()
         return [dict(r._mapping) for r in result]
 
-def gravar_lancamento(dados: dict) -> int:
+def gravar_lancamento(dados: dict):
     with engine.connect() as conn:
-        prod = conn.execute(text(
-            "SELECT id FROM produtores WHERE telefone = :tel"
-        ), {"tel": dados.get("numero", "")}).fetchone()
-
+        prod = conn.execute(text('SELECT id FROM produtores WHERE telefone = :tel'), {'tel': dados.get('numero', '')}).fetchone()
         produtor_id = prod[0] if prod else 1
-
-        imovel = conn.execute(text(
-            "SELECT id FROM imoveis_rurais WHERE produtor_id = :pid LIMIT 1"
-        ), {"pid": produtor_id}).fetchone()
-
-        imovel_id = imovel[0] if imovel else None
-
-        result = conn.execute(text("""
-            INSERT INTO lancamentos
-                (produtor_id, imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento, origem, texto_original, produto, atividade)
-            VALUES
-                (:produtor_id, :imovel_id, :conta, :tipo, :descricao, :valor, :data, :origem, :texto, :produto, :atividade)
-            RETURNING id
-        """), {
-            "produtor_id": produtor_id,
-            "imovel_id":   imovel_id,
-            "conta":       dados.get("conta"),
-            "tipo":        dados.get("tipo"),
-            "descricao":   dados.get("texto_original", ""),
-            "valor":       dados.get("valor", 0),
-            "data":        dados.get("data"),
-            "origem":      dados.get("origem", "whatsapp"),
-            "produto":     dados.get("produto"),
-            "texto":       dados.get("texto_original", ""),
-            "atividade":   dados.get("atividade", "rural"),
-        })
+        # Busca subconta pelo nome/tipo
+        tipo_raw = dados.get('tipo', 'despesa').upper()
+        nome_sub = dados.get('produto') or dados.get('subconta') or dados.get('descricao', 'Outros')
+        sub = conn.execute(text('SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) LIMIT 1'), {'nome': f'%{nome_sub[:20]}%'}).fetchone()
+        if not sub:
+            import uuid as _uuid
+            atividade = 'RURAL' if dados.get('atividade', 'rural').upper() == 'RURAL' else 'INVESTIMENTO'
+            sub_id = str(_uuid.uuid4())
+            conn.execute(text('INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (:id, :nome, :tipo, :atv)'),
+                {'id': sub_id, 'nome': nome_sub[:100], 'tipo': tipo_raw, 'atv': atividade})
+        else:
+            sub_id = sub[0]
+        import uuid as _uuid2
+        lanc_id = str(_uuid2.uuid4())
+        conn.execute(text('INSERT INTO lancamentos (id, produtor_id, subconta_id, valor, data, documento_url) VALUES (:id, :pid, :sub, :valor, :data, NULL)'),
+            {'id': lanc_id, 'pid': produtor_id, 'sub': sub_id, 'valor': abs(float(dados.get('valor', 0))), 'data': dados.get('data')})
         conn.commit()
-
-        lancamento_id = result.fetchone()[0]
-
         import json as _json
-        conn.execute(text("""
-            INSERT INTO audit_log (tabela, registro_id, acao, usuario, payload)
-            VALUES ('lancamentos', :id, 'INSERT', :usuario, cast(:payload as jsonb))
-        """), {
-            "id": lancamento_id,
-            "usuario": dados.get("numero", "whatsapp"),
-            "payload": _json.dumps(dados)
-        })
-        conn.commit()
-
-        return lancamento_id
-
+        try:
+            conn.execute(text('INSERT INTO audit_log (tabela, registro_id, acao, usuario, payload) VALUES (:tab, :id, :acao, :usr, cast(:payload as jsonb))'),
+                {'tab': 'lancamentos', 'id': lanc_id, 'acao': 'INSERT', 'usr': dados.get('numero', 'whatsapp'), 'payload': _json.dumps(dados)})
+            conn.commit()
+        except Exception:
+            pass
+        return lanc_id
 
 def get_ultimo_lancamento(telefone: str):
     with engine.connect() as conn:
