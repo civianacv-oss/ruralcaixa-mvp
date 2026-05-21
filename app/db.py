@@ -174,7 +174,7 @@ def listar_produtores():
             FROM produtores p
             LEFT JOIN imoveis_rurais i ON i.produtor_id = p.id
             LEFT JOIN lancamentos l ON l.produtor_id = p.id
-                AND date_trunc('month', l.data_lancamento) = date_trunc('month', CURRENT_DATE)
+                AND date_trunc('month', l.data) = date_trunc('month', CURRENT_DATE)
             GROUP BY p.id, p.nome, p.cpf, p.telefone, i.municipio, i.uf
             ORDER BY p.nome
         """)).fetchall()
