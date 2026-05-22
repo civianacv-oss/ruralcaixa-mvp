@@ -8,6 +8,8 @@ from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from app.contratos_api import router as contratos_router
+from app.lancamentos_contrato import router as lanc_router
 
 from app.services.classifier import classificar
 
@@ -30,6 +32,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(contratos_router)
+app.include_router(lanc_router)
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
