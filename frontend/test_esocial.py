@@ -1,0 +1,10 @@
+import psycopg2
+conn = psycopg2.connect("postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway")
+cur = conn.cursor()
+cur.execute("SELECT COUNT(*), COALESCE(SUM(vr_bruto_comerc),0) FROM esocial_s1260 WHERE produtor_id=1")
+print("S-1260:", cur.fetchone())
+cur.execute("SELECT COUNT(*), COALESCE(SUM(vr_salario),0) FROM esocial_s1200 WHERE produtor_id=1")
+print("S-1200:", cur.fetchone())
+cur.execute("SELECT COUNT(*) FROM esocial_trabalhadores WHERE produtor_id=1 AND ativo=TRUE")
+print("Trabalhadores:", cur.fetchone())
+conn.close()
