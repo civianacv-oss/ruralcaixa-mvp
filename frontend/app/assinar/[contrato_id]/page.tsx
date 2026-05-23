@@ -612,7 +612,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#bbb",
     fontFamily: "sans-serif",
   },
-  iconCircle: (bg: string): React.CSSProperties => ({
+  }
+
+function iconCircle(bg: string): React.CSSProperties {
+  return {
     width: 64,
     height: 64,
     borderRadius: "50%",
@@ -621,5 +624,5 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     margin: "0 auto 12px",
-  }),
+  }
 }
