@@ -190,7 +190,14 @@ export default function AssinarPage() {
           <>
             <div style={iconCircle("#EAF3DE")}><span style={{ fontSize: 28 }}>📱</span></div>
             <h2 style={s.h2}>Confirme sua identidade</h2>
-            <p style={s.muted}>Digite o código de 6 dígitos enviado para o seu WhatsApp.</p>
+            <p style={s.muted}>
+              Código enviado para o WhatsApp<br/>
+              <strong style={{ color: "#1B4D2E" }}>
+                {searchParams.get("tel") ? 
+                  searchParams.get("tel")!.replace(/(\+\d{2})(\d{2})(\d{4,5})(\d{4})/, "$1 ($2) $3-$4").replace(/\d(?=\d{2}-\d{4})/g, "•") 
+                  : "número cadastrado"}
+              </strong>
+            </p>
             <input type="number" inputMode="numeric" placeholder="000000" value={otp} onChange={e => setOtp(e.target.value.slice(0, 6))} style={s.otpInput} autoFocus/>
             {erro && <p style={s.erroText}>{erro}</p>}
             <button style={{ ...s.btnPrimary, opacity: loading ? 0.7 : 1 }} onClick={assinar} disabled={loading}>{loading ? "Verificando..." : "Assinar contrato"}</button>
