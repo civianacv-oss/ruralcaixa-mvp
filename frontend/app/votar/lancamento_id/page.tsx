@@ -176,7 +176,7 @@ export default function VotarPage() {
         {/* ERRO */}
         {step === "erro" && (
           <div style={s.center}>
-            <div style={s.iconCircle("#FCEBEB")}>
+            <div style={iconCircle("#FCEBEB")}>
               <span style={{ color: "#A32D2D", fontSize: 28 }}>✕</span>
             </div>
             <h2 style={s.h2}>Não encontrado</h2>
@@ -187,7 +187,7 @@ export default function VotarPage() {
         {/* JÁ VOTOU */}
         {step === "ja_votou" && lancamento && (
           <div style={s.center}>
-            <div style={s.iconCircle("#EAF3DE")}>
+            <div style={iconCircle("#EAF3DE")}>
               <span style={{ color: "#3B6D11", fontSize: 28 }}>✓</span>
             </div>
             <h2 style={s.h2}>Voto já registrado</h2>
@@ -199,7 +199,7 @@ export default function VotarPage() {
         {/* EXPIRADO */}
         {step === "expirado" && lancamento && (
           <div style={s.center}>
-            <div style={s.iconCircle("#FAEEDA")}>
+            <div style={iconCircle("#FAEEDA")}>
               <span style={{ color: "#854F0B", fontSize: 28 }}>⏱</span>
             </div>
             <h2 style={s.h2}>Prazo encerrado</h2>
@@ -272,7 +272,7 @@ export default function VotarPage() {
         {/* JUSTIFICATIVA */}
         {step === "justificativa" && lancamento && (
           <>
-            <div style={s.iconCircle("#FCEBEB")}>
+            <div style={iconCircle("#FCEBEB")}>
               <span style={{ color: "#A32D2D", fontSize: 28 }}>✕</span>
             </div>
             <h2 style={s.h2}>Rejeitar lançamento</h2>
@@ -310,7 +310,7 @@ export default function VotarPage() {
         {/* SUCESSO */}
         {step === "sucesso" && (
           <>
-            <div style={s.iconCircle(votoEscolhido === "aprovar" ? "#EAF3DE" : "#FCEBEB")}>
+            <div style={iconCircle(votoEscolhido === "aprovar" ? "#EAF3DE" : "#FCEBEB")}>
               <span style={{ fontSize: 36, color: votoEscolhido === "aprovar" ? "#3B6D11" : "#A32D2D" }}>
                 {votoEscolhido === "aprovar" ? "✓" : "✕"}
               </span>
@@ -419,5 +419,5 @@ const s: Record<string, React.CSSProperties> = {
   successLabel: { fontSize: 12, color: "#999", textTransform: "uppercase" as const, letterSpacing: "0.05em" },
   successValue: { fontSize: 14, color: "#222", fontWeight: 500, maxWidth: "60%", textAlign: "right" as const },
   footer: { display: "flex", gap: 8, justifyContent: "center", marginTop: 28, fontSize: 11, color: "#bbb", fontFamily: "sans-serif" },
-  iconCircle: (bg: string) => ({ width: 56, height: 56, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }),
 }
+
