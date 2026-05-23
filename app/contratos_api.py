@@ -528,21 +528,30 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
         return None
 
     url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
-   payload = {
-    "messaging_product": "whatsapp",
-    "to": telefone,
-    "type": "template",
-    "template": {
-        "name": "assinatura_contrato",
-        "language": {"code": "pt_BR"},
-        "components": [{
-            "type": "button",
-            "sub_type": "url",
-            "index": "0",
-            "parameters": [{"type": "text", "text": otp}]
-        }]
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": telefone,
+        "type": "template",
+        "template": {
+            "name": "assinatura_contrato",
+            "language": {"code": "pt_BR"},
+            "components": [{
+                "type": "button",
+                "sub_type": "url",
+                "index": "0",
+                "parameters": [{"type": "text", "text": otp}]
+            }]
+        }
     }
-}
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        data = r.json()
+        print(f"[WhatsApp] Resposta: {data}")
+        return data.get("messages", [{}])[0].get("id")
+    except Exception as e:
+        print(f"[WARN] Erro ao enviar WhatsApp para {telefone}: {e}")
+        return None
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
         r = requests.post(url, json=payload, headers=headers, timeout=10)
