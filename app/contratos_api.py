@@ -298,6 +298,14 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
             ))
             assinatura_id = cur.fetchone()["id"]
 
+            def _mascarar_telefone(tel: str) -> str:
+                if not tel:
+                    return "número cadastrado"
+                t = tel.replace(" ", "").replace("-", "")
+                if len(t) >= 6:
+                    return t[:4] + "•" * (len(t) - 6) + t[-2:]
+                return "•" * len(t)
+                
             # Enviar WhatsApp se tiver telefone
             if parte.get("telefone"):
                 _enviar_whatsapp_otp(parte["telefone"], parte["nome"], otp, link)
