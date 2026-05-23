@@ -536,12 +536,10 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
             "name": "assinatura_contrato",
             "language": {"code": "pt_BR"},
             "components": [{
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": nome},
-                    {"type": "text", "text": otp},
-                    {"type": "text", "text": link},
-                ]
+                "type": "button",
+                "sub_type": "url",
+                "index": 0,
+                "parameters": [{"type": "otp", "otp": otp}]
             }]
         }
     }
