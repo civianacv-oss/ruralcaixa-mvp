@@ -1,3 +1,4 @@
+# deploy: 2026-05-23
 # =============================================================
 # RURALCAIXA — Módulo de Contratos Rurais
 # Arquivo: contratos_api.py
