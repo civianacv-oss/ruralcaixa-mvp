@@ -527,7 +527,7 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
         print(f"[WARN] WHATSAPP_TOKEN não configurado. OTP para {nome}: {otp}")
         return None
 
-    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+   url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
     payload = {
         "messaging_product": "whatsapp",
         "to": telefone,
@@ -548,14 +548,6 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
         r = requests.post(url, json=payload, headers=headers, timeout=10)
         data = r.json()
         print(f"[WhatsApp] Resposta: {data}")
-        return data.get("messages", [{}])[0].get("id")
-    except Exception as e:
-        print(f"[WARN] Erro ao enviar WhatsApp para {telefone}: {e}")
-        return None
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    try:
-        r = requests.post(url, json=payload, headers=headers, timeout=10)
-        data = r.json()
         return data.get("messages", [{}])[0].get("id")
     except Exception as e:
         print(f"[WARN] Erro ao enviar WhatsApp para {telefone}: {e}")
