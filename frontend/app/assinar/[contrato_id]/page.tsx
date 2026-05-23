@@ -84,6 +84,7 @@ export default function AssinarPage() {
 
   const [step, setStep] = useState<Step>("carregando")
   const [contrato, setContrato] = useState<Contrato | null>(null)
+  const [telMascarado, setTelMascarado] = useState("")
   const [otp, setOtp] = useState("")
   const [erro, setErro] = useState("")
   const [loading, setLoading] = useState(false)
