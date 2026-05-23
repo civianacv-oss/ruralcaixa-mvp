@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -29,7 +29,7 @@ type Alerta = {
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-// â”€â”€ ValidaÃ§Ã£o CPF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Validacao CPF
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -67,7 +67,7 @@ function validarDocumento(doc: string): { valido: boolean; tipo: string } {
   return { valido: false, tipo: "invalido" };
 }
 
-// â”€â”€ Badge de alerta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Badge de alerta
 function AlertaBadge({ alertas }: { alertas: Alerta[] }) {
   const erros = alertas.filter(a => a.nivel === "erro").length;
   const avisos = alertas.filter(a => a.nivel === "aviso").length;
@@ -88,13 +88,13 @@ function AlertaBadge({ alertas }: { alertas: Alerta[] }) {
   );
 }
 
-// â”€â”€ Painel de alertas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Painel de alertas
 function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId: number }) {
   const [expandido, setExpandido] = useState(true);
   if (alertas.length === 0) {
     return (
       <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
-        <span className="text-green-600 text-lg">âœ“</span>
+        <span className="text-green-600 text-lg">&#10003;</span>
         <div>
           <div className="text-sm font-medium text-green-800">Conformidade OK</div>
           <div className="text-xs text-green-600">Nenhuma pendencia para o Registro 0045</div>
@@ -108,9 +108,9 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
       <button onClick={() => setExpandido(e => !e)}
         className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 border-l-4 border-amber-400">
         <div className="flex items-center gap-2">
-          <span className="text-amber-600">âš </span>
+          <span className="text-amber-600">&#9888;</span>
           <span className="text-sm font-semibold text-amber-800">
-            Alertas de Conformidade â€” Reg. 0045
+            Alertas de Conformidade &mdash; Reg. 0045
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -131,7 +131,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
               <span className={`text-base mt-0.5 flex-shrink-0 ${
                 a.nivel === "erro" ? "text-red-500" : "text-amber-500"
               }`}>
-                {a.nivel === "erro" ? "âœ•" : "!"}
+                {a.nivel === "erro" ? "&#10005;" : "!"}
               </span>
               <div className="flex-1 min-w-0">
                 <div className={`text-xs font-semibold ${
@@ -145,7 +145,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
                 {a.acao && (
                   <a href={a.acao.href}
                     className="inline-block mt-1.5 text-xs text-blue-600 underline underline-offset-2">
-                    {a.acao.label} â†’
+                    {a.acao.label} &rarr;
                   </a>
                 )}
               </div>
@@ -163,7 +163,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
   );
 }
 
-// â”€â”€ Componente principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Componente principal
 export default function Contador() {
   const [produtores, setProdutores] = useState<Produtor[]>([]);
   const [selecionado, setSelecionado] = useState<number | null>(null);
@@ -193,42 +193,39 @@ export default function Contador() {
     ]).then(async ([lancs, imoveis]) => {
       setLancamentos(lancs);
 
-      // Busca validacao completa de terceiros por imovel (soma real de todos)
       const todosImoveis = Array.isArray(imoveis) ? imoveis : [];
-      const validacaoPromises = todosImoveis.map((im: any) =>
+      const validacaoPromises = todosImoveis.map((im: { id: number }) =>
         fetch(`${API}/imoveis/${im.id}/terceiros/validacao`).then(r => r.json()).catch(() => null)
       );
       const validacoes = (await Promise.all(validacaoPromises)).filter(Boolean);
-      const todosTerceiros = validacoes.flatMap((v: any) => v.terceiros || []);
-      setTerceiros(todosTerceiros);
+      const todosTerceiros = validacoes.flatMap((v: { terceiros?: unknown[] }) => v.terceiros || []);
+      setTerceiros(todosTerceiros as Terceiro[]);
 
-      // Gera alertas
       const novosAlertas: Alerta[] = [];
 
-      // 1. CPF/CNPJ ausente ou invÃ¡lido nos terceiros
-      todosTerceiros.forEach((t: any) => {
-        const doc = (t.documento || t.id_contraparte || "").replace(/\D/g, "");
+      todosTerceiros.forEach((t: unknown) => {
+        const terceiro = t as { documento?: string; id_contraparte?: string; nome?: string; nome_contraparte?: string; tipo?: string; tipo_contraparte?: string; percentual?: number; perc_contraparte?: number };
+        const doc = (terceiro.documento || terceiro.id_contraparte || "").replace(/\D/g, "");
         const { valido, tipo } = validarDocumento(doc);
 
         if (tipo === "ausente") {
           novosAlertas.push({
             nivel: "erro",
-            mensagem: `${t.nome || t.nome_contraparte}: CPF/CNPJ ausente`,
-            detalhe: `${t.tipo || t.tipo_contraparte} com ${t.percentual || t.perc_contraparte}% â€” obrigatorio para o Registro 0045`,
+            mensagem: `${terceiro.nome || terceiro.nome_contraparte}: CPF/CNPJ ausente`,
+            detalhe: `${terceiro.tipo || terceiro.tipo_contraparte} com ${terceiro.percentual || terceiro.perc_contraparte}% - obrigatorio para o Registro 0045`,
             acao: { label: "Corrigir participante", href: `/terceiros?imovel_id=${todosImoveis[0]?.id || 1}&produtor_id=${selecionado}` },
           });
         } else if (!valido) {
           novosAlertas.push({
             nivel: "erro",
-            mensagem: `${t.nome || t.nome_contraparte}: ${tipo} invalido (${doc})`,
-            detalhe: `Digito verificador incorreto â€” Registro 0045 sera rejeitado pela Receita Federal`,
+            mensagem: `${terceiro.nome || terceiro.nome_contraparte}: ${tipo} invalido (${doc})`,
+            detalhe: `Digito verificador incorreto - Registro 0045 sera rejeitado pela Receita Federal`,
             acao: { label: "Corrigir participante", href: `/terceiros?imovel_id=${todosImoveis[0]?.id || 1}&produtor_id=${selecionado}` },
           });
         }
       });
 
-      // 2. LanÃ§amentos sem imÃ³vel vinculado (imovel_id null)
-      const semImovel = lancs.filter((l: any) => !l.imovel_id && l.confirmado);
+      const semImovel = (lancs as Lancamento[]).filter((l) => !(l as unknown as { imovel_id?: number }).imovel_id && l.confirmado);
       if (semImovel.length > 0) {
         novosAlertas.push({
           nivel: "aviso",
@@ -238,10 +235,7 @@ export default function Contador() {
         });
       }
 
-      // 3. Lancamentos pendentes - desativado no schema novo (confirmado sempre true)
-
-      // 4. Total de participaÃ§Ã£o diferente de 100% â€” soma todos os participantes do imovel
-      for (const v of validacoes) {
+      for (const v of validacoes as { total_geral?: number; total_ok?: boolean; terceiros?: unknown[] }[]) {
         const totalGeral = v.total_geral ?? 0;
         if (!v.total_ok) {
           novosAlertas.push({
@@ -277,7 +271,7 @@ export default function Contador() {
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-6">
       <div className="bg-green-800 text-white px-4 py-4">
-        <a href="/" className="text-xs opacity-70">â† Voltar</a>
+        <a href="/" className="text-xs opacity-70">&larr; Voltar</a>
         <div className="text-lg font-medium mt-1">Painel do Contador</div>
         <div className="text-xs opacity-70">RuralCaixa</div>
       </div>
@@ -302,14 +296,14 @@ export default function Contador() {
           </div>
 
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Clientes â€” {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            Clientes &mdash; {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
           </div>
 
           {loading ? (
             <div className="text-center text-gray-400 py-8">Carregando...</div>
           ) : produtores.length === 0 ? (
             <div className="text-center text-gray-400 py-8">
-              <div className="text-4xl mb-2">ðŸ‘¨â€ðŸŒ¾</div>
+              <div className="text-4xl mb-2">&#128104;&#8205;&#127806;</div>
               <div>Nenhum produtor cadastrado</div>
               <a href="/cadastro" className="text-green-700 text-sm mt-2 block">+ Cadastrar produtor</a>
             </div>
@@ -320,10 +314,10 @@ export default function Contador() {
                 className="w-full bg-white rounded-xl p-4 shadow-sm text-left flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">{p.nome}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} Â· {p.municipio}-{p.uf}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{p.cpf} &middot; {p.municipio}-{p.uf}</div>
                   <div className="flex gap-3 mt-1">
-                    <span className="text-xs text-green-700">â†‘ {fmt(p.receita)}</span>
-                    <span className="text-xs text-red-500">â†“ {fmt(p.despesa)}</span>
+                    <span className="text-xs text-green-700">+ {fmt(p.receita)}</span>
+                    <span className="text-xs text-red-500">- {fmt(p.despesa)}</span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -334,7 +328,7 @@ export default function Contador() {
                   ) : (
                     <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Ok</span>
                   )}
-                  <div className="text-gray-400 mt-1">â€º</div>
+                  <div className="text-gray-400 mt-1">&rsaquo;</div>
                 </div>
               </button>
             ))
@@ -347,14 +341,14 @@ export default function Contador() {
       ) : (
         <div className="p-4 space-y-4">
           <button onClick={() => setSelecionado(null)} className="text-green-800 text-sm font-medium">
-            â† Todos os produtores
+            &larr; Todos os produtores
           </button>
 
           {produtor && (
             <>
               <div className="bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">ðŸ‘¨â€ðŸŒ¾</div>
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-xl">&#127807;</div>
                   <div className="flex-1">
                     <div className="font-medium">{produtor.nome}</div>
                     <div className="text-xs text-gray-400">{produtor.cpf}</div>
@@ -374,14 +368,13 @@ export default function Contador() {
                 </div>
               </div>
 
-              {/* Abas */}
               <div className="flex gap-2">
                 {[
                   { id: "lancamentos", label: "Lancamentos" },
                   { id: "conformidade", label: `Reg. 0045${errosCount > 0 ? ` (${errosCount})` : ""}` },
                   { id: "acoes", label: "Acoes" },
                 ].map(a => (
-                  <button key={a.id} onClick={() => setAbaDetalhe(a.id as any)}
+                  <button key={a.id} onClick={() => setAbaDetalhe(a.id as "lancamentos" | "acoes" | "conformidade")}
                     className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
                       abaDetalhe === a.id
                         ? "bg-green-800 text-white"
@@ -394,7 +387,6 @@ export default function Contador() {
                 ))}
               </div>
 
-              {/* Aba Lancamentos */}
               {abaDetalhe === "lancamentos" && (
                 <div className="bg-white rounded-xl p-4 shadow-sm space-y-2">
                   <div className="text-sm font-medium text-gray-600 mb-3">Lancamentos do mes</div>
@@ -408,10 +400,10 @@ export default function Contador() {
                         <div>
                           <div className="text-xs font-medium">{l.descricao || l.produto || l.conta_codigo}</div>
                           <div className="text-xs text-gray-400">
-                            {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} · {l.descricao || ""}
+                            {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} &middot; {l.descricao || ""}
                           </div>
                           {l.documento_url && (
-                            <a href={l.documento_url} target="_blank" className="text-xs text-blue-500">ðŸ“Ž Ver doc</a>
+                            <a href={l.documento_url} target="_blank" className="text-xs text-blue-500">&#128270; Ver doc</a>
                           )}
                         </div>
                         <div className={`text-sm font-medium ${l.tipo === "receita" ? "text-green-700" : "text-red-500"}`}>
@@ -423,17 +415,12 @@ export default function Contador() {
                 </div>
               )}
 
-              {/* Aba Conformidade */}
               {abaDetalhe === "conformidade" && (
                 <div className="space-y-3">
                   <PainelAlertas alertas={alertas} produtorId={selecionado} />
-
-                  {/* Tabela de terceiros com status */}
                   {terceiros.length > 0 && (
                     <div className="bg-white rounded-xl p-4 shadow-sm">
-                      <div className="text-sm font-medium text-gray-700 mb-3">
-                        Participantes cadastrados
-                      </div>
+                      <div className="text-sm font-medium text-gray-700 mb-3">Participantes cadastrados</div>
                       {terceiros.map((t, i) => {
                         const doc = (t.documento || t.id_contraparte || "");
                         const { valido, tipo } = validarDocumento(doc);
@@ -441,17 +428,15 @@ export default function Contador() {
                           <div key={i} className="flex items-start justify-between py-2.5 border-b last:border-0">
                             <div className="flex items-start gap-2">
                               <span className={`mt-0.5 text-sm flex-shrink-0 ${valido ? "text-green-500" : "text-red-500"}`}>
-                                {valido ? "âœ“" : "âœ•"}
+                                {valido ? "&#10003;" : "&#10005;"}
                               </span>
                               <div>
                                 <div className="text-xs font-medium">{t.nome || t.nome_contraparte}</div>
                                 <div className="text-xs text-gray-400">
-                                  {t.tipo || t.tipo_contraparte} Â· {parseFloat(String(t.percentual || t.perc_contraparte || 0)).toFixed(1)}%
+                                  {t.tipo || t.tipo_contraparte} &middot; {parseFloat(String(t.percentual || t.perc_contraparte || 0)).toFixed(1)}%
                                 </div>
                                 <div className={`text-xs mt-0.5 ${valido ? "text-gray-400" : "text-red-500"}`}>
-                                  {tipo === "ausente" ? "CPF/CNPJ ausente" :
-                                   !valido ? `${tipo} invalido` :
-                                   doc}
+                                  {tipo === "ausente" ? "CPF/CNPJ ausente" : !valido ? `${tipo} invalido` : doc}
                                 </div>
                               </div>
                             </div>
@@ -463,44 +448,42 @@ export default function Contador() {
                 </div>
               )}
 
-              {/* Aba Acoes */}
               {abaDetalhe === "acoes" && (
                 <div className="bg-white rounded-xl p-4 shadow-sm space-y-1">
                   <div className="text-sm font-medium text-gray-600 mb-3">Acoes do contador</div>
-
                   <a href={`/analytics?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">ðŸ“ˆ</span>
+                    <span className="text-lg">&#128200;</span>
                     <span>Relatorios analiticos</span>
-                    <span className="ml-auto text-gray-400">â€º</span>
+                    <span className="ml-auto text-gray-400">&rsaquo;</span>
                   </a>
-
-                  <a href={`/esocial?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"><span className="text-lg">ES</span><span>eSocial Rural</span><span className="ml-auto text-gray-400">â€º</span></a>
-                  <a href={`/nfe?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50"><span className="text-lg">NF</span><span>Emitir NF-e</span><span className="ml-auto text-gray-400">â€º</span></a>
+                  <a href={`/esocial?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
+                    <span className="text-lg">ES</span><span>eSocial Rural</span><span className="ml-auto text-gray-400">&rsaquo;</span>
+                  </a>
+                  <a href={`/nfe?produtor_id=${produtor.id}`} className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
+                    <span className="text-lg">NF</span><span>Emitir NF-e</span><span className="ml-auto text-gray-400">&rsaquo;</span>
+                  </a>
                   <a href={`/relatorio?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">ðŸ“„</span>
+                    <span className="text-lg">&#128196;</span>
                     <span>Gerar LCDPR PDF</span>
                     {errosCount > 0 && (
                       <span className="ml-2 text-xs text-red-500">({errosCount} erro{errosCount > 1 ? "s" : ""})</span>
                     )}
-                    <span className="ml-auto text-gray-400">â€º</span>
+                    <span className="ml-auto text-gray-400">&rsaquo;</span>
                   </a>
-
                   <a href={`/cadastro?produtor_id=${produtor.id}`}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">âœï¸</span>
+                    <span className="text-lg">&#9998;&#65039;</span>
                     <span>Editar cadastro</span>
-                    <span className="ml-auto text-gray-400">â€º</span>
+                    <span className="ml-auto text-gray-400">&rsaquo;</span>
                   </a>
-
                   <button onClick={fecharMes} disabled={fechando}
                     className="w-full flex items-center gap-3 py-3 border-b text-sm hover:bg-gray-50">
-                    <span className="text-lg">âœ…</span>
+                    <span className="text-lg">&#9989;</span>
                     <span>{fechando ? "Fechando..." : "Fechar mes"}</span>
-                    <span className="ml-auto text-gray-400">â€º</span>
+                    <span className="ml-auto text-gray-400">&rsaquo;</span>
                   </button>
-
                   <button
                     onClick={async () => {
                       if (!confirm(`Excluir ${produtor.nome}? Esta acao nao pode ser desfeita.`)) return;
@@ -510,9 +493,9 @@ export default function Contador() {
                       setProdutores(updated);
                     }}
                     className="w-full flex items-center gap-3 py-3 text-sm hover:bg-red-50 text-red-600">
-                    <span className="text-lg">ðŸ—‘ï¸</span>
+                    <span className="text-lg">&#128465;&#65039;</span>
                     <span>Excluir produtor</span>
-                    <span className="ml-auto text-gray-400">â€º</span>
+                    <span className="ml-auto text-gray-400">&rsaquo;</span>
                   </button>
                 </div>
               )}
@@ -523,4 +506,3 @@ export default function Contador() {
     </div>
   );
 }
-
