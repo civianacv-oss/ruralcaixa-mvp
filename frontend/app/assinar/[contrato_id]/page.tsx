@@ -193,7 +193,9 @@ export default function AssinarPage() {
             <h2 style={s.h2}>Confirme sua identidade</h2>
             <p style={s.muted}>
               Código enviado para o WhatsApp<br/>
-              <strong style={{ color: "#1B4D2E" }}>
+              <strong style={{ color: "#1B4D2E" }}>{telMascarado || "número cadastrado"}</strong>
+            </p>
+            <strong style={{ color: "#1B4D2E" }}>
                 {searchParams.get("tel") ? 
                   searchParams.get("tel")!.replace(/(\+\d{2})(\d{2})(\d{4,5})(\d{4})/, "$1 ($2) $3-$4").replace(/\d(?=\d{2}-\d{4})/g, "•") 
                   : "número cadastrado"}
