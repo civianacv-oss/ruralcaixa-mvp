@@ -516,19 +516,13 @@ def _resolver_partes(cur, contrato):
 
 
 def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
-    """
-    Envia OTP via WhatsApp Business API.
-    Usa as mesmas credenciais do .env já configurado no projeto.
-    """
     import os, requests
-
-    phone_id = os.getenv("WHATSAPP_PHONE_ID", "1064255903445839")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID", "1154361321082939")
     token    = os.getenv("WHATSAPP_TOKEN", "")
     if not token:
         print(f"[WARN] WHATSAPP_TOKEN não configurado. OTP para {nome}: {otp}")
         return None
-
-   url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
     payload = {
         "messaging_product": "whatsapp",
         "to": telefone,
@@ -536,20 +530,18 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
         "template": {
             "name": "assinatura_contrato",
             "language": {"code": "pt_BR"},
-            "components": [{
-                "type": "button",
-                "sub_type": "url",
-                "index": "0",
-                "parameters": [{"type": "text", "text": otp}]
-            }]
+            "components": [
+                {"type": "body", "parameters": [{"type": "text", "text": otp}]},
+                {"type": "button", "sub_type": "url", "index": "0",
+                 "parameters": [{"type": "text", "text": otp}]}
+            ]
         }
     }
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
         r = requests.post(url, json=payload, headers=headers, timeout=10)
-        data = r.json()
-        print(f"[WhatsApp] Resposta: {data}")
-        return data.get("messages", [{}])[0].get("id")
+        print(f"[WhatsApp] Status: {r.status_code} Resposta: {r.text}")
+        return r.json().get("messages", [{}])[0].get("id")
     except Exception as e:
-        print(f"[WARN] Erro ao enviar WhatsApp para {telefone}: {e}")
+        print(f"[WARN] Erro WhatsApp para {telefone}: {e}")
         return None
