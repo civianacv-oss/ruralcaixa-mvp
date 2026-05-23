@@ -145,7 +145,7 @@ export default function AssinarPage() {
         {step === "carregando" && (
           <div style={s.center}>
             <div style={s.spinner}/>
-            <p style={s.muted}>Carregando contrato...</p>
+            Carregando contrato...</p>
           </div>
         )}
 
@@ -153,7 +153,7 @@ export default function AssinarPage() {
           <div style={s.center}>
             <div style={iconCircle("#FCEBEB")}><span style={{ color: "#A32D2D", fontSize: 28 }}>✕</span></div>
             <h2 style={s.h2}>Contrato não encontrado</h2>
-            <p style={s.muted}>{erro || "Verifique o link e tente novamente."}</p>
+            {erro || "Verifique o link e tente novamente."}</p>
           </div>
         )}
 
@@ -191,10 +191,7 @@ export default function AssinarPage() {
           <>
             <div style={iconCircle("#EAF3DE")}><span style={{ fontSize: 28 }}>📱</span></div>
             <h2 style={s.h2}>Confirme sua identidade</h2>
-            <p style={s.muted}>
-              Código enviado para o WhatsApp<br/>
-              <strong style={{ color: "#1B4D2E" }}>{telMascarado || "número cadastrado"}</strong>
-            </p>
+            <p style={s.muted}>{"Código enviado para o WhatsApp "}<strong style={{ color: "#1B4D2E" }}>{telMascarado || "número cadastrado"}</strong></p>
             <strong style={{ color: "#1B4D2E" }}>
                 {searchParams.get("tel") ? 
                   searchParams.get("tel")!.replace(/(\+\d{2})(\d{2})(\d{4,5})(\d{4})/, "$1 ($2) $3-$4").replace(/\d(?=\d{2}-\d{4})/g, "•") 
