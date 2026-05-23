@@ -318,7 +318,8 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
                 "papel": parte["papel"],
                 "nome": parte["nome"],
                 "assinatura_id": str(assinatura_id),
-                "whatsapp_enviado": bool(parte.get("telefone"))
+                "whatsapp_enviado": bool(parte.get("telefone")),
+                "telefone_mascarado": _mascarar_telefone(parte.get("telefone", ""))
             })
 
         conn.commit()
