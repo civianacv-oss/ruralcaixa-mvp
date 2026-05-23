@@ -408,7 +408,7 @@ export default function Contador() {
                         <div>
                           <div className="text-xs font-medium">{l.descricao || l.produto || l.conta_codigo}</div>
                           <div className="text-xs text-gray-400">
-                            {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} · {l.descricao || l.atividade || ""}
+                            {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} · {l.descricao || ""}
                           </div>
                           {l.documento_url && (
                             <a href={l.documento_url} target="_blank" className="text-xs text-blue-500">ðŸ“Ž Ver doc</a>
