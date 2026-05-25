@@ -124,10 +124,24 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
             produtor_id = result.fetchone()[0]
 
         # Só cadastra imóvel se nome foi fornecido
-        if imovel.get("nome"):
+        # Se imovel_id foi fornecido, vincula ao imovel existente
+        if imovel.get("imovel_id"):
             conn.execute(text("""
-                INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf)
-                VALUES (:pid, :nome, :nirf, :area, :municipio, :uf)
+                INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf, participacao)
+                SELECT :pid, nome, nirf, area_ha, municipio, uf, :part
+                FROM imoveis_rurais WHERE id = :iid
+                ON CONFLICT DO NOTHING
+            """), {
+                "pid":  produtor_id,
+                "iid":  imovel.get("imovel_id"),
+                "part": imovel.get("participacao", 0),
+            })
+            conn.commit()
+        # Caso contrario, cria novo imovel
+        elif imovel.get("nome"):
+            conn.execute(text("""
+                INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf, participacao)
+                VALUES (:pid, :nome, :nirf, :area, :municipio, :uf, :part)
             """), {
                 "pid":       produtor_id,
                 "nome":      imovel.get("nome"),
@@ -135,6 +149,7 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
                 "area":      imovel.get("area_ha"),
                 "municipio": imovel.get("municipio"),
                 "uf":        imovel.get("uf"),
+                "part":      imovel.get("participacao", 100),
             })
             conn.commit()
 
