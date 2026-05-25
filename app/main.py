@@ -59,11 +59,13 @@ class ProdutorCreate(BaseModel):
     nirf: Optional[str] = None
 
 class ImovelCreate(BaseModel):
-    nome: str
+    nome: Optional[str] = None
     nirf: Optional[str] = None
     area_ha: Optional[float] = None
-    municipio: str
-    uf: str
+    municipio: Optional[str] = None
+    uf: Optional[str] = None
+    imovel_id: Optional[int] = None
+    participacao: Optional[float] = None
 
 class CadastroRequest(BaseModel):
     produtor: ProdutorCreate
