@@ -226,7 +226,9 @@ function CadastroContent() {
                 try {
                   const res = await fetch(`${API}/produtor/imoveis?cpf=${cpf}`);
                   const data = await res.json();
-                  setImoveisExistentes(data);
+                  const todos = await fetch(`${API}/imoveis/buscar?q=`).then(r => r.json()).catch(() => []);
+                  const combinados = [...data, ...todos.filter((t: any) => !data.find((d: any) => d.nome === t.nome))];
+                  setImoveisExistentes(combinados);
                 } catch (e) {
                   console.log("Erro ao buscar imoveis:", e);
                   setImoveisExistentes([]);
