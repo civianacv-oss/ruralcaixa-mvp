@@ -131,7 +131,7 @@ function PainelAlertas({ alertas, produtorId }: { alertas: Alerta[]; produtorId:
               <span className={`text-base mt-0.5 flex-shrink-0 ${
                 a.nivel === "erro" ? "text-red-500" : "text-amber-500"
               }`}>
-                {a.nivel === "erro" ? "&#10005;" : "!"}
+                {a.nivel === "erro" ? "✕;" : "!"}
               </span>
               <div className="flex-1 min-w-0">
                 <div className={`text-xs font-semibold ${
@@ -428,7 +428,7 @@ export default function Contador() {
                           <div key={i} className="flex items-start justify-between py-2.5 border-b last:border-0">
                             <div className="flex items-start gap-2">
                               <span className={`mt-0.5 text-sm flex-shrink-0 ${valido ? "text-green-500" : "text-red-500"}`}>
-                                {valido ? "&#10003;" : "&#10005;"}
+                                {valido ? "&#10003;" : "✕;"}
                               </span>
                               <div>
                                 <div className="text-xs font-medium">{t.nome || t.nome_contraparte}</div>
