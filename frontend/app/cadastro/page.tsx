@@ -260,6 +260,14 @@ function CadastroContent() {
                     <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
                   </button>
                 ))}
+                {imovelSelecionado && (
+                  <div>
+                    <label className="text-xs text-gray-500">Sua participacao (%)</label>
+                    <input id="participacao" type="number" min="1" max="100" step="0.01"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                      placeholder="Ex: 40" defaultValue="" />
+                  </div>
+                )}
                 <button onClick={() => { setNovoImovel(true); setImovelSelecionado(null); }} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500">+ Cadastrar novo imóvel</button>
               </div>
             )}
