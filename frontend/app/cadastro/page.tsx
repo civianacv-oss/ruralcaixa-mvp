@@ -83,12 +83,16 @@ function CadastroContent() {
               telefone: "55" + produtor.telefone.replace(/\D/g,""),
               nirf: produtor.nirf || null
             },
-            imovel: {
+            imovel: imovelSelecionado ? {
+              imovel_id: imovelSelecionado,
+              participacao: 0
+            } : {
               nome: imovel.nome,
               nirf: imovel.nirf || null,
               area_ha: imovel.area_ha ? parseFloat(imovel.area_ha) : null,
               municipio: imovel.municipio,
-              uf: imovel.uf
+              uf: imovel.uf,
+              participacao: 100
             }
           })
         });
