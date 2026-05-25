@@ -278,14 +278,12 @@ async def cadastrar_produtor(data: CadastroRequest):
 def buscar_imoveis(q: str = ""):
     from app.db import engine
     from sqlalchemy import text
-    if len(q) < 2:
-        return []
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT DISTINCT i.nome, i.nirf, i.area_ha, i.municipio, i.uf,
-                   COUNT(i2.id) as total_produtores
+            SELECT DISTINCT ON (i.nome) i.nome, i.nirf, i.area_ha, i.municipio, i.uf,
+                   MIN(i.id) as id,
+                   COUNT(*) as total_produtores
             FROM imoveis_rurais i
-            LEFT JOIN imoveis_rurais i2 ON i2.nome = i.nome
             WHERE LOWER(i.nome) LIKE LOWER(:q) OR COALESCE(i.nirf,'') LIKE :q
             GROUP BY i.nome, i.nirf, i.area_ha, i.municipio, i.uf
             ORDER BY i.nome LIMIT 10
