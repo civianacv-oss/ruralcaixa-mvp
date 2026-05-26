@@ -34,6 +34,8 @@ app.add_middleware(
 )
 app.include_router(contratos_router)
 app.include_router(lanc_router)
+from app.propriedades import router as propriedades_router
+app.include_router(propriedades_router)
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
