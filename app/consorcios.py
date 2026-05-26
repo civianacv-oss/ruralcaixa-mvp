@@ -522,14 +522,17 @@ def importar_para_dre(consorcio_id: str, lancamento_id: str, body: ImportarDREBo
             lanc_dre_id_val = str(_u2.uuid4())
             conn.execute(text("""
                 INSERT INTO lancamentos
-                  (id, produtor_id, subconta_id, valor, data)
-                VALUES (:id, :pid, :sub, :valor, :data)
+                  (id, produtor_id, subconta_id, valor, data,
+                   origem, consorcio_lancamento_id)
+                VALUES (:id, :pid, :sub, :valor, :data,
+                        'consorcio', :cons_lanc_id)
             """), {
-                "id":    lanc_dre_id_val,
-                "pid":   body.produtor_id,
-                "sub":   sub_id,
-                "valor": float(_row(cota)["valor_cota"]),
-                "data":  l["data_lancamento"],
+                "id":           lanc_dre_id_val,
+                "pid":          body.produtor_id,
+                "sub":          sub_id,
+                "valor":        float(_row(cota)["valor_cota"]),
+                "data":         l["data_lancamento"],
+                "cons_lanc_id": lancamento_id,
             })
         except Exception as e:
             raise HTTPException(500, f"Erro ao criar lançamento no DRE: {str(e)}")
@@ -609,4 +612,179 @@ def resumo_consorcio(consorcio_id: str):
             "saldo":      float(t["receita"]) - float(t["despesa"]),
         },
         "participantes": _rows(participantes),
+    }
+
+
+# ── DRE Analítico do Consórcio ────────────────────────────────────────────────
+# Adicionar este endpoint ao router existente (já importado acima)
+
+@router.get("/{consorcio_id}/dre")
+def dre_consorcio(
+    consorcio_id: str,
+    safra:     Optional[str] = None,   # ex: "2025/26" — filtra por safra
+    categoria: Optional[str] = None,   # filtra por categoria
+):
+    """
+    DRE analítico do consórcio:
+    - Receitas e despesas aprovadas por categoria
+    - Evolução mensal
+    - Resultado por participante
+    """
+    with engine.connect() as conn:
+        cons = conn.execute(
+            text("SELECT * FROM consorcios WHERE id = :id"), {"id": consorcio_id}
+        ).fetchone()
+        if not cons:
+            raise HTTPException(404, "Consórcio não encontrado")
+
+        params = {"cid": consorcio_id}
+        where_extra = ""
+        if categoria:
+            params["cat"] = categoria
+            where_extra += " AND LOWER(l.categoria) = LOWER(:cat)"
+
+        # ── Totais por categoria ──────────────────────────────────────────────
+        por_categoria = conn.execute(text(f"""
+            SELECT
+                l.tipo,
+                COALESCE(l.categoria, 'Sem categoria') AS categoria,
+                COUNT(*) AS total_lancamentos,
+                SUM(l.valor) AS valor_total
+            FROM consorcio_lancamentos l
+            WHERE l.consorcio_id = :cid
+              AND l.status = 'aprovado'
+              {where_extra}
+            GROUP BY l.tipo, COALESCE(l.categoria, 'Sem categoria')
+            ORDER BY l.tipo, valor_total DESC
+        """), params).fetchall()
+
+        # ── Evolução mensal ───────────────────────────────────────────────────
+        por_mes = conn.execute(text(f"""
+            SELECT
+                TO_CHAR(l.data_lancamento, 'YYYY-MM') AS mes,
+                l.tipo,
+                SUM(l.valor) AS valor
+            FROM consorcio_lancamentos l
+            WHERE l.consorcio_id = :cid
+              AND l.status = 'aprovado'
+              {where_extra}
+            GROUP BY TO_CHAR(l.data_lancamento, 'YYYY-MM'), l.tipo
+            ORDER BY mes, l.tipo
+        """), params).fetchall()
+
+        # ── Resultado por participante ────────────────────────────────────────
+        por_participante = conn.execute(text(f"""
+            SELECT
+                p.id   AS produtor_id,
+                p.nome AS produtor_nome,
+                cp.perc_rateio,
+                COALESCE(SUM(cc.valor_cota) FILTER (
+                    WHERE cl.tipo = 'RECEITA'
+                ), 0) AS receita_cota,
+                COALESCE(SUM(cc.valor_cota) FILTER (
+                    WHERE cl.tipo = 'DESPESA'
+                ), 0) AS despesa_cota,
+                COUNT(cc.id) FILTER (WHERE cc.importado = TRUE) AS cotas_importadas,
+                COUNT(cc.id) AS total_cotas
+            FROM consorcio_participantes cp
+            JOIN produtores p ON p.id = cp.produtor_id
+            LEFT JOIN consorcio_cotas cc ON cc.produtor_id = cp.produtor_id
+            LEFT JOIN consorcio_lancamentos cl
+                ON cl.id = cc.lancamento_id
+               AND cl.consorcio_id = :cid
+               AND cl.status = 'aprovado'
+               {where_extra}
+            WHERE cp.consorcio_id = :cid AND cp.ativo = TRUE
+            GROUP BY p.id, p.nome, cp.perc_rateio
+            ORDER BY cp.perc_rateio DESC
+        """), params).fetchall()
+
+        # ── Totais gerais ─────────────────────────────────────────────────────
+        totais = conn.execute(text(f"""
+            SELECT
+                COALESCE(SUM(valor) FILTER (WHERE tipo='RECEITA'), 0) AS receita,
+                COALESCE(SUM(valor) FILTER (WHERE tipo='DESPESA'), 0) AS despesa
+            FROM consorcio_lancamentos
+            WHERE consorcio_id = :cid AND status = 'aprovado'
+            {where_extra}
+        """), params).fetchone()
+
+        # ── Lançamentos pendentes ─────────────────────────────────────────────
+        pendentes = conn.execute(text("""
+            SELECT COUNT(*) FROM consorcio_lancamentos
+            WHERE consorcio_id = :cid AND status = 'pendente'
+        """), {"cid": consorcio_id}).scalar()
+
+    t = _row(totais)
+    receita = float(t["receita"])
+    despesa = float(t["despesa"])
+
+    # Montar evolução mensal em estrutura {mes: {receita, despesa, saldo}}
+    meses = {}
+    for r in por_mes:
+        m = dict(r._mapping)
+        mes = m["mes"]
+        if mes not in meses:
+            meses[mes] = {"mes": mes, "receita": 0.0, "despesa": 0.0, "saldo": 0.0}
+        if m["tipo"] == "RECEITA":
+            meses[mes]["receita"] = float(m["valor"])
+        else:
+            meses[mes]["despesa"] = float(m["valor"])
+    for m in meses.values():
+        m["saldo"] = round(m["receita"] - m["despesa"], 2)
+
+    # Montar categorias separadas por tipo
+    cats_receita = []
+    cats_despesa = []
+    for r in por_categoria:
+        d = dict(r._mapping)
+        item = {
+            "categoria":          d["categoria"],
+            "total_lancamentos":  int(d["total_lancamentos"]),
+            "valor_total":        float(d["valor_total"]),
+            "percentual":         round(float(d["valor_total"]) / receita * 100, 1)
+                                  if d["tipo"] == "RECEITA" and receita > 0
+                                  else round(float(d["valor_total"]) / despesa * 100, 1)
+                                  if despesa > 0 else 0,
+        }
+        if d["tipo"] == "RECEITA":
+            cats_receita.append(item)
+        else:
+            cats_despesa.append(item)
+
+    participantes_dre = []
+    for r in por_participante:
+        d = dict(r._mapping)
+        rec = float(d["receita_cota"])
+        dep = float(d["despesa_cota"])
+        participantes_dre.append({
+            "produtor_id":      d["produtor_id"],
+            "produtor_nome":    d["produtor_nome"],
+            "perc_rateio":      float(d["perc_rateio"]),
+            "receita_cota":     rec,
+            "despesa_cota":     dep,
+            "resultado_cota":   round(rec - dep, 2),
+            "cotas_importadas": int(d["cotas_importadas"]),
+            "total_cotas":      int(d["total_cotas"]),
+            "pct_importado":    round(int(d["cotas_importadas"]) / int(d["total_cotas"]) * 100, 0)
+                                if int(d["total_cotas"]) > 0 else 0,
+        })
+
+    return {
+        "consorcio": _row(cons),
+        "filtros":   {"categoria": categoria, "safra": safra},
+        "resumo": {
+            "receita":            receita,
+            "despesa":            despesa,
+            "resultado":          round(receita - despesa, 2),
+            "margem_pct":         round((receita - despesa) / receita * 100, 1)
+                                  if receita > 0 else 0,
+            "lancamentos_pendentes": int(pendentes),
+        },
+        "por_categoria": {
+            "receitas":  cats_receita,
+            "despesas":  cats_despesa,
+        },
+        "evolucao_mensal":   list(meses.values()),
+        "por_participante":  participantes_dre,
     }
