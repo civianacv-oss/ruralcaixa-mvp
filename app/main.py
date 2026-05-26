@@ -36,6 +36,8 @@ app.include_router(contratos_router)
 app.include_router(lanc_router)
 from app.propriedades import router as propriedades_router
 app.include_router(propriedades_router)
+from app.consorcios import router as consorcios_router
+app.include_router(consorcios_router)
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
