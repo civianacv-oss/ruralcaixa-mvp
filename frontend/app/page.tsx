@@ -120,7 +120,7 @@ export default function Home() {
     try {
       const r = await fetch(`${API}/consorcios/${id}/resumo`);
       setConsorcioSel(await r.json());
-    } catch {}
+    } catch (_e) {}
     setLoadingResumo(false);
   }
 
@@ -142,7 +142,7 @@ export default function Home() {
         setClassificacaoCons(data);
         if (data.tipo) setFormTipo(data.tipo.toUpperCase() === "RECEITA" ? "RECEITA" : "DESPESA");
         if (data.conta) setFormCategoria(data.conta);
-      } catch {}
+      } catch (_e) {}
       finally { setClassificandoCons(false); }
     }, 800);
     return () => clearTimeout(timer);
@@ -186,7 +186,7 @@ export default function Home() {
         const e = await res.json();
         alert(e.detail || "Erro ao lançar");
       }
-    } catch { alert("Erro de conexão"); }
+    } catch (err) { alert("Erro de conexão"); }
     finally { setEnviando(false); }
   }
 
@@ -673,7 +673,7 @@ export default function Home() {
                       body: JSON.stringify({ texto: descricao }),
                     });
                     setResultado(await res.json());
-                  } catch { alert("Erro ao classificar"); }
+                  } catch (_e) { alert("Erro ao classificar"); }
                   finally { setClassificando(false); }
                 }}
                 disabled={classificando || !descricao}
@@ -701,7 +701,7 @@ export default function Home() {
                         setSalvo(true); setDescricao(""); setValor(""); setResultado(null);
                         setTimeout(() => { setSalvo(false); setAba("dashboard"); }, 2000);
                       } else { alert("Erro ao salvar"); }
-                    } catch { alert("Erro de conexao"); }
+                    } catch (_e) { alert("Erro de conexao"); }
                     finally { setSalvando(false); }
                   }}
                   disabled={salvando}
@@ -770,8 +770,4 @@ export default function Home() {
     </div>
   );
 }
-
-// v4
-
-// v5-force
 
