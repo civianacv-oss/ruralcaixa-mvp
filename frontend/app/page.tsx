@@ -154,40 +154,36 @@ export default function Home() {
     if (!formValor || parseFloat(formValor) <= 0) return alert("Informe o valor");
 
     setEnviando(true);
-    try {
-      // Rateio usa percentuais padrao dos participantes
-      const rateio: RateioItem[] = consorcioSel.participantes.map(p => ({
-        produtor_id: p.produtor_id,
-        perc_rateio: p.perc_rateio,
-      }));
-
-      const res = await fetch(`${API}/consorcios/${consorcioSel.consorcio.id}/lancamentos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: formTipo,
-          descricao: formDesc,
-          valor: parseFloat(formValor),
-          data_lancamento: formData,
-          categoria: formCategoria || undefined,
-          observacao: formObs || undefined,
-          lancado_por: membroLancando.produtor_id,
-          rateio,
-        }),
-      });
-
+    const rateio: RateioItem[] = consorcioSel.participantes.map(p => ({
+      produtor_id: p.produtor_id,
+      perc_rateio: p.perc_rateio,
+    }));
+    const cid = consorcioSel.consorcio.id;
+    fetch(`${API}/consorcios/${cid}/lancamentos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: formTipo,
+        descricao: formDesc,
+        valor: parseFloat(formValor),
+        data_lancamento: formData,
+        categoria: formCategoria || undefined,
+        observacao: formObs || undefined,
+        lancado_por: membroLancando.produtor_id,
+        rateio,
+      }),
+    }).then(function(res) {
       if (res.ok) {
         setLancamentoOk(true);
         setFormDesc(""); setFormValor(""); setFormCategoria(""); setFormObs("");
         setMembroLancando(null);
-        await abrirConsorcio(consorcioSel.consorcio.id);
-        setTimeout(() => setLancamentoOk(false), 3000);
+        abrirConsorcio(cid);
+        setTimeout(function() { setLancamentoOk(false); }, 3000);
       } else {
-        const e = await res.json();
-        alert(e.detail || "Erro ao lancar");
+        res.json().then(function(e) { alert(e.detail || "Erro ao lancar"); });
       }
-    } catch (err) { alert("Erro de conexao"); }
-    finally { setEnviando(false); }
+    }).catch(function() { alert("Erro de conexao"); })
+      .finally(function() { setEnviando(false); });
   }
 
   const saldo = resumo.receita - resumo.despesa;
