@@ -53,6 +53,28 @@ type ConsorcioResumo = {
 
 type RateioItem = { produtor_id: number; perc_rateio: number };
 
+
+const CONTAS: Record<string, string> = {
+  "1.1":    "Receita Rural",
+  "1.1.1":  "Venda de Producao Vegetal",
+  "1.1.2":  "Venda de Producao Animal",
+  "3.1.1":  "Insumos (sementes/adubos)",
+  "3.1.2":  "Combustivel",
+  "3.1.3":  "Sanidade Animal",
+  "3.1.4":  "Mao de Obra",
+  "3.1.5":  "Manutencao e Reparos",
+  "3.1.6":  "Energia Eletrica",
+  "3.1.7":  "Arrendamento",
+  "3.9":    "Outras Despesas",
+  "5.1":    "Maquinas e Equipamentos",
+  "5.2":    "Obras e Benfeitorias",
+  "5.3":    "Animais para Investimento",
+};
+
+function nomeConta(codigo: string): string {
+  return CONTAS[codigo] || codigo;
+}
+
 const CORES = [
   "bg-green-100 text-green-800",
   "bg-blue-100 text-blue-800",
@@ -449,7 +471,7 @@ export default function Home() {
                 <div className="mt-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between">
                   <div className="text-xs text-green-700">
                     Sugestao: <span className="font-medium">{formTipo === "RECEITA" ? "Receita" : "Despesa"}</span>
-                    {classificacaoCons.conta ? " - " + classificacaoCons.conta : ""}
+                    {classificacaoCons.conta ? " - " + nomeConta(classificacaoCons.conta) : ""}
                   </div>
                   <button onClick={() => setClassificacaoCons(null)} className="text-xs text-gray-400">ajustar</button>
                 </div>
