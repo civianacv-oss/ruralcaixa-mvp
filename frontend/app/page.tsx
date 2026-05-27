@@ -57,15 +57,15 @@ export default function Home() {
   const [loadingLanc, setLoadingLanc] = useState(true);
   const [resumo, setResumo] = useState({ receita: 0, despesa: 0 });
 
-  // Consórcio — lista
+  // Consorcio -- lista
   const [consorcios, setConsorcios] = useState<Consorcio[]>([]);
   const [loadingCons, setLoadingCons] = useState(true);
 
-  // Consórcio — detalhe
+  // Consorcio -- detalhe
   const [consorcioSel, setConsorcioSel] = useState<ConsorcioResumo | null>(null);
   const [loadingResumo, setLoadingResumo] = useState(false);
 
-  // Consórcio — formulário de lançamento
+  // Consorcio -- formulario de lancamento
   const [membroLancando, setMembroLancando] = useState<Participante | null>(null);
   const [formTipo, setFormTipo] = useState("DESPESA");
   const [formDesc, setFormDesc] = useState("");
@@ -78,7 +78,7 @@ export default function Home() {
   const [classificandoCons, setClassificandoCons] = useState(false);
   const [classificacaoCons, setClassificacaoCons] = useState<any>(null);
 
-  // Lançamento individual dashboard
+  // Lancamento individual dashboard
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [data, setData] = useState(new Date().toISOString().slice(0, 10));
@@ -103,7 +103,7 @@ export default function Home() {
       }).catch(() => {});
   }, [salvo, lancamentoOk]);
 
-  // Carregar consórcios
+  // Carregar consorcios
   useEffect(() => {
     if (aba === "consorcio") {
       setLoadingCons(true);
@@ -124,7 +124,7 @@ export default function Home() {
     setLoadingResumo(false);
   }
 
-  // Classificação automática da descrição do consórcio (debounce 800ms)
+  // Classificacao automatica da descricao do consorcio (debounce 800ms)
   useEffect(() => {
     if (!formDesc.trim() || formDesc.length < 5) {
       setClassificacaoCons(null);
@@ -150,12 +150,12 @@ export default function Home() {
 
 
     if (!membroLancando || !consorcioSel) return;
-    if (!formDesc.trim()) return alert("Informe a descrição");
+    if (!formDesc.trim()) return alert("Informe a descricao");
     if (!formValor || parseFloat(formValor) <= 0) return alert("Informe o valor");
 
     setEnviando(true);
     try {
-      // Rateio usa percentuais padrão dos participantes
+      // Rateio usa percentuais padrao dos participantes
       const rateio: RateioItem[] = consorcioSel.participantes.map(p => ({
         produtor_id: p.produtor_id,
         perc_rateio: p.perc_rateio,
@@ -184,9 +184,9 @@ export default function Home() {
         setTimeout(() => setLancamentoOk(false), 3000);
       } else {
         const e = await res.json();
-        alert(e.detail || "Erro ao lançar");
+        alert(e.detail || "Erro ao lancar");
       }
-    } catch (err) { alert("Erro de conexão"); }
+    } catch (err) { alert("Erro de conexao"); }
     finally { setEnviando(false); }
   }
 
@@ -244,11 +244,11 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl">🤝</div>
               <div className="text-left">
-                <div className="text-sm font-medium text-gray-800">Consórcios Rurais</div>
-                <div className="text-xs text-gray-400">Lançamentos coletivos e rateio</div>
+                <div className="text-sm font-medium text-gray-800">Consorcios Rurais</div>
+                <div className="text-xs text-gray-400">Lancamentos coletivos e rateio</div>
               </div>
             </div>
-            <span className="text-gray-400 text-lg">→</span>
+            <span className="text-gray-400 text-lg">></span>
           </button>
 
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -258,7 +258,7 @@ export default function Home() {
             {loadingLanc ? (
               <div className="text-center text-gray-400 py-6 text-sm">Carregando...</div>
             ) : lancamentos.length === 0 ? (
-              <div className="text-center text-gray-400 py-6 text-sm">Nenhum lançamento este mês</div>
+              <div className="text-center text-gray-400 py-6 text-sm">Nenhum lancamento este mes</div>
             ) : lancamentos.slice(0, 5).map(l => (
               <div key={l.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0">
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg ${
@@ -283,19 +283,19 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── CONSÓRCIO — LISTA ── */}
+      {/* ── CONSÓRCIO -- LISTA ── */}
       {aba === "consorcio" && !consorcioSel && !loadingResumo && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">← Voltar</button>
-            <div className="text-lg font-medium">Consórcios Rurais</div>
+            <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">< Voltar</button>
+            <div className="text-lg font-medium">Consorcios Rurais</div>
           </div>
           {loadingCons ? (
             <div className="text-center text-gray-400 py-10">Carregando...</div>
           ) : consorcios.length === 0 ? (
             <div className="bg-white rounded-xl p-8 shadow-sm text-center">
               <div className="text-4xl mb-3">🤝</div>
-              <div className="text-gray-500 text-sm">Nenhum consórcio encontrado</div>
+              <div className="text-gray-500 text-sm">Nenhum consorcio encontrado</div>
             </div>
           ) : consorcios.map(c => (
             <button key={c.id} onClick={() => abrirConsorcio(c.id)}
@@ -318,22 +318,22 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── CONSÓRCIO — CARREGANDO RESUMO ── */}
+      {/* ── CONSÓRCIO -- CARREGANDO RESUMO ── */}
       {aba === "consorcio" && loadingResumo && (
-        <div className="p-4 text-center text-gray-400 py-20">Carregando consórcio...</div>
+        <div className="p-4 text-center text-gray-400 py-20">Carregando consorcio...</div>
       )}
 
-      {/* ── CONSÓRCIO — DETALHE COM MEMBROS ── */}
+      {/* ── CONSÓRCIO -- DETALHE COM MEMBROS ── */}
       {aba === "consorcio" && consorcioSel && !membroLancando && !loadingResumo && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => setConsorcioSel(null)} className="text-green-800 font-medium">← Voltar</button>
+            <button onClick={() => setConsorcioSel(null)} className="text-green-800 font-medium">< Voltar</button>
             <div className="text-lg font-medium truncate">{consorcioSel.consorcio.nome}</div>
           </div>
 
           {lancamentoOk && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center text-green-700 text-sm font-medium">
-              ✅ Lançamento enviado para votação!
+              ✅ Lancamento enviado para votacao!
             </div>
           )}
 
@@ -359,7 +359,7 @@ export default function Home() {
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
               <span>⏳</span>
               <div className="text-sm text-amber-800">
-                {consorcioSel.lancamentos.pendentes} lançamento{consorcioSel.lancamentos.pendentes > 1 ? "s" : ""} aguardando aprovação
+                {consorcioSel.lancamentos.pendentes} lancamento{consorcioSel.lancamentos.pendentes > 1 ? "s" : ""} aguardando aprovacao
               </div>
             </div>
           )}
@@ -367,8 +367,8 @@ export default function Home() {
           {/* Membros em destaque */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b">
-              <div className="text-sm font-semibold text-gray-700">Membros do consórcio</div>
-              <div className="text-xs text-gray-400 mt-0.5">Toque no seu nome para lançar</div>
+              <div className="text-sm font-semibold text-gray-700">Membros do consorcio</div>
+              <div className="text-xs text-gray-400 mt-0.5">Toque no seu nome para lancar</div>
             </div>
 
             {consorcioSel.participantes.map((p, i) => {
@@ -410,9 +410,9 @@ export default function Home() {
                   {/* Saldo individual */}
                   <div className="text-right flex-shrink-0">
                     <div className={`text-sm font-semibold ${resultado >= 0 ? "text-green-700" : "text-red-600"}`}>
-                      {resultado !== 0 ? fmt(Math.abs(resultado)) : "—"}
+                      {resultado !== 0 ? fmt(Math.abs(resultado)) : "--"}
                     </div>
-                    <div className="text-xs text-green-700 mt-1">+ Lançar →</div>
+                    <div className="text-xs text-green-700 mt-1">+ Lançar ></div>
                   </div>
                 </button>
               );
@@ -440,11 +440,11 @@ export default function Home() {
       {aba === "consorcio" && consorcioSel && membroLancando && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMembroLancando(null)} className="text-green-800 font-medium">← Voltar</button>
-            <div className="text-lg font-medium">Novo lançamento</div>
+            <button onClick={() => setMembroLancando(null)} className="text-green-800 font-medium">< Voltar</button>
+            <div className="text-lg font-medium">Novo lancamento</div>
           </div>
 
-          {/* Quem está lançando */}
+          {/* Quem esta lançando */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${cores[consorcioSel.participantes.findIndex(p => p.produtor_id === membroLancando.produtor_id) % cores.length]}`}>
               {membroLancando.nome.charAt(0)}
@@ -473,7 +473,7 @@ export default function Home() {
 
           <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
             <div>
-              <label className="text-xs text-gray-500">Descrição *</label>
+              <label className="text-xs text-gray-500">Descricao *</label>
               <input
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
                 placeholder="Ex: Compra de adubo NPK"
@@ -524,7 +524,7 @@ export default function Home() {
               </label>
               <input
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
-                placeholder="Ex: Insumos, Combustível..."
+                placeholder="Ex: Insumos, Combustivel..."
                 value={formCategoria}
                 onChange={e => setFormCategoria(e.target.value)}
               />
@@ -558,7 +558,7 @@ export default function Home() {
                       {p.nome.split(" ")[0]}
                     </span>
                     <span className="text-gray-500">
-                      {p.perc_rateio}% → {fmt(parseFloat(formValor) * p.perc_rateio / 100)}
+                      {p.perc_rateio}% > {fmt(parseFloat(formValor) * p.perc_rateio / 100)}
                     </span>
                   </div>
                 ))}
@@ -569,7 +569,7 @@ export default function Home() {
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
-            ℹ️ Este lançamento será enviado para aprovação dos demais participantes (maioria simples)
+            ℹ️ Este lancamento sera enviado para aprovacao dos demais participantes (maioria simples)
           </div>
 
           <button
@@ -577,7 +577,7 @@ export default function Home() {
             disabled={enviando || !formDesc || !formValor}
             className="w-full bg-green-800 text-white py-4 rounded-xl text-sm font-medium disabled:bg-gray-300"
           >
-            {enviando ? "Enviando..." : "Enviar para votação"}
+            {enviando ? "Enviando..." : "Enviar para votacao"}
           </button>
         </div>
       )}
@@ -586,7 +586,7 @@ export default function Home() {
       {aba === "novo" && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => { setAba("dashboard"); setResultado(null); }} className="text-green-800 font-medium">← Voltar</button>
+            <button onClick={() => { setAba("dashboard"); setResultado(null); }} className="text-green-800 font-medium">< Voltar</button>
             <div className="text-lg font-medium">Novo lancamento</div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -729,15 +729,15 @@ export default function Home() {
             </div>
             <a href="/cadastro" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
               <div className="flex items-center gap-3"><span className="text-xl">➕</span><span className="text-sm text-gray-700">Cadastrar novo produtor</span></div>
-              <span className="text-gray-400">→</span>
+              <span className="text-gray-400">></span>
             </a>
             <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
               <div className="flex items-center gap-3"><span className="text-xl">🧮</span><span className="text-sm text-gray-700">Painel do contador</span></div>
-              <span className="text-gray-400">→</span>
+              <span className="text-gray-400">></span>
             </a>
             <a href="/relatorio" className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
               <div className="flex items-center gap-3"><span className="text-xl">📄</span><span className="text-sm text-gray-700">Relatorio LCDPR</span></div>
-              <span className="text-gray-400">→</span>
+              <span className="text-gray-400">></span>
             </a>
           </div>
         </div>
@@ -748,7 +748,7 @@ export default function Home() {
         {[
           { id: "dashboard", icon: "🏠", label: "Inicio" },
           { id: "novo", icon: "➕", label: "Lancar" },
-          { id: "consorcio", icon: "🤝", label: "Consórcio" },
+          { id: "consorcio", icon: "🤝", label: "Consorcio" },
           { id: "relatorio", icon: "📊", label: "Relatorio", href: "/relatorio" },
           { id: "perfil", icon: "👤", label: "Perfil" },
         ].map(n => (
