@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
-const PRODUTOR_ID = 1; // TODO: pegar do contexto/auth
+const PRODUTOR_ID = 1;
 
 type Lancamento = {
   id: number;
@@ -14,6 +14,36 @@ type Lancamento = {
   conta_codigo: string;
   produto: string | null;
   atividade: string | null;
+};
+
+type Consorcio = {
+  id: string;
+  nome: string;
+  safra: string | null;
+  cultura: string | null;
+  status: string;
+  imovel_nome?: string;
+  total_participantes?: number;
+  total_lancamentos?: number;
+};
+
+type ConsorcioResumo = {
+  consorcio: Consorcio;
+  lancamentos: {
+    pendentes: number;
+    aprovados: number;
+    receita: number;
+    despesa: number;
+    saldo: number;
+  };
+  participantes: {
+    produtor_id: number;
+    nome: string;
+    perc_rateio: number;
+    receita_cota: number;
+    despesa_cota: number;
+    cotas_importadas: number;
+  }[];
 };
 
 export default function Home() {
@@ -31,6 +61,12 @@ export default function Home() {
   const [loadingLanc, setLoadingLanc] = useState(true);
   const [resumo, setResumo] = useState({ receita: 0, despesa: 0 });
 
+  // Consórcio
+  const [consorcios, setConsorcios] = useState<Consorcio[]>([]);
+  const [loadingCons, setLoadingCons] = useState(true);
+  const [consorcioSel, setConsorcioSel] = useState<ConsorcioResumo | null>(null);
+  const [loadingResumo, setLoadingResumo] = useState(false);
+
   useEffect(() => {
     fetch(`${API}/produtores/${PRODUTOR_ID}/lancamentos`)
       .then(r => r.json())
@@ -46,65 +82,45 @@ export default function Home() {
       .catch(() => {});
   }, [salvo]);
 
-  const saldo = resumo.receita - resumo.despesa;
-
-  async function classificar() {
-    if (!descricao) return alert("Digite uma descricao");
-    setClassificando(true);
-    setResultado(null);
-    try {
-      const res = await fetch(`${API}/classificar-texto`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto: descricao }),
-      });
-      const data = await res.json();
-      setResultado(data);
-      if (data.atividade) setAtividade(data.atividade);
-    } catch {
-      alert("Erro ao classificar. Tente novamente.");
-    } finally {
-      setClassificando(false);
+  useEffect(() => {
+    if (aba === "consorcio") {
+      setLoadingCons(true);
+      fetch(`${API}/consorcios`)
+        .then(r => r.json())
+        .then(data => { setConsorcios(data); setLoadingCons(false); })
+        .catch(() => setLoadingCons(false));
     }
+  }, [aba]);
+
+  async function abrirConsorcio(id: string) {
+    setLoadingResumo(true);
+    try {
+      const r = await fetch(`${API}/consorcios/${id}/resumo`);
+      const data = await r.json();
+      setConsorcioSel(data);
+    } catch {}
+    setLoadingResumo(false);
   }
 
-  async function salvarLancamento() {
-    if (!resultado) return;
-    setSalvando(true);
-    try {
-      const res = await fetch(`${API}/lancamentos`, {
+  async function importarCota(consorcioId: string, lancamentoId: string) {
+    const r = await fetch(
+      `${API}/consorcios/${consorcioId}/lancamentos/${lancamentoId}/importar-dre`,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          produtor_id: PRODUTOR_ID,
-          conta_codigo: resultado.conta,
-          tipo: resultado.tipo,
-          descricao: descricao,
-          valor: parseFloat(valor) || resultado.valor,
-          data_lancamento: data,
-          origem: "manual",
-          confirmado: true,
-          atividade: atividade,
-          "perc_participacao": parseFloat(participacao),
-        }),
-      });
-      if (res.ok) {
-        setSalvo(true);
-        setDescricao("");
-        setValor("");
-        setResultado(null);
-        setAtividade("rural");
-        setTimeout(() => { setSalvo(false); setAba("dashboard"); }, 2000);
-      } else {
-        alert("Erro ao salvar");
+        body: JSON.stringify({ produtor_id: PRODUTOR_ID }),
       }
-    } catch {
-      alert("Erro de conexao");
-    } finally {
-      setSalvando(false);
+    );
+    if (r.ok) {
+      alert("Cota importada para o DRE!");
+      if (consorcioSel) abrirConsorcio(consorcioSel.consorcio.id);
+    } else {
+      const e = await r.json();
+      alert(e.detail || "Erro ao importar");
     }
   }
 
+  const saldo = resumo.receita - resumo.despesa;
   const fmt = (v: number) => `R$ ${v.toLocaleString("pt-BR")}`;
 
   return (
@@ -115,6 +131,7 @@ export default function Home() {
         <div className="text-xs opacity-70 mt-1">{new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</div>
       </div>
 
+      {/* ── DASHBOARD ── */}
       {aba === "dashboard" && (
         <div className="p-4 space-y-4 pb-24">
           <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -147,6 +164,21 @@ export default function Home() {
             </a>
           </div>
 
+          {/* Card de consórcios ativos */}
+          <button
+            onClick={() => setAba("consorcio")}
+            className="w-full bg-white rounded-xl p-4 shadow-sm flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl">🤝</div>
+              <div className="text-left">
+                <div className="text-sm font-medium text-gray-800">Consórcios Rurais</div>
+                <div className="text-xs text-gray-400">Lançamentos coletivos e rateio</div>
+              </div>
+            </div>
+            <span className="text-gray-400 text-lg">→</span>
+          </button>
+
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
               Ultimos lancamentos
@@ -167,13 +199,7 @@ export default function Home() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{l.descricao || l.produto || l.conta_codigo}</div>
                     <div className="text-xs text-gray-400 mt-0.5">
-                      {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""} ·{" "}
-                      <span className="text-green-600">
-                        {"RURAL" === l.atividade ? "rural" : l.atividade || ""}
-                      </span>
-                      {l.atividade && l.atividade !== "rural" && (
-                        <span className="ml-1 text-purple-500">· {l.atividade}</span>
-                      )}
+                      {l.data_lancamento ? l.data_lancamento.slice(0,10).split("-").reverse().join("/") : ""}
                     </div>
                   </div>
                   <div className={`text-sm font-medium ${
@@ -190,6 +216,199 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── CONSÓRCIO ── */}
+      {aba === "consorcio" && !consorcioSel && (
+        <div className="p-4 space-y-4 pb-24">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">← Voltar</button>
+            <div className="text-lg font-medium">Consórcios Rurais</div>
+          </div>
+
+          {loadingCons ? (
+            <div className="text-center text-gray-400 py-10 text-sm">Carregando...</div>
+          ) : consorcios.length === 0 ? (
+            <div className="bg-white rounded-xl p-8 shadow-sm text-center">
+              <div className="text-4xl mb-3">🤝</div>
+              <div className="text-gray-500 text-sm">Nenhum consórcio encontrado</div>
+              <div className="text-gray-400 text-xs mt-1">Os consórcios são criados pelo administrador</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {consorcios.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => abrirConsorcio(c.id)}
+                  className="w-full bg-white rounded-xl p-4 shadow-sm text-left"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium text-gray-800">{c.nome}</div>
+                      {c.cultura && (
+                        <div className="text-xs text-green-700 mt-0.5">{c.cultura} {c.safra && `· Safra ${c.safra}`}</div>
+                      )}
+                      {c.imovel_nome && (
+                        <div className="text-xs text-gray-400 mt-0.5">📍 {c.imovel_nome}</div>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        c.status === "ativo" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                      }`}>
+                        {c.status}
+                      </span>
+                      {c.total_participantes !== undefined && (
+                        <span className="text-xs text-gray-400">{c.total_participantes} participantes</span>
+                      )}
+                    </div>
+                  </div>
+                  {c.total_lancamentos !== undefined && (
+                    <div className="mt-2 text-xs text-gray-400">
+                      {c.total_lancamentos} lançamento{c.total_lancamentos !== 1 ? "s" : ""}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── RESUMO DO CONSÓRCIO ── */}
+      {aba === "consorcio" && consorcioSel && (
+        <div className="p-4 space-y-4 pb-24">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setConsorcioSel(null)} className="text-green-800 font-medium">← Voltar</button>
+            <div className="text-lg font-medium truncate">{consorcioSel.consorcio.nome}</div>
+          </div>
+
+          {loadingResumo ? (
+            <div className="text-center text-gray-400 py-10">Carregando...</div>
+          ) : (
+            <>
+              {/* Cards de totais */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+                  <div className="text-xs text-gray-400">Receita</div>
+                  <div className="text-sm font-semibold text-green-700 mt-1">
+                    {fmt(consorcioSel.lancamentos.receita)}
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+                  <div className="text-xs text-gray-400">Despesa</div>
+                  <div className="text-sm font-semibold text-red-600 mt-1">
+                    {fmt(consorcioSel.lancamentos.despesa)}
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+                  <div className="text-xs text-gray-400">Saldo</div>
+                  <div className={`text-sm font-semibold mt-1 ${
+                    consorcioSel.lancamentos.saldo >= 0 ? "text-green-700" : "text-red-600"
+                  }`}>
+                    {fmt(consorcioSel.lancamentos.saldo)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Pendentes */}
+              {consorcioSel.lancamentos.pendentes > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2">
+                  <span className="text-lg">⏳</span>
+                  <div>
+                    <div className="text-sm font-medium text-amber-800">
+                      {consorcioSel.lancamentos.pendentes} lançamento{consorcioSel.lancamentos.pendentes > 1 ? "s" : ""} aguardando aprovação
+                    </div>
+                    <div className="text-xs text-amber-600">Acesse o Swagger para votar</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Participantes e cotas */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Participantes e cotas
+                </div>
+                {consorcioSel.participantes.map(p => (
+                  <div key={p.produtor_id} className="px-4 py-3 border-b last:border-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-sm">
+                          {p.nome.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-800">{p.nome}</div>
+                          <div className="text-xs text-gray-400">{p.perc_rateio}% do rateio</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {p.despesa_cota > 0 && (
+                          <div className="text-sm text-red-600">-{fmt(p.despesa_cota)}</div>
+                        )}
+                        {p.receita_cota > 0 && (
+                          <div className="text-sm text-green-700">+{fmt(p.receita_cota)}</div>
+                        )}
+                        {p.cotas_importadas > 0 && (
+                          <div className="text-xs text-gray-400 mt-0.5">✅ importado DRE</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botão importar para DRE — só para o produtor logado com cota não importada */}
+                    {p.produtor_id === PRODUTOR_ID && p.cotas_importadas === 0 &&
+                      (p.despesa_cota > 0 || p.receita_cota > 0) && (
+                      <button
+                        onClick={async () => {
+                          // Busca lançamentos aprovados para importar
+                          const r = await fetch(
+                            `${API}/consorcios/${consorcioSel.consorcio.id}/lancamentos?status=aprovado`
+                          );
+                          const lancs = await r.json();
+                          if (lancs.length > 0) {
+                            await importarCota(consorcioSel.consorcio.id, lancs[0].id);
+                          }
+                        }}
+                        className="mt-2 w-full text-xs bg-green-50 border border-green-200 text-green-700 py-1.5 rounded-lg"
+                      >
+                        Importar minha cota para o DRE
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Info do consórcio */}
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Detalhes</div>
+                <div className="space-y-1.5">
+                  {consorcioSel.consorcio.cultura && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Cultura</span>
+                      <span className="font-medium">{consorcioSel.consorcio.cultura}</span>
+                    </div>
+                  )}
+                  {consorcioSel.consorcio.safra && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Safra</span>
+                      <span className="font-medium">{consorcioSel.consorcio.safra}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Aprovados</span>
+                    <span className="font-medium text-green-700">{consorcioSel.lancamentos.aprovados}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Pendentes</span>
+                    <span className={`font-medium ${consorcioSel.lancamentos.pendentes > 0 ? "text-amber-600" : "text-gray-400"}`}>
+                      {consorcioSel.lancamentos.pendentes}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── NOVO LANÇAMENTO ── */}
       {aba === "novo" && (
         <div className="p-4 space-y-4 pb-24">
           <div className="flex items-center gap-3">
@@ -250,7 +469,6 @@ export default function Home() {
                 />
               </div>
             </div>
-
             <div>
               <label className="text-xs text-gray-500">Tipo de atividade</label>
               <select
@@ -263,22 +481,14 @@ export default function Home() {
                 <option value="servico">Prestação de Serviços</option>
               </select>
             </div>
-
             <div>
               <label className="text-xs text-gray-500">Sua participação (%)</label>
               <input
-                type="number"
-                min="1"
-                max="100"
+                type="number" min="1" max="100"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
                 value={participacao}
                 onChange={e => setParticipacao(e.target.value)}
               />
-              {parseFloat(participacao) < 100 && valor && (
-                <div className="text-xs text-green-700 mt-1">
-                  Valor proporcional: R$ {(parseFloat(valor) * parseFloat(participacao) / 100).toLocaleString("pt-BR")}
-                </div>
-              )}
             </div>
 
             {resultado && (
@@ -286,7 +496,7 @@ export default function Home() {
                 <div className="font-medium text-gray-700">Classificacao sugerida:</div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Tipo</span>
-                  <span className={resultado.tipo === "receita" ? "text-green-700 font-medium" : resultado.tipo === "despesa" ? "text-red-600 font-medium" : "text-blue-700 font-medium"}>
+                  <span className={resultado.tipo === "receita" ? "text-green-700 font-medium" : "text-red-600 font-medium"}>
                     {resultado.tipo?.toUpperCase()}
                   </span>
                 </div>
@@ -294,28 +504,24 @@ export default function Home() {
                   <span className="text-gray-500">Conta</span>
                   <span className="font-medium">{resultado.conta}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Valor</span>
-                  <span className="font-medium">R$ {resultado.valor?.toLocaleString("pt-BR")}</span>
-                </div>
-                {resultado.produto && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Produto</span>
-                    <span className="font-medium">{resultado.produto}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Atividade</span>
-                  <span className={`font-medium ${atividade === "rural" ? "text-green-700" : "text-purple-600"}`}>
-                    {atividade === "rural" ? "Rural (LCDPR)" : atividade === "intermediacao" ? "Intermediação" : "Serviço"}
-                  </span>
-                </div>
               </div>
             )}
 
             {!resultado ? (
               <button
-                onClick={classificar}
+                onClick={async () => {
+                  if (!descricao) return alert("Digite uma descricao");
+                  setClassificando(true);
+                  try {
+                    const res = await fetch(`${API}/classificar-texto`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ texto: descricao }),
+                    });
+                    setResultado(await res.json());
+                  } catch { alert("Erro ao classificar"); }
+                  finally { setClassificando(false); }
+                }}
                 disabled={classificando || !descricao}
                 className="w-full bg-green-800 text-white py-3 rounded-lg text-sm font-medium disabled:bg-gray-300"
               >
@@ -324,7 +530,37 @@ export default function Home() {
             ) : (
               <div className="flex gap-3">
                 <button onClick={() => setResultado(null)} className="flex-1 py-3 rounded-lg text-sm border border-gray-200">Corrigir</button>
-                <button onClick={salvarLancamento} disabled={salvando} className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400">
+                <button
+                  onClick={async () => {
+                    setSalvando(true);
+                    try {
+                      const res = await fetch(`${API}/lancamentos`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          produtor_id: PRODUTOR_ID,
+                          conta_codigo: resultado.conta,
+                          tipo: resultado.tipo,
+                          descricao,
+                          valor: parseFloat(valor) || resultado.valor,
+                          data_lancamento: data,
+                          origem: "manual",
+                          confirmado: true,
+                          atividade,
+                          perc_participacao: parseFloat(participacao),
+                        }),
+                      });
+                      if (res.ok) {
+                        setSalvo(true);
+                        setDescricao(""); setValor(""); setResultado(null);
+                        setTimeout(() => { setSalvo(false); setAba("dashboard"); }, 2000);
+                      } else { alert("Erro ao salvar"); }
+                    } catch { alert("Erro de conexao"); }
+                    finally { setSalvando(false); }
+                  }}
+                  disabled={salvando}
+                  className="flex-1 py-3 rounded-lg text-sm font-medium text-white bg-green-800 disabled:bg-gray-400"
+                >
                   {salvando ? "Salvando..." : "Confirmar"}
                 </button>
               </div>
@@ -333,6 +569,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── PERFIL ── */}
       {aba === "perfil" && (
         <div className="p-4 space-y-4 pb-24">
           <div className="text-lg font-medium text-gray-700 px-1">Perfil</div>
@@ -353,11 +590,7 @@ export default function Home() {
               <span className="text-gray-400">→</span>
             </a>
             <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
-              <div className="flex items-center gap-3"><span className="text-xl">🧮</span><span className="text-sm text-gray-700">Cadastrar contador</span></div>
-              <span className="text-gray-400">→</span>
-            </a>
-            <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
-              <div className="flex items-center gap-3"><span className="text-xl">📊</span><span className="text-sm text-gray-700">Painel do contador</span></div>
+              <div className="flex items-center gap-3"><span className="text-xl">🧮</span><span className="text-sm text-gray-700">Painel do contador</span></div>
               <span className="text-gray-400">→</span>
             </a>
             <a href="/relatorio" className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
@@ -365,17 +598,15 @@ export default function Home() {
               <span className="text-gray-400">→</span>
             </a>
           </div>
-          <a href="/cadastro" className="w-full bg-green-800 text-white py-4 rounded-xl text-sm font-medium flex items-center justify-center gap-2 block text-center">
-            ➕ Cadastrar novo produtor
-          </a>
         </div>
       )}
 
-      {/* Bottom nav */}
+      {/* ── BOTTOM NAV ── */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t flex">
         {[
           { id: "dashboard", icon: "🏠", label: "Inicio" },
           { id: "novo", icon: "➕", label: "Lancar" },
+          { id: "consorcio", icon: "🤝", label: "Consórcio" },
           { id: "relatorio", icon: "📊", label: "Relatorio", href: "/relatorio" },
           { id: "perfil", icon: "👤", label: "Perfil" },
         ].map(n => (
@@ -385,7 +616,8 @@ export default function Home() {
               <span className="text-xs">{n.label}</span>
             </a>
           ) : (
-            <button key={n.id} onClick={() => setAba(n.id)} className={`flex-1 py-3 flex flex-col items-center gap-1 ${aba === n.id ? "text-green-800" : "text-gray-400"}`}>
+            <button key={n.id} onClick={() => { setAba(n.id); setConsorcioSel(null); }}
+              className={`flex-1 py-3 flex flex-col items-center gap-1 ${aba === n.id ? "text-green-800" : "text-gray-400"}`}>
               <span className="text-xl">{n.icon}</span>
               <span className="text-xs">{n.label}</span>
             </button>
@@ -395,5 +627,3 @@ export default function Home() {
     </div>
   );
 }
-// rebuild
-// rebuild
