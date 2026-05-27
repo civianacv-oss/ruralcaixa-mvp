@@ -287,7 +287,7 @@ export default function Home() {
       {aba === "consorcio" && !consorcioSel && !loadingResumo && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">< Voltar</button>
+            <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">Voltar</button>
             <div className="text-lg font-medium">Consorcios Rurais</div>
           </div>
           {loadingCons ? (
@@ -327,7 +327,7 @@ export default function Home() {
       {aba === "consorcio" && consorcioSel && !membroLancando && !loadingResumo && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => setConsorcioSel(null)} className="text-green-800 font-medium">< Voltar</button>
+            <button onClick={() => setConsorcioSel(null)} className="text-green-800 font-medium">Voltar</button>
             <div className="text-lg font-medium truncate">{consorcioSel.consorcio.nome}</div>
           </div>
 
@@ -440,7 +440,7 @@ export default function Home() {
       {aba === "consorcio" && consorcioSel && membroLancando && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMembroLancando(null)} className="text-green-800 font-medium">< Voltar</button>
+            <button onClick={() => setMembroLancando(null)} className="text-green-800 font-medium">Voltar</button>
             <div className="text-lg font-medium">Novo lancamento</div>
           </div>
 
@@ -586,7 +586,7 @@ export default function Home() {
       {aba === "novo" && (
         <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
-            <button onClick={() => { setAba("dashboard"); setResultado(null); }} className="text-green-800 font-medium">< Voltar</button>
+            <button onClick={() => { setAba("dashboard"); setResultado(null); }} className="text-green-800 font-medium">Voltar</button>
             <div className="text-lg font-medium">Novo lancamento</div>
           </div>
           <div className="grid grid-cols-2 gap-3">
