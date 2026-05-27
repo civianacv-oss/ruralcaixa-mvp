@@ -225,7 +225,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto">
       <div className="bg-green-800 text-white px-4 py-4">
         <div className="text-xs opacity-70">Rural Caixa PF</div>
-        <div className="text-lg font-medium">Joao Batista Neves</div>
+        <div className="text-lg font-medium">Cicero Viana de Souza</div>
         <div className="text-xs opacity-70 mt-1">
           {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
         </div>
@@ -653,7 +653,7 @@ export default function Home() {
             <div className="px-4 py-4 border-b flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-2xl font-bold text-green-800">J</div>
               <div>
-                <div className="font-medium text-gray-800">Joao Batista Neves</div>
+                <div className="font-medium text-gray-800">Cicero Viana de Souza</div>
                 <div className="text-xs text-gray-400">Produtor rural</div>
               </div>
             </div>
