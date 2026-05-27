@@ -248,7 +248,7 @@ export default function Home() {
                 <div className="text-xs text-gray-400">Lancamentos coletivos e rateio</div>
               </div>
             </div>
-            <span className="text-gray-400 text-lg">></span>
+            <span className="text-gray-400 text-lg">&gt;</span>
           </button>
 
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -412,7 +412,7 @@ export default function Home() {
                     <div className={`text-sm font-semibold ${resultado >= 0 ? "text-green-700" : "text-red-600"}`}>
                       {resultado !== 0 ? fmt(Math.abs(resultado)) : "--"}
                     </div>
-                    <div className="text-xs text-green-700 mt-1">+ Lançar ></div>
+                    <div className="text-xs text-green-700 mt-1">+ Lancar </div>
                   </div>
                 </button>
               );
@@ -558,7 +558,7 @@ export default function Home() {
                       {p.nome.split(" ")[0]}
                     </span>
                     <span className="text-gray-500">
-                      {p.perc_rateio}% > {fmt(parseFloat(formValor) * p.perc_rateio / 100)}
+                      {p.perc_rateio}% &gt; {fmt(parseFloat(formValor) * p.perc_rateio / 100)}
                     </span>
                   </div>
                 ))}
@@ -729,15 +729,15 @@ export default function Home() {
             </div>
             <a href="/cadastro" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
               <div className="flex items-center gap-3"><span className="text-xl">➕</span><span className="text-sm text-gray-700">Cadastrar novo produtor</span></div>
-              <span className="text-gray-400">></span>
+              <span className="text-gray-400">&gt;</span>
             </a>
             <a href="/contador" className="flex items-center justify-between px-4 py-3 border-b hover:bg-gray-50">
               <div className="flex items-center gap-3"><span className="text-xl">🧮</span><span className="text-sm text-gray-700">Painel do contador</span></div>
-              <span className="text-gray-400">></span>
+              <span className="text-gray-400">&gt;</span>
             </a>
             <a href="/relatorio" className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
               <div className="flex items-center gap-3"><span className="text-xl">📄</span><span className="text-sm text-gray-700">Relatorio LCDPR</span></div>
-              <span className="text-gray-400">></span>
+              <span className="text-gray-400">&gt;</span>
             </a>
           </div>
         </div>
@@ -771,5 +771,3 @@ export default function Home() {
   );
 }
 
-
-// build-ok
