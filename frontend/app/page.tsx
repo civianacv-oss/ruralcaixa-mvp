@@ -75,6 +75,8 @@ export default function Home() {
   const [formObs, setFormObs] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [lancamentoOk, setLancamentoOk] = useState(false);
+  const [classificandoCons, setClassificandoCons] = useState(false);
+  const [classificacaoCons, setClassificacaoCons] = useState<any>(null);
 
   // Lançamento individual dashboard
   const [descricao, setDescricao] = useState("");
@@ -122,7 +124,31 @@ export default function Home() {
     setLoadingResumo(false);
   }
 
-  async function enviarLancamento() {
+  // Classificação automática da descrição do consórcio (debounce 800ms)
+  useEffect(() => {
+    if (!formDesc.trim() || formDesc.length < 5) {
+      setClassificacaoCons(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setClassificandoCons(true);
+      try {
+        const res = await fetch(`${API}/classificar-texto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ texto: formDesc }),
+        });
+        const data = await res.json();
+        setClassificacaoCons(data);
+        if (data.tipo) setFormTipo(data.tipo.toUpperCase() === "RECEITA" ? "RECEITA" : "DESPESA");
+        if (data.conta) setFormCategoria(data.conta);
+      } catch {}
+      finally { setClassificandoCons(false); }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [formDesc]);
+
+
     if (!membroLancando || !consorcioSel) return;
     if (!formDesc.trim()) return alert("Informe a descrição");
     if (!formValor || parseFloat(formValor) <= 0) return alert("Informe o valor");
@@ -452,8 +478,20 @@ export default function Home() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
                 placeholder="Ex: Compra de adubo NPK"
                 value={formDesc}
-                onChange={e => setFormDesc(e.target.value)}
+                onChange={e => { setFormDesc(e.target.value); setClassificacaoCons(null); }}
               />
+              {classificandoCons && (
+                <div className="text-xs text-gray-400 mt-1">🔍 Classificando...</div>
+              )}
+              {classificacaoCons && !classificandoCons && (
+                <div className="mt-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <div className="text-xs text-green-700">
+                    ✅ <span className="font-medium">{formTipo === "RECEITA" ? "Receita" : "Despesa"}</span>
+                    {classificacaoCons.conta && ` · ${classificacaoCons.conta}`}
+                  </div>
+                  <button onClick={() => setClassificacaoCons(null)} className="text-xs text-gray-400">ajustar</button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -731,4 +769,4 @@ export default function Home() {
   );
 }
 
-// v2
+// v3
