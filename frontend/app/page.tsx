@@ -210,7 +210,7 @@ export default function Home() {
 
       {/* ── DASHBOARD ── */}
       {aba === "dashboard" && (
-        <div className="p-4 space-y-4 pb-24">
+        <div className="p-4 space-y-4 pb-32">
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <div className="text-xs text-gray-500 uppercase tracking-wide">Saldo do periodo</div>
             <div className={`text-3xl font-semibold mt-1 ${saldo >= 0 ? "text-green-700" : "text-red-600"}`}>
@@ -285,7 +285,7 @@ export default function Home() {
 
       {/* ── CONSÓRCIO — LISTA ── */}
       {aba === "consorcio" && !consorcioSel && !loadingResumo && (
-        <div className="p-4 space-y-4 pb-24">
+        <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
             <button onClick={() => setAba("dashboard")} className="text-green-800 font-medium">← Voltar</button>
             <div className="text-lg font-medium">Consórcios Rurais</div>
@@ -325,7 +325,7 @@ export default function Home() {
 
       {/* ── CONSÓRCIO — DETALHE COM MEMBROS ── */}
       {aba === "consorcio" && consorcioSel && !membroLancando && !loadingResumo && (
-        <div className="p-4 space-y-4 pb-24">
+        <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
             <button onClick={() => setConsorcioSel(null)} className="text-green-800 font-medium">← Voltar</button>
             <div className="text-lg font-medium truncate">{consorcioSel.consorcio.nome}</div>
@@ -438,7 +438,7 @@ export default function Home() {
 
       {/* ── FORMULÁRIO DE LANÇAMENTO DO CONSÓRCIO ── */}
       {aba === "consorcio" && consorcioSel && membroLancando && (
-        <div className="p-4 space-y-4 pb-24">
+        <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
             <button onClick={() => setMembroLancando(null)} className="text-green-800 font-medium">← Voltar</button>
             <div className="text-lg font-medium">Novo lançamento</div>
@@ -517,21 +517,23 @@ export default function Home() {
             </div>
 
             <div>
-              <label className="text-xs text-gray-500">Categoria</label>
-              <select
+              <label className="text-xs text-gray-500">
+                Categoria
+                {classificandoCons && <span className="ml-2 text-gray-400">🔍 classificando...</span>}
+                {classificacaoCons && !classificandoCons && <span className="ml-2 text-green-600">✅ sugerida pela IA</span>}
+              </label>
+              <input
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-sm"
+                placeholder="Ex: Insumos, Combustível..."
                 value={formCategoria}
                 onChange={e => setFormCategoria(e.target.value)}
-              >
-                <option value="">Selecione...</option>
-                <option value="Insumos">Insumos</option>
-                <option value="Combustível">Combustível</option>
-                <option value="Mão de obra">Mão de obra</option>
-                <option value="Maquinário">Maquinário</option>
-                <option value="Transporte">Transporte</option>
-                <option value="Venda de produção">Venda de produção</option>
-                <option value="Outros">Outros</option>
-              </select>
+              />
+              {classificacaoCons && !classificandoCons && (
+                <div className="mt-1 text-xs text-gray-400">
+                  Tipo detectado: <span className={`font-medium ${formTipo === "RECEITA" ? "text-green-700" : "text-red-600"}`}>{formTipo}</span>
+                  {" · "}ajuste acima se necessário
+                </div>
+              )}
             </div>
 
             <div>
@@ -582,7 +584,7 @@ export default function Home() {
 
       {/* ── NOVO LANÇAMENTO INDIVIDUAL ── */}
       {aba === "novo" && (
-        <div className="p-4 space-y-4 pb-24">
+        <div className="p-4 space-y-4 pb-32">
           <div className="flex items-center gap-3">
             <button onClick={() => { setAba("dashboard"); setResultado(null); }} className="text-green-800 font-medium">← Voltar</button>
             <div className="text-lg font-medium">Novo lancamento</div>
@@ -715,7 +717,7 @@ export default function Home() {
 
       {/* ── PERFIL ── */}
       {aba === "perfil" && (
-        <div className="p-4 space-y-4 pb-24">
+        <div className="p-4 space-y-4 pb-32">
           <div className="text-lg font-medium text-gray-700 px-1">Perfil</div>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-4 border-b flex items-center gap-3">
@@ -769,4 +771,4 @@ export default function Home() {
   );
 }
 
-// v3
+// v4
