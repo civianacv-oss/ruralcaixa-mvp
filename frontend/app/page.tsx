@@ -689,6 +689,9 @@ export default function Home() {
         <a href="/relatorio" className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
           <span className="text-xs">Relatorio</span>
         </a>
+        <a href="/ovino" className="flex-1 py-3 flex flex-col items-center gap-1 text-gray-400">
+          <span className="text-xs">🐑 Ovino</span>
+        </a>
       </div>
     </div>
   );
