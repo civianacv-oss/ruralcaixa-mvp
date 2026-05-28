@@ -10,7 +10,7 @@ Adicione em main_api.py:
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import psycopg2
 import psycopg2.extras
 import logging
@@ -573,16 +573,22 @@ def reclassificar_rebanho(
                         VALUES (%s, %s, 'outro', CURRENT_DATE, %s, 'sistema')
                     """, (imovel_id, animal["id"], f"Reclassificado para {fase_destino}: {motivo}"))
                 alertas_criados_animal = 0
+                tarefas_criadas_animal = 0
                 if not config.dry_run:
                     from app.services.ovino_alertas import gerar_alertas_reclassificacao
                     alertas_criados_animal = gerar_alertas_reclassificacao(
+                        cur, imovel_id, animal["id"], lote_destino_id, fase_destino
+                    )
+                    from app.services.ovino_tarefas import gerar_tarefas_por_protocolo
+                    tarefas_criadas_animal = gerar_tarefas_por_protocolo(
                         cur, imovel_id, animal["id"], lote_destino_id, fase_destino
                     )
                 movidos += 1
                 detalhes.append({"brinco": animal["brinco"],
                                   "acao": "movido" if not config.dry_run else "seria_movido",
                                   "fase": fase_destino, "motivo": motivo,
-                                  "alertas_criados": alertas_criados_animal})
+                                  "alertas_criados": alertas_criados_animal,
+                                  "tarefas_criadas": tarefas_criadas_animal})
 
         if not config.dry_run:
             conn.commit()
@@ -693,6 +699,231 @@ def resumo_alertas(imovel_id: int):
         return {"por_prioridade": por_prioridade, "por_lote": por_lote}
     finally:
         conn.close()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAREFAS ZOOTÉCNICAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TarefaCreate(BaseModel):
+    imovel_id: int
+    animal_id: Optional[int] = None
+    lote_id: Optional[int] = None
+    tipo: str
+    titulo: str
+    descricao: Optional[str] = None
+    prioridade: str = "media"
+    data_prevista: date
+    data_vencimento: Optional[date] = None
+    responsavel_nome: Optional[str] = None
+    responsavel_telefone: Optional[str] = None
+    recorrencia_dias: Optional[int] = None
+    origem: str = "manual"
+
+
+@router.get("/tarefas")
+def listar_tarefas(
+    imovel_id: int = Query(...),
+    status: Optional[str] = Query("pendente"),
+    tipo: Optional[str] = Query(None),
+    animal_id: Optional[int] = Query(None),
+    lote_id: Optional[int] = Query(None),
+    dias_proximos: Optional[int] = Query(None),
+    prioridade: Optional[str] = Query(None),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT t.*,
+                   a.brinco AS animal_brinco,
+                   l.nome AS lote_nome,
+                   l.fase AS lote_fase
+            FROM ovino_tarefas t
+            LEFT JOIN ovino_animais a ON a.id = t.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = t.lote_id
+            WHERE t.imovel_id = %s
+        """
+        params = [imovel_id]
+        if status:
+            sql += " AND t.status = %s"; params.append(status)
+        if tipo:
+            sql += " AND t.tipo = %s"; params.append(tipo)
+        if animal_id:
+            sql += " AND t.animal_id = %s"; params.append(animal_id)
+        if lote_id:
+            sql += " AND t.lote_id = %s"; params.append(lote_id)
+        if prioridade:
+            sql += " AND t.prioridade = %s"; params.append(prioridade)
+        if dias_proximos:
+            sql += " AND t.data_vencimento <= CURRENT_DATE + %s"; params.append(dias_proximos)
+        sql += " ORDER BY t.prioridade DESC, t.data_vencimento ASC LIMIT 200"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.post("/tarefas", status_code=201)
+def criar_tarefa(payload: TarefaCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        data_venc = payload.data_vencimento or (payload.data_prevista + timedelta(days=3))
+
+        import hashlib
+        h_raw = f"{payload.animal_id or ''}:{payload.lote_id or ''}:{payload.imovel_id}:{payload.tipo}:{payload.titulo.lower().strip()}:{payload.data_prevista.isoformat()}:{payload.origem}"
+        h = hashlib.sha256(h_raw.encode()).hexdigest()
+
+        cur.execute("""
+            INSERT INTO ovino_tarefas
+                (imovel_id, animal_id, lote_id, tipo, titulo, descricao,
+                 prioridade, data_prevista, data_vencimento,
+                 responsavel_nome, responsavel_telefone,
+                 recorrencia_dias, origem, hash_unicidade)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id, titulo, status, data_prevista
+        """, (payload.imovel_id, payload.animal_id, payload.lote_id,
+              payload.tipo, payload.titulo, payload.descricao,
+              payload.prioridade, payload.data_prevista, data_venc,
+              payload.responsavel_nome, payload.responsavel_telefone,
+              payload.recorrencia_dias, payload.origem, h))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    except Exception as e:
+        conn.rollback()
+        if "unique" in str(e).lower():
+            raise HTTPException(409, "Tarefa já existe.")
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/tarefas/{tarefa_id}/concluir")
+def concluir_tarefa_endpoint(
+    tarefa_id: int,
+    executado_por: str = Query("usuario"),
+    observacao: Optional[str] = Query(None),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        from app.services.ovino_tarefas import concluir_tarefa
+        nova_id = concluir_tarefa(cur, tarefa_id, executado_por, observacao)
+        conn.commit()
+        return {
+            "status": "concluida",
+            "tarefa_id": tarefa_id,
+            "proxima_tarefa_id": nova_id,
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.patch("/tarefas/{tarefa_id}/reagendar")
+def reagendar_tarefa(
+    tarefa_id: int,
+    nova_data: date = Query(...),
+    motivo: Optional[str] = Query(None),
+    executado_por: str = Query("usuario"),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE ovino_tarefas
+            SET data_prevista=%s, data_vencimento=%s+3, status='reagendada',
+                status_detalhe=%s, updated_at=NOW()
+            WHERE id=%s RETURNING id, titulo, data_prevista
+        """, (nova_data, nova_data, motivo, tarefa_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Tarefa não encontrada.")
+        cur.execute("""
+            INSERT INTO ovino_tarefa_execucao
+                (tarefa_id, acao, executado_por, observacao, reagendado_para, status_resultante)
+            VALUES (%s,'reagendada',%s,%s,%s,'reagendada')
+        """, (tarefa_id, executado_por, motivo, nova_data))
+        conn.commit()
+        return dict(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.get("/tarefas/resumo/{imovel_id}")
+def resumo_tarefas(imovel_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                prioridade,
+                COUNT(*) FILTER (WHERE status='pendente')                          AS pendentes,
+                COUNT(*) FILTER (WHERE status='pendente'
+                    AND data_vencimento < CURRENT_DATE)                            AS atrasadas,
+                COUNT(*) FILTER (WHERE status='pendente'
+                    AND data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE+7)   AS esta_semana,
+                COUNT(*) FILTER (WHERE status='concluida'
+                    AND data_conclusao >= CURRENT_DATE-30)                         AS concluidas_30d
+            FROM ovino_tarefas
+            WHERE imovel_id = %s
+            GROUP BY prioridade ORDER BY prioridade
+        """, (imovel_id,))
+        por_prioridade = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT tipo,
+                   COUNT(*) FILTER (WHERE status='pendente') AS pendentes
+            FROM ovino_tarefas
+            WHERE imovel_id = %s
+            GROUP BY tipo HAVING COUNT(*) FILTER (WHERE status='pendente') > 0
+            ORDER BY pendentes DESC
+        """, (imovel_id,))
+        por_tipo = [dict(r) for r in cur.fetchall()]
+
+        return {"por_prioridade": por_prioridade, "por_tipo": por_tipo}
+    finally:
+        conn.close()
+
+
+@router.get("/tarefas/{tarefa_id}/historico")
+def historico_tarefa(tarefa_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM ovino_tarefa_execucao
+            WHERE tarefa_id = %s ORDER BY executado_em DESC
+        """, (tarefa_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.get("/protocolos")
+def listar_protocolos(imovel_id: Optional[int] = Query(None)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.*, COUNT(e.id) AS total_etapas
+            FROM ovino_protocolo_manejo p
+            LEFT JOIN ovino_protocolo_etapa e ON e.protocolo_id = p.id AND e.ativo = TRUE
+            WHERE p.ativo = TRUE AND (p.imovel_id = %s OR p.imovel_id IS NULL)
+            GROUP BY p.id ORDER BY p.fase_lote
+        """, (imovel_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP

@@ -30,6 +30,21 @@ type Dashboard = {
   alertas_7d: { total_alertas: number };
 };
 
+type Tarefa = {
+  id: number;
+  tipo: string;
+  titulo: string;
+  data_prevista: string;
+  data_vencimento: string;
+  prioridade: string;
+  status: string;
+  animal_brinco: string | null;
+  lote_nome: string | null;
+  responsavel_nome: string | null;
+  recorrencia_dias: number | null;
+  origem: string;
+};
+
 type Alerta = {
   id: number;
   tipo_alerta: string;
@@ -47,6 +62,8 @@ export default function OvinoDashboard() {
   const [animais, setAnimais] = useState<Animal[]>([]);
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [resumoTarefas, setResumoTarefas] = useState<any>(null);
   const [aba, setAba] = useState<"rebanho" | "lotes" | "alertas">("rebanho");
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState("ativo");
@@ -63,16 +80,20 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert] = await Promise.all([
+      const [dash, anim, lots, alert, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
+        fetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()),
+        fetch(`${API}/ovino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()),
       ]);
       setDashboard(dash);
       setAnimais(anim);
       setLotes(lots);
       setAlertas(alert);
+      setTarefas(Array.isArray(taref) ? taref : []);
+      setResumoTarefas(resumoT);
     } catch (e) {
       console.error(e);
     }
@@ -120,6 +141,11 @@ export default function OvinoDashboard() {
     setSalvando(false);
     setTimeout(() => setMsg(""), 3000);
   }
+
+  const tipoTarefaIcon: Record<string, string> = {
+    pesagem: "⚖️", vacina: "💉", vermifugacao: "🧪",
+    reproducao: "❤️", operacional: "🔧", outro: "📋",
+  };
 
   const faseLabel: Record<string, string> = {
     cria: "🐑 Cria", recria: "📈 Recria", engorda: "💪 Engorda",
@@ -175,12 +201,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "agenda", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -287,6 +313,91 @@ export default function OvinoDashboard() {
             </div>
           ))}
           {lotes.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Nenhum lote cadastrado.</p>}
+        </div>
+      )}
+
+      {/* Aba Agenda */}
+      {aba === "agenda" && (
+        <div>
+          {/* Resumo KPIs */}
+          {resumoTarefas && (
+            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+              {resumoTarefas.por_prioridade?.map((p: any) => (
+                <div key={p.prioridade} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", minWidth: 120 }}>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                    {p.prioridade === "alta" ? "🔴" : p.prioridade === "media" ? "🟡" : "🟢"} {p.prioridade}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: p.atrasadas > 0 ? "#dc2626" : "#374151" }}>
+                    {p.pendentes}
+                  </div>
+                  {p.atrasadas > 0 && <div style={{ fontSize: 11, color: "#dc2626" }}>{p.atrasadas} atrasada(s)</div>}
+                  {p.esta_semana > 0 && <div style={{ fontSize: 11, color: "#d97706" }}>{p.esta_semana} esta semana</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Lista de tarefas */}
+          {tarefas.filter(t => t.status === "pendente").length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "#16a34a" }}>
+              ✅ Nenhuma tarefa pendente nos próximos 30 dias.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {["alta","media","baixa"].map(prio => {
+                const grupo = tarefas.filter(t => t.prioridade === prio && t.status === "pendente");
+                if (!grupo.length) return null;
+                const cores: Record<string,any> = {
+                  alta:  {badge:"#dc2626", label:"🔴 Alta"},
+                  media: {badge:"#d97706", label:"🟡 Média"},
+                  baixa: {badge:"#16a34a", label:"🟢 Baixa"},
+                };
+                return (
+                  <div key={prio}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: cores[prio].badge, marginBottom: 4, marginTop: 8 }}>
+                      {cores[prio].label} ({grupo.length})
+                    </div>
+                    {grupo.map(t => {
+                      const vencida = new Date(t.data_vencimento + "T00:00:00") < new Date();
+                      return (
+                        <div key={t.id} style={{
+                          background: vencida ? "#fff1f2" : "#fff",
+                          border: `1px solid ${vencida ? "#fecdd3" : "#e5e7eb"}`,
+                          borderRadius: 8, padding: "10px 14px", marginBottom: 4,
+                          display: "flex", justifyContent: "space-between", alignItems: "center"
+                        }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>
+                              {tipoTarefaIcon[t.tipo] || "📋"} {t.titulo}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                              {t.animal_brinco ? `🐑 ${t.animal_brinco}` : t.lote_nome ? `📦 ${t.lote_nome}` : "Fazenda"}
+                              {t.responsavel_nome && ` • 👤 ${t.responsavel_nome}`}
+                              {t.recorrencia_dias && ` • 🔄 ${t.recorrencia_dias}d`}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: vencida ? "#dc2626" : "#374151" }}>
+                                {new Date(t.data_prevista + "T00:00:00").toLocaleDateString("pt-BR")}
+                              </div>
+                              {vencida && <div style={{ fontSize: 11, color: "#dc2626" }}>atrasada</div>}
+                            </div>
+                            <button onClick={async () => {
+                              await fetch(`${API}/ovino/tarefas/${t.id}/concluir?executado_por=usuario`, {method:"POST"});
+                              carregarTudo();
+                            }} style={{ padding:"4px 10px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontSize:13, cursor:"pointer", fontWeight:700 }}>
+                              ✓
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
