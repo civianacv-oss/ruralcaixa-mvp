@@ -30,6 +30,23 @@ type Dashboard = {
   alertas_7d: { total_alertas: number };
 };
 
+type IndicadorLote = {
+  lote_id: number;
+  lote_nome: string;
+  fase: string;
+  animais_ativos: number;
+  mortes: number;
+  abates: number;
+  peso_medio_atual: number | null;
+  peso_medio_entrada: number | null;
+  dias_medio_lote: number | null;
+  gmd_kg_dia: number | null;
+  variacao_peso_pct: number | null;
+  taxa_mortalidade_pct: number | null;
+  taxa_abate_pct: number | null;
+  dias_projecao_abate_35kg: number | null;
+};
+
 type Insumo = {
   id: number;
   nome_comercial: string;
@@ -94,6 +111,7 @@ export default function OvinoDashboard() {
   const [msg, setMsg] = useState("");
   const [reclassificando, setReclassificando] = useState(false);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [indicadores, setIndicadores] = useState<{consolidado:any, por_lote:IndicadorLote[]} | null>(null);
   const [carencias, setCarencias] = useState<Carencia[]>([]);
   const [novaAplic, setNovaAplic] = useState({ insumo_id: 0, animal_id: "", lote_id: "", dose_ml: "", via: "", lote_produto: "", responsavel_nome: "" });
   const [salvandoAplic, setSalvandoAplic] = useState(false);
@@ -107,7 +125,7 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert, ins, car, taref, resumoT] = await Promise.all([
+      const [dash, anim, lots, alert, ins, indic, car, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
@@ -122,6 +140,7 @@ export default function OvinoDashboard() {
       setTarefas(Array.isArray(taref) ? taref : []);
       setResumoTarefas(resumoT);
       setInsumos(Array.isArray(ins) ? ins : []);
+      if (indic && indic.por_lote) setIndicadores(indic);
       setCarencias(Array.isArray(car) ? car : []);
     } catch (e) {
       console.error(e);
@@ -230,12 +249,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "agenda", "sanitario", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "indicadores", "agenda", "sanitario", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -342,6 +361,90 @@ export default function OvinoDashboard() {
             </div>
           ))}
           {lotes.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Nenhum lote cadastrado.</p>}
+        </div>
+      )}
+
+      {/* Aba Indicadores */}
+      {aba === "indicadores" && (
+        <div>
+          {/* Consolidado */}
+          {indicadores?.consolidado && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:16 }}>
+              {[
+                { label:"GMD Médio", value: indicadores.consolidado.gmd_medio ? `${indicadores.consolidado.gmd_medio} kg/d` : "—", color:"#16a34a" },
+                { label:"Peso Médio", value: indicadores.consolidado.peso_medio_geral ? `${indicadores.consolidado.peso_medio_geral} kg` : "—", color:"#2563eb" },
+                { label:"Mortalidade", value: indicadores.consolidado.taxa_mortalidade_media ? `${indicadores.consolidado.taxa_mortalidade_media}%` : "0%", color: Number(indicadores.consolidado.taxa_mortalidade_media) > 3 ? "#dc2626" : "#16a34a" },
+              ].map(k => (
+                <div key={k.label} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:k.color }}>{k.value}</div>
+                  <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tabela por lote */}
+          {indicadores?.por_lote && indicadores.por_lote.length > 0 ? (
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:"#f3f4f6" }}>
+                    {["Lote","Fase","Animais","Peso Médio","GMD","Variação","Dias Lote","Mortalidade","Projeção 35kg"].map(h=>(
+                      <th key={h} style={{ padding:"9px 10px", textAlign:"left", fontWeight:600, color:"#374151", borderBottom:"1px solid #e5e7eb", whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {indicadores.por_lote.map(l => (
+                    <tr key={l.lote_id} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                      <td style={{ padding:"9px 10px", fontWeight:600, color:"#15803d" }}>{l.lote_nome}</td>
+                      <td style={{ padding:"9px 10px" }}>
+                        <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:600, background:"#dcfce7", color:"#15803d" }}>
+                          {l.fase}
+                        </span>
+                      </td>
+                      <td style={{ padding:"9px 10px", textAlign:"center" }}>{l.animais_ativos}</td>
+                      <td style={{ padding:"9px 10px" }}>{l.peso_medio_atual ? `${l.peso_medio_atual} kg` : "—"}</td>
+                      <td style={{ padding:"9px 10px" }}>
+                        {l.gmd_kg_dia ? (
+                          <span style={{ color: Number(l.gmd_kg_dia) >= 0.2 ? "#16a34a" : "#d97706", fontWeight:600 }}>
+                            {l.gmd_kg_dia} kg/d
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td style={{ padding:"9px 10px" }}>
+                        {l.variacao_peso_pct !== null ? (
+                          <span style={{ color: Number(l.variacao_peso_pct) >= 0 ? "#16a34a" : "#dc2626", fontWeight:600 }}>
+                            {Number(l.variacao_peso_pct) >= 0 ? "+" : ""}{l.variacao_peso_pct}%
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td style={{ padding:"9px 10px", color:"#6b7280" }}>{l.dias_medio_lote ? `${l.dias_medio_lote}d` : "—"}</td>
+                      <td style={{ padding:"9px 10px" }}>
+                        {l.taxa_mortalidade_pct !== null ? (
+                          <span style={{ color: Number(l.taxa_mortalidade_pct) > 3 ? "#dc2626" : "#16a34a" }}>
+                            {l.taxa_mortalidade_pct}%
+                          </span>
+                        ) : "0%"}
+                      </td>
+                      <td style={{ padding:"9px 10px" }}>
+                        {l.dias_projecao_abate_35kg === 0 ? (
+                          <span style={{ color:"#16a34a", fontWeight:700 }}>✅ Pronto</span>
+                        ) : l.dias_projecao_abate_35kg ? (
+                          <span style={{ color:"#2563eb" }}>{l.dias_projecao_abate_35kg}d</span>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>
+              Nenhum dado de pesagem disponível para calcular indicadores.<br/>
+              <span style={{ fontSize:13 }}>Registre pesagens via WhatsApp ou pelo endpoint /ovino/pesagens</span>
+            </div>
+          )}
         </div>
       )}
 

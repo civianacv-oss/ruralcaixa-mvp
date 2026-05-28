@@ -583,6 +583,12 @@ def reclassificar_rebanho(
                     tarefas_criadas_animal = gerar_tarefas_por_protocolo(
                         cur, imovel_id, animal["id"], lote_destino_id, fase_destino
                     )
+                if not config.dry_run:
+                    # Registra movimentação de lote via função SQL
+                    cur.execute(
+                        "SELECT registrar_movimentacao_lote(%s, %s, %s, 'reclassificacao')",
+                        (animal["id"], lote_destino_id, imovel_id)
+                    )
                 movidos += 1
                 detalhes.append({"brinco": animal["brinco"],
                                   "acao": "movido" if not config.dry_run else "seria_movido",
@@ -1249,6 +1255,154 @@ def calendario_sanitario(
             "reforcos_pendentes": reforcos,
             "tarefas_sanitarias": tarefas_san,
             "total": len(reforcos) + len(tarefas_san),
+        }
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MOVIMENTAÇÕES DE LOTE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/movimentacoes/{animal_id}")
+def historico_movimentacoes(animal_id: int):
+    """Histórico completo de lotes de um animal."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT m.*, l.nome AS lote_nome, l.fase
+            FROM ovino_movimentacao_lote m
+            JOIN ovino_lotes l ON l.id = m.lote_id
+            WHERE m.animal_id = %s
+            ORDER BY m.data_entrada DESC
+        """, (animal_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INDICADORES ZOOTÉCNICOS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/indicadores/{imovel_id}")
+def indicadores_por_lote(imovel_id: int):
+    """
+    KPIs zootécnicos por lote: GMD, peso médio, mortalidade, abate, projeção.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Indicadores da view
+        cur.execute("""
+            SELECT *,
+                -- Projeção de abate: dias para atingir 35kg no GMD atual
+                CASE
+                    WHEN gmd_kg_dia > 0 AND peso_medio_atual IS NOT NULL AND peso_medio_atual < 35
+                    THEN ROUND((35 - peso_medio_atual) / gmd_kg_dia)
+                    WHEN peso_medio_atual >= 35 THEN 0
+                    ELSE NULL
+                END AS dias_projecao_abate_35kg
+            FROM ovino_indicadores_lote
+            WHERE imovel_id = %s
+            ORDER BY fase
+        """, (imovel_id,))
+        lotes = [dict(r) for r in cur.fetchall()]
+
+        # Consolidado do imóvel
+        cur.execute("""
+            SELECT
+                SUM(animais_ativos)                                 AS total_ativo,
+                ROUND(AVG(gmd_kg_dia)::NUMERIC, 3)                  AS gmd_medio,
+                ROUND(AVG(peso_medio_atual)::NUMERIC, 2)            AS peso_medio_geral,
+                SUM(mortes)                                         AS total_mortes,
+                SUM(abates)                                         AS total_abates,
+                ROUND(AVG(taxa_mortalidade_pct)::NUMERIC, 1)        AS taxa_mortalidade_media
+            FROM ovino_indicadores_lote
+            WHERE imovel_id = %s
+        """, (imovel_id,))
+        consolidado = dict(cur.fetchone())
+
+        return {
+            "consolidado": consolidado,
+            "por_lote": lotes,
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/indicadores/animal/{animal_id}")
+def indicadores_animal(animal_id: int):
+    """GMD, ganho total, dias no lote atual e projeção para um animal específico."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Pesagens ordenadas
+        cur.execute("""
+            SELECT peso_kg, data_pesagem,
+                   ROUND(
+                       (peso_kg - LAG(peso_kg) OVER (ORDER BY data_pesagem)) /
+                       NULLIF(data_pesagem - LAG(data_pesagem) OVER (ORDER BY data_pesagem), 0)
+                   ::NUMERIC, 3) AS gmd_periodo
+            FROM ovino_pesagens
+            WHERE animal_id = %s
+            ORDER BY data_pesagem
+        """, (animal_id,))
+        pesagens = [dict(r) for r in cur.fetchall()]
+
+        # Movimentação atual
+        cur.execute("""
+            SELECT m.*, l.nome AS lote_nome, l.fase
+            FROM ovino_movimentacao_lote m
+            JOIN ovino_lotes l ON l.id = m.lote_id
+            WHERE m.animal_id = %s AND m.ativa = TRUE
+            LIMIT 1
+        """, (animal_id,))
+        movim = cur.fetchone()
+        movim_atual = dict(movim) if movim else None
+
+        # Calcula GMD geral
+        if len(pesagens) >= 2:
+            primeiro = pesagens[0]
+            ultimo = pesagens[-1]
+            dias_total = (ultimo["data_pesagem"] - primeiro["data_pesagem"]).days
+            gmd_geral = round(
+                (float(ultimo["peso_kg"]) - float(primeiro["peso_kg"])) / dias_total, 3
+            ) if dias_total > 0 else None
+            ganho_total = round(float(ultimo["peso_kg"]) - float(primeiro["peso_kg"]), 2)
+        else:
+            gmd_geral = None
+            ganho_total = None
+
+        # Projeção de abate
+        peso_atual = float(pesagens[-1]["peso_kg"]) if pesagens else None
+        projecao_35 = None
+        projecao_40 = None
+        if gmd_geral and peso_atual:
+            if peso_atual < 35:
+                projecao_35 = round((35 - peso_atual) / gmd_geral)
+            if peso_atual < 40:
+                projecao_40 = round((40 - peso_atual) / gmd_geral)
+
+        return {
+            "pesagens": pesagens,
+            "gmd_geral": gmd_geral,
+            "ganho_total_kg": ganho_total,
+            "peso_atual": peso_atual,
+            "movimentacao_atual": movim_atual,
+            "projecao_abate": {
+                "meta_35kg": {"dias": projecao_35, "data": (
+                    (date.today() + timedelta(days=projecao_35)).isoformat()
+                    if projecao_35 else None
+                )},
+                "meta_40kg": {"dias": projecao_40, "data": (
+                    (date.today() + timedelta(days=projecao_40)).isoformat()
+                    if projecao_40 else None
+                )},
+            }
         }
     finally:
         conn.close()
