@@ -1,0 +1,460 @@
+// =============================================================
+// RURALCAIXA — API de Contratos Rurais
+// Arquivo: contratos.routes.js
+// Stack: Express + pg (node-postgres)
+// =============================================================
+// Instalar dependências (se não tiver):
+//   npm install express pg uuid bcrypt
+// =============================================================
+
+import express from 'express'
+import { v4 as uuidv4 } from 'uuid'
+import bcrypt from 'bcrypt'
+import db from '../db.js'          // seu pool pg existente
+import { sendWhatsApp } from '../services/whatsapp.js'  // integração existente
+
+const router = express.Router()
+
+// -------------------------------------------------------------
+// UTILS
+// -------------------------------------------------------------
+
+function gerarOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString() // 6 dígitos
+}
+
+function logAuditoria(contrato_id, evento, descricao, extra = {}) {
+  return db.query(
+    `INSERT INTO auditoria_contratos (contrato_id, evento, descricao, ip, metadata)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [contrato_id, evento, descricao, extra.ip ?? null, JSON.stringify(extra.metadata ?? {})]
+  )
+}
+
+// -------------------------------------------------------------
+// GET /contratos
+// Lista todos os contratos (com filtros opcionais)
+// Query params: fazenda_id, status, tipo
+// -------------------------------------------------------------
+router.get('/', async (req, res) => {
+  try {
+    const { fazenda_id, status, tipo } = req.query
+
+    let where = []
+    let params = []
+    let i = 1
+
+    if (fazenda_id) { where.push(`fazenda_id = $${i++}`); params.push(fazenda_id) }
+    if (status)     { where.push(`status = $${i++}`);     params.push(status) }
+    if (tipo)       { where.push(`tipo = $${i++}`);        params.push(tipo) }
+
+    const sql = `
+      SELECT * FROM vw_contratos_resumo
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ORDER BY criado_em DESC
+    `
+
+    const { rows } = await db.query(sql, params)
+    res.json({ data: rows, total: rows.length })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao listar contratos' })
+  }
+})
+
+// -------------------------------------------------------------
+// GET /contratos/:id
+// Detalhe completo + assinaturas
+// -------------------------------------------------------------
+router.get('/:id', async (req, res) => {
+  try {
+    const { rows: [contrato] } = await db.query(
+      'SELECT * FROM vw_contratos_resumo WHERE id = $1',
+      [req.params.id]
+    )
+    if (!contrato) return res.status(404).json({ error: 'Contrato não encontrado' })
+
+    const { rows: assinaturas } = await db.query(
+      `SELECT a.*, 
+              s.nome  AS socio_nome,
+              pe.nome AS parceiro_nome
+       FROM assinaturas a
+       LEFT JOIN socios s            ON s.id  = a.socio_id
+       LEFT JOIN parceiros_externos pe ON pe.id = a.parceiro_externo_id
+       WHERE a.contrato_id = $1
+       ORDER BY a.criado_em`,
+      [req.params.id]
+    )
+
+    res.json({ ...contrato, assinaturas })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Erro ao buscar contrato' })
+  }
+})
+
+// -------------------------------------------------------------
+// POST /contratos
+// Cria novo contrato (status: rascunho)
+// Body: { fazenda_id, tipo, outorgante_socio_id | outorgante_externo,
+//         outorgado_socio_id | outorgado_externo,
+//         data_inicio, data_fim,
+//         percentual_outorgante, percentual_outorgado,
+//         frequencia_pagamento, area_parceria_hectares,
+//         clausulas_adicionais }
+// -------------------------------------------------------------
+router.post('/', async (req, res) => {
+  const client = await db.connect()
+  try {
+    await client.query('BEGIN')
+
+    const {
+      fazenda_id,
+      tipo,
+      outorgante_socio_id,
+      outorgante_externo,     // { nome, tipo_documento, documento, telefone }
+      outorgado_socio_id,
+      outorgado_externo,
+      data_inicio,
+      data_fim,
+      percentual_outorgante,
+      percentual_outorgado,
+      frequencia_pagamento = 'safra',
+      area_parceria_hectares,
+      clausulas_adicionais = {}
+    } = req.body
+
+    // Validação básica
+    if (Number(percentual_outorgante) + Number(percentual_outorgado) !== 100) {
+      return res.status(400).json({ error: 'Percentuais devem somar 100%' })
+    }
+
+    // Criar parceiro externo se informado (outorgante)
+    let outorgante_externo_id = null
+    if (outorgante_externo) {
+      const { rows: [pe] } = await client.query(
+        `INSERT INTO parceiros_externos (nome, tipo_documento, documento, telefone, email)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (tipo_documento, documento) DO UPDATE SET nome = EXCLUDED.nome
+         RETURNING id`,
+        [outorgante_externo.nome, outorgante_externo.tipo_documento,
+         outorgante_externo.documento, outorgante_externo.telefone ?? null,
+         outorgante_externo.email ?? null]
+      )
+      outorgante_externo_id = pe.id
+    }
+
+    // Criar parceiro externo se informado (outorgado)
+    let outorgado_externo_id = null
+    if (outorgado_externo) {
+      const { rows: [pe] } = await client.query(
+        `INSERT INTO parceiros_externos (nome, tipo_documento, documento, telefone, email)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (tipo_documento, documento) DO UPDATE SET nome = EXCLUDED.nome
+         RETURNING id`,
+        [outorgado_externo.nome, outorgado_externo.tipo_documento,
+         outorgado_externo.documento, outorgado_externo.telefone ?? null,
+         outorgado_externo.email ?? null]
+      )
+      outorgado_externo_id = pe.id
+    }
+
+    // Inserir contrato
+    const { rows: [contrato] } = await client.query(
+      `INSERT INTO contratos (
+         fazenda_id, tipo, status,
+         outorgante_socio_id, outorgante_externo_id,
+         outorgado_socio_id,  outorgado_externo_id,
+         data_inicio, data_fim,
+         percentual_outorgante, percentual_outorgado,
+         frequencia_pagamento, area_parceria_hectares,
+         clausulas_adicionais
+       ) VALUES ($1,$2,'rascunho',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING *`,
+      [
+        fazenda_id, tipo,
+        outorgante_socio_id ?? null, outorgante_externo_id,
+        outorgado_socio_id ?? null,  outorgado_externo_id,
+        data_inicio, data_fim,
+        percentual_outorgante, percentual_outorgado,
+        frequencia_pagamento, area_parceria_hectares ?? null,
+        JSON.stringify(clausulas_adicionais)
+      ]
+    )
+
+    // Log
+    await client.query(
+      `INSERT INTO auditoria_contratos (contrato_id, evento, descricao, ip)
+       VALUES ($1, 'contrato_criado', $2, $3)`,
+      [contrato.id, `Contrato ${tipo} criado`, req.ip]
+    )
+
+    await client.query('COMMIT')
+    res.status(201).json({ data: contrato })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+
+// -------------------------------------------------------------
+// POST /contratos/:id/enviar
+// Muda status para aguardando_assinaturas
+// Cria registros de assinatura e envia OTP via WhatsApp
+// -------------------------------------------------------------
+router.post('/:id/enviar', async (req, res) => {
+  const client = await db.connect()
+  try {
+    await client.query('BEGIN')
+
+    const { rows: [contrato] } = await client.query(
+      'SELECT * FROM contratos WHERE id = $1', [req.params.id]
+    )
+    if (!contrato) return res.status(404).json({ error: 'Contrato não encontrado' })
+    if (contrato.status !== 'rascunho') {
+      return res.status(400).json({ error: `Contrato já está em status "${contrato.status}"` })
+    }
+
+    // Buscar dados das partes (telefone para WhatsApp)
+    const partes = await resolverPartes(client, contrato)
+
+    // Atualizar status
+    await client.query(
+      `UPDATE contratos SET status = 'aguardando_assinaturas', atualizado_em = NOW() WHERE id = $1`,
+      [contrato.id]
+    )
+
+    // Para cada parte: criar assinatura + gerar OTP + enviar WhatsApp
+    for (const parte of partes) {
+      const otp = gerarOTP()
+      const otpHash = await bcrypt.hash(otp, 10)
+      const expira = new Date(Date.now() + 30 * 60 * 1000) // 30 min
+      const linkAssinatura = `${process.env.FRONTEND_URL}/assinar/${contrato.id}?parte=${parte.papel}`
+
+      const { rows: [assinatura] } = await client.query(
+        `INSERT INTO assinaturas (
+           contrato_id, papel, socio_id, parceiro_externo_id,
+           token_otp, token_expira_em, link_enviado_em, pdf_hash_no_momento
+         ) VALUES ($1,$2,$3,$4,$5,$6,NOW(),$7)
+         RETURNING id`,
+        [
+          contrato.id, parte.papel,
+          parte.socio_id ?? null, parte.parceiro_externo_id ?? null,
+          otpHash, expira,
+          contrato.pdf_hash_sha256 ?? null
+        ]
+      )
+
+      // Enviar via WhatsApp (integração existente)
+      if (parte.telefone) {
+        const msgId = await sendWhatsApp(parte.telefone, {
+          type: 'template',
+          template: {
+            name: 'assinatura_contrato',
+            language: { code: 'pt_BR' },
+            components: [{
+              type: 'body',
+              parameters: [
+                { type: 'text', text: parte.nome },
+                { type: 'text', text: otp },
+                { type: 'text', text: linkAssinatura }
+              ]
+            }]
+          }
+        })
+
+        await client.query(
+          `UPDATE assinaturas SET whatsapp_msg_id = $1 WHERE id = $2`,
+          [msgId, assinatura.id]
+        )
+      }
+
+      await client.query(
+        `INSERT INTO auditoria_contratos (contrato_id, assinatura_id, evento, descricao, ip)
+         VALUES ($1,$2,'link_assinatura_enviado',$3,$4)`,
+        [contrato.id, assinatura.id, `Link enviado para ${parte.nome} (${parte.papel})`, req.ip]
+      )
+    }
+
+    await client.query('COMMIT')
+    res.json({ message: 'Contrato enviado para assinatura', partes_notificadas: partes.length })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+
+// -------------------------------------------------------------
+// POST /contratos/:id/assinar
+// Valida OTP e registra assinatura
+// Body: { papel: 'outorgante'|'outorgado', otp: '123456',
+//         geolocalizacao: { lat, lng, city } }
+// -------------------------------------------------------------
+router.post('/:id/assinar', async (req, res) => {
+  const client = await db.connect()
+  try {
+    await client.query('BEGIN')
+
+    const { papel, otp, geolocalizacao } = req.body
+    if (!papel || !otp) return res.status(400).json({ error: 'papel e otp são obrigatórios' })
+
+    const { rows: [assinatura] } = await client.query(
+      `SELECT * FROM assinaturas
+       WHERE contrato_id = $1 AND papel = $2 AND status IN ('pendente','visualizado')`,
+      [req.params.id, papel]
+    )
+
+    if (!assinatura) return res.status(404).json({ error: 'Assinatura não encontrada ou já concluída' })
+
+    // OTP expirado
+    if (new Date() > new Date(assinatura.token_expira_em)) {
+      await client.query(
+        `INSERT INTO auditoria_contratos (contrato_id, assinatura_id, evento, ip)
+         VALUES ($1,$2,'otp_expirado',$3)`,
+        [req.params.id, assinatura.id, req.ip]
+      )
+      await client.query('ROLLBACK')
+      return res.status(400).json({ error: 'OTP expirado. Solicite novo envio.' })
+    }
+
+    // Tentativas esgotadas
+    if (assinatura.token_tentativas >= 5) {
+      return res.status(429).json({ error: 'Muitas tentativas. Solicite novo OTP.' })
+    }
+
+    // Validar OTP
+    const otpValido = await bcrypt.compare(otp, assinatura.token_otp)
+
+    if (!otpValido) {
+      await client.query(
+        `UPDATE assinaturas SET token_tentativas = token_tentativas + 1 WHERE id = $1`,
+        [assinatura.id]
+      )
+      await client.query(
+        `INSERT INTO auditoria_contratos (contrato_id, assinatura_id, evento, ip)
+         VALUES ($1,$2,'otp_falhou',$3)`,
+        [req.params.id, assinatura.id, req.ip]
+      )
+      await client.query('COMMIT')
+      return res.status(400).json({ error: 'OTP inválido' })
+    }
+
+    // OTP válido — registrar assinatura
+    await client.query(
+      `UPDATE assinaturas SET
+         status = 'assinado',
+         assinado_em = NOW(),
+         ip_assinatura = $1,
+         user_agent = $2,
+         geolocalizacao = $3,
+         token_otp = NULL,       -- limpa o token após uso (segurança)
+         token_tentativas = token_tentativas + 1
+       WHERE id = $4`,
+      [req.ip, req.headers['user-agent'], JSON.stringify(geolocalizacao ?? {}), assinatura.id]
+    )
+
+    await client.query(
+      `INSERT INTO auditoria_contratos (contrato_id, assinatura_id, evento, descricao, ip, metadata)
+       VALUES ($1,$2,'contrato_assinado',$3,$4,$5)`,
+      [
+        req.params.id, assinatura.id,
+        `Assinatura de ${papel} registrada`,
+        req.ip,
+        JSON.stringify({ geolocalizacao, user_agent: req.headers['user-agent'] })
+      ]
+    )
+
+    // O trigger fn_verificar_ativacao_contrato cuida de ativar o contrato
+    // se todos já assinaram.
+
+    await client.query('COMMIT')
+    res.json({ message: 'Assinatura registrada com sucesso' })
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ error: err.message })
+  } finally {
+    client.release()
+  }
+})
+
+// -------------------------------------------------------------
+// GET /contratos/:id/auditoria
+// Trilha de auditoria do contrato
+// -------------------------------------------------------------
+router.get('/:id/auditoria', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, evento, descricao, ip, metadata, criado_em
+       FROM auditoria_contratos
+       WHERE contrato_id = $1
+       ORDER BY criado_em ASC`,
+      [req.params.id]
+    )
+    res.json({ data: rows })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// -------------------------------------------------------------
+// DELETE /contratos/:id  (só rascunho)
+// -------------------------------------------------------------
+router.delete('/:id', async (req, res) => {
+  try {
+    const { rows: [c] } = await db.query(
+      'SELECT status FROM contratos WHERE id = $1', [req.params.id]
+    )
+    if (!c) return res.status(404).json({ error: 'Não encontrado' })
+    if (c.status !== 'rascunho') {
+      return res.status(400).json({ error: 'Apenas rascunhos podem ser excluídos' })
+    }
+    await db.query('DELETE FROM contratos WHERE id = $1', [req.params.id])
+    res.json({ message: 'Contrato excluído' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// -------------------------------------------------------------
+// HELPER: resolve nomes e telefones das partes de um contrato
+// -------------------------------------------------------------
+async function resolverPartes(client, contrato) {
+  const partes = []
+
+  // Outorgante
+  if (contrato.outorgante_socio_id) {
+    const { rows: [s] } = await client.query(
+      'SELECT id, nome, telefone FROM socios WHERE id = $1', [contrato.outorgante_socio_id]
+    )
+    if (s) partes.push({ papel: 'outorgante', socio_id: s.id, nome: s.nome, telefone: s.telefone })
+  } else if (contrato.outorgante_externo_id) {
+    const { rows: [pe] } = await client.query(
+      'SELECT id, nome, telefone FROM parceiros_externos WHERE id = $1', [contrato.outorgante_externo_id]
+    )
+    if (pe) partes.push({ papel: 'outorgante', parceiro_externo_id: pe.id, nome: pe.nome, telefone: pe.telefone })
+  }
+
+  // Outorgado
+  if (contrato.outorgado_socio_id) {
+    const { rows: [s] } = await client.query(
+      'SELECT id, nome, telefone FROM socios WHERE id = $1', [contrato.outorgado_socio_id]
+    )
+    if (s) partes.push({ papel: 'outorgado', socio_id: s.id, nome: s.nome, telefone: s.telefone })
+  } else if (contrato.outorgado_externo_id) {
+    const { rows: [pe] } = await client.query(
+      'SELECT id, nome, telefone FROM parceiros_externos WHERE id = $1', [contrato.outorgado_externo_id]
+    )
+    if (pe) partes.push({ papel: 'outorgado', parceiro_externo_id: pe.id, nome: pe.nome, telefone: pe.telefone })
+  }
+
+  return partes
+}
+
+export default router

@@ -1,0 +1,10 @@
+import psycopg2
+conn = psycopg2.connect('postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway')
+cur = conn.cursor()
+cur.execute("SELECT id, descricao, valor, documento_url FROM lancamentos WHERE id=11")
+r = cur.fetchone()
+print(f"ID: {r[0]}")
+print(f"Descricao: {r[1]}")
+print(f"Valor: R$ {r[2]}")
+print(f"Documento: {r[3]}")
+conn.close()

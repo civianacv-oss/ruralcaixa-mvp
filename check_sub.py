@@ -1,0 +1,10 @@
+import psycopg2
+conn = psycopg2.connect("postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway")
+cur = conn.cursor()
+cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='subcontas' ORDER BY ordinal_position")
+print("SUBCONTAS cols:", cur.fetchall())
+cur.execute("SELECT * FROM subcontas LIMIT 5")
+print("SUBCONTAS sample:", cur.fetchall())
+cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='produtores' ORDER BY ordinal_position")
+print("PRODUTORES cols:", [r[0] for r in cur.fetchall()])
+conn.close()

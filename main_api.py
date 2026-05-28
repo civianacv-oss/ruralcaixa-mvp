@@ -8,6 +8,7 @@ import json
 from decimal import Decimal
 from contratos_api import router as contratos_router
 from lancamentos_contrato import router as lanc_router
+from routers.ovino import router as ovino_router
 
 
 app = FastAPI(title="Campo Digital - Super API")
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 app.include_router(contratos_router)
 app.include_router(lanc_router)
+app.include_router(ovino_router)
 
 # Helper para JSON
 class DecimalEncoder(json.JSONEncoder):
