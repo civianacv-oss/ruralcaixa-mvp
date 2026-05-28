@@ -12,7 +12,12 @@ from app.contratos_api import router as contratos_router
 from app.lancamentos_contrato import router as lanc_router
 
 from app.services.classifier import classificar
-from app.routers.ovino import router as ovino_router
+try:
+    from app.routers.ovino import router as ovino_router
+    print("OVINO ROUTER LOADED OK")
+except Exception as e:
+    print(f"OVINO ROUTER FAILED: {e}")
+    ovino_router = None
 
 load_dotenv()
 
@@ -25,7 +30,7 @@ PHONE_ID     = os.getenv("WHATSAPP_PHONE_ID")
 GRAPH        = "https://graph.facebook.com/v23.0"
 
 sessoes = {}
-app.include_router(ovino_router)
+if ovino_router: app.include_router(ovino_router)
 
 app.add_middleware(
     CORSMiddleware,
