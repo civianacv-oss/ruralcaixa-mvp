@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.services.classifier import classificar
-from backend.routers.ovino import router as ovino_router
+from app.routers.ovino import router as ovino_router
 
 load_dotenv()
 
