@@ -424,7 +424,12 @@ def processar_expirados():
             })
 
         conn.commit()
-        return {"processados": len(processados), "detalhes": processados}
+        try:
+            from app.services.ovino_cron import processar_alertas_ovinos
+            resultado_ovino = processar_alertas_ovinos(dias_antecedencia=1)
+        except Exception as oe:
+            resultado_ovino = {"erro": str(oe)}
+        return {"processados": len(processados), "detalhes": processados, "ovino_alertas": resultado_ovino}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
