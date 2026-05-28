@@ -1250,3 +1250,5 @@ def listar_aportes(imovel_id: int):
         return {'total_capital': total_geral,
                 'por_socio': [{'produtor_id': r[0], 'total': float(r[1]), 'percentual': round(float(r[1])/total_geral*100, 2) if total_geral > 0 else 0} for r in tots],
                 'historico': [{'id': r[0], 'produtor_id': r[1], 'nome': r[2], 'valor': float(r[3]), 'data_aporte': str(r[4]), 'descricao': r[5]} for r in rows]}
+
+# ovino-redeploy-trigger
