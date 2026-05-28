@@ -1,9 +1,6 @@
 """
-RuralCaixa — services/ovino_ia.py
-Classifica mensagens WhatsApp (texto / transcrição de áudio) em eventos
-do módulo ovino usando Claude claude-sonnet-4-20250514 via Anthropic API.
-
-Compatível com a arquitetura atual: FastAPI + PostgreSQL (asyncpg/SQLAlchemy).
+RuralCaixa — services/ovino_ia.py  (v2 — síncrono)
+Compatível com psycopg2/FastAPI síncrono do main_api.py.
 """
 
 import os
@@ -17,19 +14,6 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-# ─── Cliente Anthropic ────────────────────────────────────────────────────────
-_client: Optional[anthropic.AsyncAnthropic] = None
-
-def get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(
-            api_key=os.environ["ANTHROPIC_API_KEY"]
-        )
-    return _client
-
-
-# ─── Prompt de classificação ─────────────────────────────────────────────────
 SYSTEM_PROMPT = """Você é o assistente de campo do RuralCaixa, especializado em
 criação de ovinos de corte no Brasil. Sua tarefa é extrair eventos zootécnicos
 de mensagens enviadas pelo produtor via WhatsApp (texto ou transcrição de áudio).
@@ -44,7 +28,7 @@ Formato de resposta:
   "resumo": "<frase curta confirmando o que foi registrado>"
 }
 
-Intents disponíveis e seus campos obrigatórios:
+Intents disponíveis e seus campos:
 - pesagem        → brinco (str), peso_kg (float), motivo? (str)
 - vacinacao      → produto (str), lote? (str), brinco? (str), dose_ml? (float)
 - vermifugacao   → produto (str), lote? (str), brinco? (str), dose_ml? (float), via? (str)
@@ -61,24 +45,16 @@ Intents disponíveis e seus campos obrigatórios:
 Regras:
 - Datas sem ano assumem o ano atual.
 - Pesos em arrobas (@): multiplique por 15 para obter kg.
-- "brinco" é o identificador do animal (número, letra+número, etc).
-- Nomes de lote como "lote 1", "engorda", "cria" são válidos para o campo lote.
-- Se não conseguir extrair intent com confiança > 0.4, use intent "outro".
+- Se confiança < 0.4, use intent "outro".
 """
 
 
-# ─── Função principal ─────────────────────────────────────────────────────────
-async def classificar_mensagem(
+def classificar_mensagem_sync(
     texto: str,
     imovel_id: Optional[int] = None,
     hoje: Optional[date] = None,
 ) -> dict:
-    """
-    Recebe texto livre (transcrição de áudio ou mensagem de texto)
-    e retorna dict com intent, confiança, entidades e resumo.
-
-    Sempre retorna um dict (nunca lança exceção para o caller).
-    """
+    """Versão síncrona — compatível com FastAPI sem async."""
     hoje_str = (hoje or date.today()).isoformat()
 
     user_content = (
@@ -88,8 +64,8 @@ async def classificar_mensagem(
     )
 
     try:
-        client = get_client()
-        response = await client.messages.create(
+        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=512,
             system=SYSTEM_PROMPT,
@@ -97,45 +73,33 @@ async def classificar_mensagem(
         )
 
         raw = response.content[0].text.strip()
-
-        # Remove eventual markdown fence
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE)
         result = json.loads(raw)
 
-        # Garante campos mínimos
         result.setdefault("intent", "outro")
         result.setdefault("confianca", 0.0)
         result.setdefault("entidades", {})
         result.setdefault("resumo", "Evento registrado.")
 
-        # Injeta data_evento se a intent precisar e não vier na mensagem
         if "data_evento" not in result["entidades"]:
             result["entidades"]["data_evento"] = hoje_str
 
-        logger.info(
-            "ovino_ia | intent=%s confianca=%.2f imovel=%s",
-            result["intent"], result["confianca"], imovel_id,
-        )
+        logger.info("ovino_ia | intent=%s confianca=%.2f", result["intent"], result["confianca"])
         return result
 
     except json.JSONDecodeError as e:
-        logger.warning("ovino_ia | JSON inválido da IA: %s | raw=%r", e, raw[:200])
+        logger.warning("ovino_ia | JSON inválido: %s", e)
         return _fallback("Resposta da IA não era JSON válido.", texto)
-
-    except anthropic.APIError as e:
-        logger.error("ovino_ia | Anthropic API error: %s", e)
-        return _fallback(f"Erro API Anthropic: {e}", texto)
-
     except Exception as e:
-        logger.error("ovino_ia | Erro inesperado: %s", e, exc_info=True)
-        return _fallback(f"Erro inesperado: {e}", texto)
+        logger.error("ovino_ia | Erro: %s", e, exc_info=True)
+        return _fallback(str(e), texto)
 
 
-def _fallback(motivo: str, texto_original: str) -> dict:
+def _fallback(motivo: str, texto: str) -> dict:
     return {
         "intent": "outro",
         "confianca": 0.0,
-        "entidades": {"descricao": texto_original[:500]},
+        "entidades": {"descricao": texto[:500]},
         "resumo": "Não foi possível classificar a mensagem automaticamente.",
         "_erro": motivo,
     }

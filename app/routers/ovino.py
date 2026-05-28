@@ -1,39 +1,37 @@
 """
-RuralCaixa — routers/ovino.py
+RuralCaixa — routers/ovino.py  (v2 — psycopg2 síncrono)
+Compatível com o padrão do main_api.py existente.
 
-Endpoints do módulo Ovino de Corte.
-Registre este router em main.py:
-
+Adicione em main_api.py:
     from routers.ovino import router as ovino_router
     app.include_router(ovino_router)
-
-Depende de:
-  - database.py  → get_db() (AsyncSession do SQLAlchemy ou connection asyncpg)
-  - services/ovino_ia.py → classificar_mensagem()
-  - Tabelas criadas por 001_ovino_schema.sql
 """
 
-from __future__ import annotations
-
-import logging
-from datetime import date, datetime
-from typing import List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+from datetime import date, datetime
+import psycopg2
+import psycopg2.extras
+import logging
+import sys
+import os
 
-# Ajuste o import conforme seu projeto:
-from database import get_db               # <- sua dependência de sessão
-from services.ovino_ia import classificar_mensagem
+# Importa o serviço de IA
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from app.services.ovino_ia import classificar_mensagem_sync
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ovino", tags=["Ovino"])
 
+DB_URL = "postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway"
+
+def get_db():
+    return psycopg2.connect(DB_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SCHEMAS (Pydantic)
+# SCHEMAS
 # ══════════════════════════════════════════════════════════════════════════════
 
 class AnimalCreate(BaseModel):
@@ -49,22 +47,12 @@ class AnimalCreate(BaseModel):
     lote_id: Optional[int] = None
     observacoes: Optional[str] = None
 
-
-class AnimalOut(AnimalCreate):
-    id: int
-    status: str
-    created_at: datetime
-    class Config:
-        from_attributes = True
-
-
 class PesagemCreate(BaseModel):
     animal_id: int
     data_pesagem: date = Field(default_factory=date.today)
     peso_kg: float
     motivo: str = "rotina"
     registrado_por: Optional[str] = None
-
 
 class SaudeCreate(BaseModel):
     imovel_id: int
@@ -80,7 +68,6 @@ class SaudeCreate(BaseModel):
     registrado_por: Optional[str] = None
     observacoes: Optional[str] = None
 
-
 class ReproducaoCreate(BaseModel):
     imovel_id: int
     tipo: str
@@ -92,7 +79,6 @@ class ReproducaoCreate(BaseModel):
     observacoes: Optional[str] = None
     registrado_por: Optional[str] = None
 
-
 class AbateCreate(BaseModel):
     animal_id: int
     data_abate: date = Field(default_factory=date.today)
@@ -103,19 +89,16 @@ class AbateCreate(BaseModel):
     comprador: Optional[str] = None
     registrado_por: Optional[str] = None
 
-
 class LoteCreate(BaseModel):
     imovel_id: int
     nome: str
     fase: str = "cria"
     data_inicio: date = Field(default_factory=date.today)
 
-
-# ── WhatsApp webhook ──────────────────────────────────────────────────────────
 class WhatsAppMensagem(BaseModel):
     telefone: str
-    tipo_midia: str = "texto"   # texto | audio | imagem
-    conteudo: str               # texto bruto ou transcrição de áudio
+    tipo_midia: str = "texto"
+    conteudo: str
     imovel_id: Optional[int] = None
 
 
@@ -123,507 +106,497 @@ class WhatsAppMensagem(BaseModel):
 # ANIMAIS
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/animais", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def criar_animal(payload: AnimalCreate, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        INSERT INTO ovino_animais
-            (imovel_id, brinco, nome, raca, sexo, data_nascimento,
-             peso_nascimento, mae_id, pai_id, lote_id, observacoes)
-        VALUES
-            (:imovel_id, :brinco, :nome, :raca, :sexo, :data_nascimento,
-             :peso_nascimento, :mae_id, :pai_id, :lote_id, :observacoes)
-        RETURNING id, brinco, status, created_at
-    """)
+@router.post("/animais", status_code=201)
+def criar_animal(payload: AnimalCreate):
+    conn = get_db()
     try:
-        result = await db.execute(q, payload.model_dump())
-        await db.commit()
-        row = result.mappings().one()
-        return dict(row)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_animais
+                (imovel_id, brinco, nome, raca, sexo, data_nascimento,
+                 peso_nascimento, mae_id, pai_id, lote_id, observacoes)
+            VALUES
+                (%(imovel_id)s, %(brinco)s, %(nome)s, %(raca)s, %(sexo)s,
+                 %(data_nascimento)s, %(peso_nascimento)s, %(mae_id)s,
+                 %(pai_id)s, %(lote_id)s, %(observacoes)s)
+            RETURNING id, brinco, status, created_at
+        """, payload.model_dump())
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(409, f"Brinco '{payload.brinco}' já cadastrado neste imóvel.")
     except Exception as e:
-        await db.rollback()
-        if "unique" in str(e).lower():
-            raise HTTPException(409, f"Brinco '{payload.brinco}' já cadastrado neste imóvel.")
+        conn.rollback()
         raise HTTPException(500, str(e))
+    finally:
+        conn.close()
 
 
-@router.get("/animais", response_model=List[dict])
-async def listar_animais(
+@router.get("/animais")
+def listar_animais(
     imovel_id: int = Query(...),
     status: Optional[str] = Query(None),
     lote_id: Optional[int] = Query(None),
-    db: AsyncSession = Depends(get_db),
 ):
-    filtros = "WHERE a.imovel_id = :imovel_id"
-    params: dict = {"imovel_id": imovel_id}
-    if status:
-        filtros += " AND a.status = :status"
-        params["status"] = status
-    if lote_id:
-        filtros += " AND a.lote_id = :lote_id"
-        params["lote_id"] = lote_id
-
-    q = text(f"""
-        SELECT a.*, l.nome AS lote_nome,
-               (SELECT peso_kg FROM ovino_pesagens
-                WHERE animal_id = a.id
-                ORDER BY data_pesagem DESC LIMIT 1) AS ultimo_peso,
-               (SELECT data_pesagem FROM ovino_pesagens
-                WHERE animal_id = a.id
-                ORDER BY data_pesagem DESC LIMIT 1) AS data_ultimo_peso
-        FROM ovino_animais a
-        LEFT JOIN ovino_lotes l ON l.id = a.lote_id
-        {filtros}
-        ORDER BY a.brinco
-    """)
-    result = await db.execute(q, params)
-    return [dict(r) for r in result.mappings()]
-
-
-@router.get("/animais/{animal_id}", response_model=dict)
-async def detalhe_animal(animal_id: int, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        SELECT a.*,
-               l.nome AS lote_nome,
-               m.brinco AS mae_brinco,
-               p.brinco AS pai_brinco
-        FROM ovino_animais a
-        LEFT JOIN ovino_lotes l ON l.id = a.lote_id
-        LEFT JOIN ovino_animais m ON m.id = a.mae_id
-        LEFT JOIN ovino_animais p ON p.id = a.pai_id
-        WHERE a.id = :id
-    """)
-    result = await db.execute(q, {"id": animal_id})
-    row = result.mappings().first()
-    if not row:
-        raise HTTPException(404, "Animal não encontrado.")
-    return dict(row)
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT a.*, l.nome AS lote_nome,
+                   (SELECT peso_kg FROM ovino_pesagens
+                    WHERE animal_id = a.id
+                    ORDER BY data_pesagem DESC LIMIT 1) AS ultimo_peso,
+                   (SELECT data_pesagem FROM ovino_pesagens
+                    WHERE animal_id = a.id
+                    ORDER BY data_pesagem DESC LIMIT 1) AS data_ultimo_peso
+            FROM ovino_animais a
+            LEFT JOIN ovino_lotes l ON l.id = a.lote_id
+            WHERE a.imovel_id = %s
+        """
+        params = [imovel_id]
+        if status:
+            sql += " AND a.status = %s"
+            params.append(status)
+        if lote_id:
+            sql += " AND a.lote_id = %s"
+            params.append(lote_id)
+        sql += " ORDER BY a.brinco"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
-@router.patch("/animais/{animal_id}/status", response_model=dict)
-async def atualizar_status_animal(
-    animal_id: int,
-    novo_status: str = Query(..., pattern="^(ativo|vendido|abatido|morto|descartado)$"),
-    db: AsyncSession = Depends(get_db),
-):
-    q = text("""
-        UPDATE ovino_animais SET status = :status, updated_at = NOW()
-        WHERE id = :id RETURNING id, brinco, status
-    """)
-    result = await db.execute(q, {"status": novo_status, "id": animal_id})
-    await db.commit()
-    row = result.mappings().first()
-    if not row:
-        raise HTTPException(404, "Animal não encontrado.")
-    return dict(row)
+@router.get("/animais/{animal_id}")
+def detalhe_animal(animal_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT a.*, l.nome AS lote_nome,
+                   m.brinco AS mae_brinco, p.brinco AS pai_brinco
+            FROM ovino_animais a
+            LEFT JOIN ovino_lotes l ON l.id = a.lote_id
+            LEFT JOIN ovino_animais m ON m.id = a.mae_id
+            LEFT JOIN ovino_animais p ON p.id = a.pai_id
+            WHERE a.id = %s
+        """, (animal_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Animal não encontrado.")
+        return dict(row)
+    finally:
+        conn.close()
+
+
+@router.patch("/animais/{animal_id}/status")
+def atualizar_status_animal(animal_id: int, novo_status: str = Query(...)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE ovino_animais SET status = %s, updated_at = NOW()
+            WHERE id = %s RETURNING id, brinco, status
+        """, (novo_status, animal_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Animal não encontrado.")
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LOTES
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/lotes", response_model=dict, status_code=201)
-async def criar_lote(payload: LoteCreate, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        INSERT INTO ovino_lotes (imovel_id, nome, fase, data_inicio)
-        VALUES (:imovel_id, :nome, :fase, :data_inicio)
-        RETURNING id, nome, fase, data_inicio
-    """)
-    result = await db.execute(q, payload.model_dump())
-    await db.commit()
-    return dict(result.mappings().one())
+@router.post("/lotes", status_code=201)
+def criar_lote(payload: LoteCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_lotes (imovel_id, nome, fase, data_inicio)
+            VALUES (%(imovel_id)s, %(nome)s, %(fase)s, %(data_inicio)s)
+            RETURNING id, nome, fase, data_inicio
+        """, payload.model_dump())
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
 
 
-@router.get("/lotes", response_model=List[dict])
-async def listar_lotes(imovel_id: int = Query(...), db: AsyncSession = Depends(get_db)):
-    q = text("""
-        SELECT l.*,
-               COUNT(a.id) FILTER (WHERE a.status = 'ativo') AS total_animais
-        FROM ovino_lotes l
-        LEFT JOIN ovino_animais a ON a.lote_id = l.id
-        WHERE l.imovel_id = :imovel_id AND l.ativo = TRUE
-        GROUP BY l.id
-        ORDER BY l.data_inicio DESC
-    """)
-    result = await db.execute(q, {"imovel_id": imovel_id})
-    return [dict(r) for r in result.mappings()]
+@router.get("/lotes")
+def listar_lotes(imovel_id: int = Query(...)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT l.*,
+                   COUNT(a.id) FILTER (WHERE a.status = 'ativo') AS total_animais
+            FROM ovino_lotes l
+            LEFT JOIN ovino_animais a ON a.lote_id = l.id
+            WHERE l.imovel_id = %s AND l.ativo = TRUE
+            GROUP BY l.id
+            ORDER BY l.data_inicio DESC
+        """, (imovel_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PESAGENS
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/pesagens", response_model=dict, status_code=201)
-async def registrar_pesagem(payload: PesagemCreate, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        INSERT INTO ovino_pesagens (animal_id, data_pesagem, peso_kg, motivo, registrado_por)
-        VALUES (:animal_id, :data_pesagem, :peso_kg, :motivo, :registrado_por)
-        RETURNING id, animal_id, data_pesagem, peso_kg, motivo
-    """)
-    result = await db.execute(q, payload.model_dump())
-    await db.commit()
-    return dict(result.mappings().one())
+@router.post("/pesagens", status_code=201)
+def registrar_pesagem(payload: PesagemCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_pesagens (animal_id, data_pesagem, peso_kg, motivo, registrado_por)
+            VALUES (%(animal_id)s, %(data_pesagem)s, %(peso_kg)s, %(motivo)s, %(registrado_por)s)
+            RETURNING id, animal_id, data_pesagem, peso_kg, motivo
+        """, payload.model_dump())
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
 
 
-@router.get("/pesagens/{animal_id}", response_model=List[dict])
-async def historico_pesagens(animal_id: int, db: AsyncSession = Depends(get_db)):
-    """Retorna histórico completo + GMD entre pesagens consecutivas."""
-    q = text("""
-        SELECT p.*,
-               ROUND(
-                   (p.peso_kg - LAG(p.peso_kg) OVER (ORDER BY p.data_pesagem)) /
-                   NULLIF(p.data_pesagem - LAG(p.data_pesagem) OVER (ORDER BY p.data_pesagem), 0)
-               , 3) AS gmd_kg_dia
-        FROM ovino_pesagens p
-        WHERE p.animal_id = :animal_id
-        ORDER BY p.data_pesagem
-    """)
-    result = await db.execute(q, {"animal_id": animal_id})
-    return [dict(r) for r in result.mappings()]
+@router.get("/pesagens/{animal_id}")
+def historico_pesagens(animal_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.*,
+                   ROUND(
+                       (p.peso_kg - LAG(p.peso_kg) OVER (ORDER BY p.data_pesagem)) /
+                       NULLIF(p.data_pesagem - LAG(p.data_pesagem) OVER (ORDER BY p.data_pesagem), 0)
+                   , 3) AS gmd_kg_dia
+            FROM ovino_pesagens p
+            WHERE p.animal_id = %s
+            ORDER BY p.data_pesagem
+        """, (animal_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SAÚDE
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/saude", response_model=dict, status_code=201)
-async def registrar_evento_saude(payload: SaudeCreate, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        INSERT INTO ovino_saude
-            (imovel_id, animal_id, lote_id, tipo, data_evento, produto,
-             dose_ml, via, proximo_em, resultado, registrado_por, observacoes)
-        VALUES
-            (:imovel_id, :animal_id, :lote_id, :tipo, :data_evento, :produto,
-             :dose_ml, :via, :proximo_em, :resultado, :registrado_por, :observacoes)
-        RETURNING id, tipo, data_evento, produto, proximo_em
-    """)
-    result = await db.execute(q, payload.model_dump())
-    await db.commit()
-    return dict(result.mappings().one())
+@router.post("/saude", status_code=201)
+def registrar_evento_saude(payload: SaudeCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_saude
+                (imovel_id, animal_id, lote_id, tipo, data_evento, produto,
+                 dose_ml, via, proximo_em, resultado, registrado_por, observacoes)
+            VALUES
+                (%(imovel_id)s, %(animal_id)s, %(lote_id)s, %(tipo)s, %(data_evento)s,
+                 %(produto)s, %(dose_ml)s, %(via)s, %(proximo_em)s, %(resultado)s,
+                 %(registrado_por)s, %(observacoes)s)
+            RETURNING id, tipo, data_evento, produto, proximo_em
+        """, payload.model_dump())
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
 
 
-@router.get("/saude/alertas", response_model=List[dict])
-async def alertas_sanitarios(
+@router.get("/saude/alertas")
+def alertas_sanitarios(
     imovel_id: int = Query(...),
     dias_antecedencia: int = Query(7),
-    db: AsyncSession = Depends(get_db),
 ):
-    """Retorna manejos com proximo_em nos próximos N dias."""
-    q = text("""
-        SELECT s.*, a.brinco AS animal_brinco, l.nome AS lote_nome
-        FROM ovino_saude s
-        LEFT JOIN ovino_animais a ON a.id = s.animal_id
-        LEFT JOIN ovino_lotes l ON l.id = s.lote_id
-        WHERE s.imovel_id = :imovel_id
-          AND s.proximo_em BETWEEN CURRENT_DATE AND CURRENT_DATE + :dias
-        ORDER BY s.proximo_em
-    """)
-    result = await db.execute(q, {"imovel_id": imovel_id, "dias": dias_antecedencia})
-    return [dict(r) for r in result.mappings()]
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.*, a.brinco AS animal_brinco, l.nome AS lote_nome
+            FROM ovino_saude s
+            LEFT JOIN ovino_animais a ON a.id = s.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = s.lote_id
+            WHERE s.imovel_id = %s
+              AND s.proximo_em BETWEEN CURRENT_DATE AND CURRENT_DATE + %s
+            ORDER BY s.proximo_em
+        """, (imovel_id, dias_antecedencia))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REPRODUÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/reproducao", response_model=dict, status_code=201)
-async def registrar_evento_reproducao(payload: ReproducaoCreate, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        INSERT INTO ovino_reproducao
-            (imovel_id, tipo, data_evento, matriz_id, reprodutor_id,
-             cordeiros_vivos, cordeiros_mortos, observacoes, registrado_por)
-        VALUES
-            (:imovel_id, :tipo, :data_evento, :matriz_id, :reprodutor_id,
-             :cordeiros_vivos, :cordeiros_mortos, :observacoes, :registrado_por)
-        RETURNING id, tipo, data_evento, cordeiros_vivos
-    """)
-    result = await db.execute(q, payload.model_dump())
-    await db.commit()
-    row = dict(result.mappings().one())
-
-    # Se for parto, ajusta status da matriz automaticamente
-    if payload.tipo == "parto" and payload.matriz_id:
-        await db.execute(
-            text("UPDATE ovino_animais SET updated_at=NOW() WHERE id=:id"),
-            {"id": payload.matriz_id},
-        )
-        await db.commit()
-
-    return row
+@router.post("/reproducao", status_code=201)
+def registrar_reproducao(payload: ReproducaoCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_reproducao
+                (imovel_id, tipo, data_evento, matriz_id, reprodutor_id,
+                 cordeiros_vivos, cordeiros_mortos, observacoes, registrado_por)
+            VALUES
+                (%(imovel_id)s, %(tipo)s, %(data_evento)s, %(matriz_id)s,
+                 %(reprodutor_id)s, %(cordeiros_vivos)s, %(cordeiros_mortos)s,
+                 %(observacoes)s, %(registrado_por)s)
+            RETURNING id, tipo, data_evento, cordeiros_vivos
+        """, payload.model_dump())
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABATES
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/abates", response_model=dict, status_code=201)
-async def registrar_abate(payload: AbateCreate, db: AsyncSession = Depends(get_db)):
-    q = text("""
-        INSERT INTO ovino_abates
-            (animal_id, data_abate, peso_vivo_kg, peso_carcaca_kg,
-             destino, valor_total_rs, comprador, registrado_por)
-        VALUES
-            (:animal_id, :data_abate, :peso_vivo_kg, :peso_carcaca_kg,
-             :destino, :valor_total_rs, :comprador, :registrado_por)
-        RETURNING id, animal_id, data_abate, peso_vivo_kg, peso_carcaca_kg, rendimento_pct
-    """)
-    result = await db.execute(q, payload.model_dump())
-    # Marca animal como abatido
-    await db.execute(
-        text("UPDATE ovino_animais SET status='abatido', updated_at=NOW() WHERE id=:id"),
-        {"id": payload.animal_id},
-    )
-    await db.commit()
-    return dict(result.mappings().one())
+@router.post("/abates", status_code=201)
+def registrar_abate(payload: AbateCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_abates
+                (animal_id, data_abate, peso_vivo_kg, peso_carcaca_kg,
+                 destino, valor_total_rs, comprador, registrado_por)
+            VALUES
+                (%(animal_id)s, %(data_abate)s, %(peso_vivo_kg)s, %(peso_carcaca_kg)s,
+                 %(destino)s, %(valor_total_rs)s, %(comprador)s, %(registrado_por)s)
+            RETURNING id, animal_id, data_abate, peso_vivo_kg, peso_carcaca_kg, rendimento_pct
+        """, payload.model_dump())
+        row = dict(cur.fetchone())
+        cur.execute(
+            "UPDATE ovino_animais SET status='abatido', updated_at=NOW() WHERE id=%s",
+            (payload.animal_id,)
+        )
+        conn.commit()
+        return row
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DASHBOARD — KPIs do imóvel
+# DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.get("/dashboard/{imovel_id}", response_model=dict)
-async def dashboard_ovino(imovel_id: int, db: AsyncSession = Depends(get_db)):
-    """KPIs consolidados para o imóvel: rebanho, reprodução, saúde, abates."""
+@router.get("/dashboard/{imovel_id}")
+def dashboard_ovino(imovel_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
 
-    rebanho = await db.execute(text("""
-        SELECT
-            COUNT(*) FILTER (WHERE status='ativo')            AS total_ativo,
-            COUNT(*) FILTER (WHERE status='ativo' AND sexo='F') AS matrizes,
-            COUNT(*) FILTER (WHERE status='ativo' AND sexo='M') AS reprodutores
-        FROM ovino_animais WHERE imovel_id = :id
-    """), {"id": imovel_id})
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE status='ativo')              AS total_ativo,
+                COUNT(*) FILTER (WHERE status='ativo' AND sexo='F') AS matrizes,
+                COUNT(*) FILTER (WHERE status='ativo' AND sexo='M') AS reprodutores
+            FROM ovino_animais WHERE imovel_id = %s
+        """, (imovel_id,))
+        rebanho = dict(cur.fetchone())
 
-    abates_30d = await db.execute(text("""
-        SELECT
-            COUNT(*)                        AS total_abatidos,
-            ROUND(AVG(peso_carcaca_kg), 2)  AS media_carcaca_kg,
-            ROUND(AVG(rendimento_pct), 2)   AS media_rendimento_pct,
-            ROUND(SUM(valor_total_rs), 2)   AS receita_total_rs
-        FROM ovino_abates ab
-        JOIN ovino_animais a ON a.id = ab.animal_id
-        WHERE a.imovel_id = :id
-          AND ab.data_abate >= CURRENT_DATE - INTERVAL '30 days'
-    """), {"id": imovel_id})
+        cur.execute("""
+            SELECT
+                COUNT(*)                        AS total_abatidos,
+                ROUND(AVG(peso_carcaca_kg), 2)  AS media_carcaca_kg,
+                ROUND(AVG(rendimento_pct), 2)   AS media_rendimento_pct,
+                ROUND(SUM(valor_total_rs), 2)   AS receita_total_rs
+            FROM ovino_abates ab
+            JOIN ovino_animais a ON a.id = ab.animal_id
+            WHERE a.imovel_id = %s
+              AND ab.data_abate >= CURRENT_DATE - INTERVAL '30 days'
+        """, (imovel_id,))
+        abates = dict(cur.fetchone())
 
-    partos_30d = await db.execute(text("""
-        SELECT
-            COUNT(*)        AS total_partos,
-            SUM(cordeiros_vivos)  AS cordeiros_vivos,
-            SUM(cordeiros_mortos) AS cordeiros_mortos
-        FROM ovino_reproducao
-        WHERE imovel_id = :id AND tipo = 'parto'
-          AND data_evento >= CURRENT_DATE - INTERVAL '30 days'
-    """), {"id": imovel_id})
+        cur.execute("""
+            SELECT COUNT(*) AS total_partos,
+                   SUM(cordeiros_vivos)   AS cordeiros_vivos,
+                   SUM(cordeiros_mortos)  AS cordeiros_mortos
+            FROM ovino_reproducao
+            WHERE imovel_id = %s AND tipo = 'parto'
+              AND data_evento >= CURRENT_DATE - INTERVAL '30 days'
+        """, (imovel_id,))
+        partos = dict(cur.fetchone())
 
-    alertas_7d = await db.execute(text("""
-        SELECT COUNT(*) AS total_alertas
-        FROM ovino_saude
-        WHERE imovel_id = :id
-          AND proximo_em BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
-    """), {"id": imovel_id})
+        cur.execute("""
+            SELECT COUNT(*) AS total_alertas
+            FROM ovino_saude
+            WHERE imovel_id = %s
+              AND proximo_em BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+        """, (imovel_id,))
+        alertas = dict(cur.fetchone())
 
-    return {
-        "rebanho":    dict(rebanho.mappings().one()),
-        "abates_30d": dict(abates_30d.mappings().one()),
-        "partos_30d": dict(partos_30d.mappings().one()),
-        "alertas_7d": dict(alertas_7d.mappings().one()),
-    }
+        return {
+            "rebanho": rebanho,
+            "abates_30d": abates,
+            "partos_30d": partos,
+            "alertas_7d": alertas,
+        }
+    finally:
+        conn.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WEBHOOK WHATSAPP → OVINO (ponto de entrada do campo)
+# WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/webhook/whatsapp", response_model=dict)
-async def webhook_whatsapp_ovino(payload: WhatsAppMensagem, db: AsyncSession = Depends(get_db)):
-    """
-    Recebe mensagem do WhatsApp (texto ou transcrição de áudio),
-    classifica via IA e persiste o evento zootécnico.
-
-    Retorna o resumo para o producer confirmar via WhatsApp.
-    """
-
-    # 1. Classifica via IA
-    classificacao = await classificar_mensagem(
+@router.post("/webhook/whatsapp")
+def webhook_whatsapp_ovino(payload: WhatsAppMensagem):
+    # 1. Classifica via IA (síncrono)
+    classificacao = classificar_mensagem_sync(
         texto=payload.conteudo,
         imovel_id=payload.imovel_id,
     )
 
-    intent       = classificacao["intent"]
-    entidades    = classificacao["entidades"]
-    confianca    = classificacao["confianca"]
-    resumo       = classificacao["resumo"]
-    evento_id    = None
-    evento_tabela= None
-    status_log   = "processado"
-    erro_msg     = None
+    intent      = classificacao["intent"]
+    entidades   = classificacao["entidades"]
+    confianca   = classificacao["confianca"]
+    resumo      = classificacao["resumo"]
+    evento_id   = None
+    evento_tab  = None
+    status_log  = "processado"
+    erro_msg    = None
 
-    # 2. Persiste conforme a intent (confiança mínima 0.5)
+    conn = get_db()
     try:
+        cur = conn.cursor()
+
         if confianca >= 0.5 and payload.imovel_id:
 
             if intent == "pesagem":
-                animal = await _buscar_animal_por_brinco(
-                    db, entidades.get("brinco"), payload.imovel_id
-                )
+                animal = _buscar_animal(cur, entidades.get("brinco"), payload.imovel_id)
                 if animal:
-                    r = await db.execute(text("""
-                        INSERT INTO ovino_pesagens (animal_id, data_pesagem, peso_kg, motivo, registrado_por)
-                        VALUES (:animal_id, :data, :peso, :motivo, :reg)
-                        RETURNING id
-                    """), {
-                        "animal_id": animal["id"],
-                        "data": entidades.get("data_evento"),
-                        "peso": entidades.get("peso_kg"),
-                        "motivo": entidades.get("motivo", "rotina"),
-                        "reg": payload.telefone,
-                    })
-                    await db.commit()
-                    evento_id, evento_tabela = r.scalar(), "ovino_pesagens"
+                    cur.execute("""
+                        INSERT INTO ovino_pesagens
+                            (animal_id, data_pesagem, peso_kg, motivo, registrado_por)
+                        VALUES (%s, %s, %s, %s, %s) RETURNING id
+                    """, (animal["id"], entidades.get("data_evento"), entidades.get("peso_kg"),
+                          entidades.get("motivo", "rotina"), payload.telefone))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "ovino_pesagens"
 
             elif intent in ("vacinacao", "vermifugacao"):
-                r = await db.execute(text("""
+                cur.execute("""
                     INSERT INTO ovino_saude
                         (imovel_id, tipo, data_evento, produto, dose_ml, via, registrado_por)
-                    VALUES (:imovel_id, :tipo, :data, :produto, :dose, :via, :reg)
-                    RETURNING id
-                """), {
-                    "imovel_id": payload.imovel_id,
-                    "tipo": intent,
-                    "data": entidades.get("data_evento"),
-                    "produto": entidades.get("produto"),
-                    "dose": entidades.get("dose_ml"),
-                    "via": entidades.get("via"),
-                    "reg": payload.telefone,
-                })
-                await db.commit()
-                evento_id, evento_tabela = r.scalar(), "ovino_saude"
+                    VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+                """, (payload.imovel_id, intent, entidades.get("data_evento"),
+                      entidades.get("produto"), entidades.get("dose_ml"),
+                      entidades.get("via"), payload.telefone))
+                evento_id = cur.fetchone()["id"]
+                evento_tab = "ovino_saude"
 
             elif intent == "famacha":
-                animal = await _buscar_animal_por_brinco(
-                    db, entidades.get("brinco"), payload.imovel_id
-                )
+                animal = _buscar_animal(cur, entidades.get("brinco"), payload.imovel_id)
                 if animal:
-                    r = await db.execute(text("""
+                    cur.execute("""
                         INSERT INTO ovino_saude
                             (imovel_id, animal_id, tipo, data_evento, resultado, registrado_por)
-                        VALUES (:imovel_id, :animal_id, 'famacha', :data, :resultado, :reg)
-                        RETURNING id
-                    """), {
-                        "imovel_id": payload.imovel_id,
-                        "animal_id": animal["id"],
-                        "data": entidades.get("data_evento"),
-                        "resultado": str(entidades.get("escore", "")),
-                        "reg": payload.telefone,
-                    })
-                    await db.commit()
-                    evento_id, evento_tabela = r.scalar(), "ovino_saude"
+                        VALUES (%s, %s, 'famacha', %s, %s, %s) RETURNING id
+                    """, (payload.imovel_id, animal["id"], entidades.get("data_evento"),
+                          str(entidades.get("escore", "")), payload.telefone))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "ovino_saude"
 
             elif intent == "parto":
-                animal = await _buscar_animal_por_brinco(
-                    db, entidades.get("brinco_matriz"), payload.imovel_id
-                )
-                r = await db.execute(text("""
+                animal = _buscar_animal(cur, entidades.get("brinco_matriz"), payload.imovel_id)
+                cur.execute("""
                     INSERT INTO ovino_reproducao
                         (imovel_id, tipo, data_evento, matriz_id,
                          cordeiros_vivos, cordeiros_mortos, registrado_por)
-                    VALUES (:imovel_id, 'parto', :data, :matriz_id,
-                            :cv, :cm, :reg)
-                    RETURNING id
-                """), {
-                    "imovel_id": payload.imovel_id,
-                    "data": entidades.get("data_evento"),
-                    "matriz_id": animal["id"] if animal else None,
-                    "cv": entidades.get("cordeiros_vivos", 0),
-                    "cm": entidades.get("cordeiros_mortos", 0),
-                    "reg": payload.telefone,
-                })
-                await db.commit()
-                evento_id, evento_tabela = r.scalar(), "ovino_reproducao"
+                    VALUES (%s, 'parto', %s, %s, %s, %s, %s) RETURNING id
+                """, (payload.imovel_id, entidades.get("data_evento"),
+                      animal["id"] if animal else None,
+                      entidades.get("cordeiros_vivos", 0),
+                      entidades.get("cordeiros_mortos", 0),
+                      payload.telefone))
+                evento_id = cur.fetchone()["id"]
+                evento_tab = "ovino_reproducao"
 
             elif intent == "cadastro":
                 try:
-                    r = await db.execute(text("""
+                    cur.execute("""
                         INSERT INTO ovino_animais
                             (imovel_id, brinco, sexo, raca, data_nascimento)
-                        VALUES (:imovel_id, :brinco, :sexo, :raca, :dn)
-                        RETURNING id
-                    """), {
-                        "imovel_id": payload.imovel_id,
-                        "brinco": entidades.get("brinco"),
-                        "sexo": entidades.get("sexo", "F"),
-                        "raca": entidades.get("raca"),
-                        "dn": entidades.get("data_nascimento"),
-                    })
-                    await db.commit()
-                    evento_id, evento_tabela = r.scalar(), "ovino_animais"
-                except Exception:
-                    await db.rollback()
+                        VALUES (%s, %s, %s, %s, %s) RETURNING id
+                    """, (payload.imovel_id, entidades.get("brinco"),
+                          entidades.get("sexo", "F"), entidades.get("raca"),
+                          entidades.get("data_nascimento")))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "ovino_animais"
+                except psycopg2.errors.UniqueViolation:
+                    conn.rollback()
                     resumo = f"Animal {entidades.get('brinco')} já cadastrado."
-
             else:
-                # intent não mapeado: loga mas não persiste
                 status_log = "ignorado"
 
         elif confianca < 0.5:
             status_log = "pendente"
             resumo = "Não entendi bem. Pode repetir com mais detalhes?"
-
         else:
             status_log = "ignorado"
 
+        conn.commit()
+
     except Exception as e:
-        await db.rollback()
+        conn.rollback()
         status_log = "erro"
         erro_msg = str(e)
-        resumo = "Erro ao salvar o evento. Tente novamente."
-        logger.error("webhook_ovino | erro ao persistir: %s", e, exc_info=True)
+        resumo = "Erro ao salvar. Tente novamente."
+        logger.error("webhook_ovino erro: %s", e, exc_info=True)
 
-    # 3. Persiste log
+    # Log da mensagem
     try:
-        await db.execute(text("""
+        import json
+        cur2 = conn.cursor()
+        cur2.execute("""
             INSERT INTO ovino_whatsapp_log
                 (telefone, tipo_midia, conteudo_raw, intent_detectada,
                  entidades_json, status, evento_id, evento_tabela, erro_msg)
-            VALUES
-                (:tel, :midia, :conteudo, :intent, :entidades::jsonb,
-                 :status, :evento_id, :evento_tabela, :erro)
-        """), {
-            "tel": payload.telefone,
-            "midia": payload.tipo_midia,
-            "conteudo": payload.conteudo[:2000],
-            "intent": intent,
-            "entidades": str(entidades).replace("'", '"'),  # JSON-safe
-            "status": status_log,
-            "evento_id": evento_id,
-            "evento_tabela": evento_tabela,
-            "erro": erro_msg,
-        })
-        await db.commit()
+            VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+        """, (payload.telefone, payload.tipo_midia, payload.conteudo[:2000],
+              intent, json.dumps(entidades, default=str),
+              status_log, evento_id, evento_tab, erro_msg))
+        conn.commit()
     except Exception as e:
-        logger.warning("webhook_ovino | falha ao salvar log: %s", e)
+        logger.warning("Falha ao salvar log WhatsApp: %s", e)
+    finally:
+        conn.close()
 
-    # 4. Retorna confirmação (será enviada de volta pelo WhatsApp handler)
     return {
         "intent": intent,
         "confianca": confianca,
         "status": status_log,
         "resumo": resumo,
         "evento_id": evento_id,
-        "evento_tabela": evento_tabela,
+        "evento_tabela": evento_tab,
     }
 
 
-# ── Helper interno ─────────────────────────────────────────────────────────────
-async def _buscar_animal_por_brinco(
-    db: AsyncSession,
-    brinco: Optional[str],
-    imovel_id: int,
-) -> Optional[dict]:
+# ── Helper ────────────────────────────────────────────────────────────────────
+def _buscar_animal(cur, brinco: Optional[str], imovel_id: int) -> Optional[dict]:
     if not brinco:
         return None
-    result = await db.execute(
-        text("SELECT id, brinco FROM ovino_animais WHERE imovel_id=:iid AND LOWER(brinco)=LOWER(:b)"),
-        {"iid": imovel_id, "b": brinco},
+    cur.execute(
+        "SELECT id, brinco FROM ovino_animais WHERE imovel_id=%s AND LOWER(brinco)=LOWER(%s)",
+        (imovel_id, brinco)
     )
-    row = result.mappings().first()
+    row = cur.fetchone()
     return dict(row) if row else None
