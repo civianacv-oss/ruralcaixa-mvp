@@ -30,6 +30,28 @@ type Dashboard = {
   alertas_7d: { total_alertas: number };
 };
 
+type Insumo = {
+  id: number;
+  nome_comercial: string;
+  principio_ativo: string | null;
+  categoria: string;
+  dose_padrao_ml: number | null;
+  via_padrao: string | null;
+  dias_carencia: number;
+  dias_reforco: number | null;
+};
+
+type Carencia = {
+  aplicacao_id: number;
+  animal_brinco: string | null;
+  lote_nome: string | null;
+  nome_comercial: string;
+  categoria: string;
+  data_aplicacao: string;
+  data_liberacao: string;
+  dias_restantes: number;
+};
+
 type Tarefa = {
   id: number;
   tipo: string;
@@ -71,6 +93,11 @@ export default function OvinoDashboard() {
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
   const [reclassificando, setReclassificando] = useState(false);
+  const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [carencias, setCarencias] = useState<Carencia[]>([]);
+  const [novaAplic, setNovaAplic] = useState({ insumo_id: 0, animal_id: "", lote_id: "", dose_ml: "", via: "", lote_produto: "", responsavel_nome: "" });
+  const [salvandoAplic, setSalvandoAplic] = useState(false);
+  const [msgAplic, setMsgAplic] = useState("");
   const [resultadoReclass, setResultadoReclass] = useState<{movidos:number,total:number,detalhes:any[]} | null>(null);
 
   useEffect(() => {
@@ -80,7 +107,7 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert, taref, resumoT] = await Promise.all([
+      const [dash, anim, lots, alert, ins, car, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
@@ -94,6 +121,8 @@ export default function OvinoDashboard() {
       setAlertas(alert);
       setTarefas(Array.isArray(taref) ? taref : []);
       setResumoTarefas(resumoT);
+      setInsumos(Array.isArray(ins) ? ins : []);
+      setCarencias(Array.isArray(car) ? car : []);
     } catch (e) {
       console.error(e);
     }
@@ -201,12 +230,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "agenda", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "agenda", "sanitario", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -398,6 +427,123 @@ export default function OvinoDashboard() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Aba Sanitário */}
+      {aba === "sanitario" && (
+        <div>
+          {/* Carências ativas */}
+          {carencias.length > 0 && (
+            <div style={{ background:"#fff1f2", border:"1px solid #fecdd3", borderRadius:10, padding:14, marginBottom:16 }}>
+              <div style={{ fontWeight:700, color:"#dc2626", marginBottom:8 }}>🚫 Animais em carência ({carencias.length})</div>
+              {carencias.map(c => (
+                <div key={c.aplicacao_id} style={{ fontSize:13, marginBottom:4, display:"flex", justifyContent:"space-between" }}>
+                  <span>
+                    <strong>{c.animal_brinco || c.lote_nome || "Lote"}</strong> — {c.nome_comercial}
+                  </span>
+                  <span style={{ color:"#dc2626", fontWeight:600 }}>
+                    Libera {new Date(c.data_liberacao+"T00:00:00").toLocaleDateString("pt-BR")} ({c.dias_restantes}d)
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Formulário de aplicação */}
+          <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:10, padding:16, marginBottom:16 }}>
+            <h3 style={{ margin:"0 0 12px", fontSize:14, fontWeight:600 }}>💉 Registrar Aplicação</h3>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <select value={novaAplic.insumo_id} onChange={e => setNovaAplic(p=>({...p,insumo_id:Number(e.target.value)}))}
+                style={{ padding:"8px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, minWidth:160 }}>
+                <option value={0}>Selecione insumo *</option>
+                {["vacina","vermifugo","medicamento"].map(cat => (
+                  <optgroup key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}>
+                    {insumos.filter(i=>i.categoria===cat).map(i => (
+                      <option key={i.id} value={i.id}>{i.nome_comercial}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <input placeholder="Brinco animal" value={novaAplic.animal_id}
+                onChange={e=>setNovaAplic(p=>({...p,animal_id:e.target.value}))}
+                style={{ padding:"8px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:100 }} />
+              <input placeholder="Dose (ml)" value={novaAplic.dose_ml}
+                onChange={e=>setNovaAplic(p=>({...p,dose_ml:e.target.value}))}
+                style={{ padding:"8px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:80 }} />
+              <input placeholder="Lote produto" value={novaAplic.lote_produto}
+                onChange={e=>setNovaAplic(p=>({...p,lote_produto:e.target.value}))}
+                style={{ padding:"8px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:110 }} />
+              <button onClick={async () => {
+                if (!novaAplic.insumo_id) return;
+                setSalvandoAplic(true);
+                // Busca animal por brinco se informado
+                let animal_id = null;
+                if (novaAplic.animal_id) {
+                  const ar = await fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+                  const found = ar.find((a:any) => a.brinco.toLowerCase() === novaAplic.animal_id.toLowerCase());
+                  if (found) animal_id = found.id;
+                }
+                const r = await fetch(`${API}/ovino/sanitario/aplicar`, {
+                  method:"POST", headers:{"Content-Type":"application/json"},
+                  body: JSON.stringify({
+                    imovel_id: IMOVEL_ID,
+                    insumo_id: novaAplic.insumo_id,
+                    animal_id,
+                    dose_ml: novaAplic.dose_ml ? Number(novaAplic.dose_ml) : null,
+                    lote_produto: novaAplic.lote_produto || null,
+                    responsavel_nome: novaAplic.responsavel_nome || null,
+                  })
+                });
+                const data = await r.json();
+                if (r.ok) {
+                  setMsgAplic(`✅ ${data.aplicacoes_criadas} aplicação(ões) registrada(s). Carência: ${data.dias_carencia}d. ${data.tarefas_reforco_criadas > 0 ? "Reforço agendado." : ""}`);
+                  setNovaAplic({ insumo_id:0, animal_id:"", lote_id:"", dose_ml:"", via:"", lote_produto:"", responsavel_nome:"" });
+                  carregarTudo();
+                } else {
+                  setMsgAplic(`❌ ${data.detail || "Erro."}`);
+                }
+                setSalvandoAplic(false);
+                setTimeout(()=>setMsgAplic(""),5000);
+              }} disabled={salvandoAplic || !novaAplic.insumo_id}
+                style={{ padding:"8px 16px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontWeight:600, cursor:"pointer", fontSize:13 }}>
+                {salvandoAplic ? "..." : "Registrar"}
+              </button>
+            </div>
+            {msgAplic && <div style={{ marginTop:8, fontSize:13, color: msgAplic.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{msgAplic}</div>}
+          </div>
+
+          {/* Lista de insumos cadastrados */}
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <thead>
+                <tr style={{ background:"#f3f4f6" }}>
+                  {["Produto","Categoria","Princípio Ativo","Dose","Via","Carência","Reforço"].map(h=>(
+                    <th key={h} style={{ padding:"8px 10px", textAlign:"left", fontWeight:600, color:"#374151", borderBottom:"1px solid #e5e7eb" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {insumos.map(i=>(
+                  <tr key={i.id} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                    <td style={{ padding:"8px 10px", fontWeight:600 }}>{i.nome_comercial}</td>
+                    <td style={{ padding:"8px 10px" }}>
+                      <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:600,
+                        background: i.categoria==="vacina"?"#dbeafe":i.categoria==="vermifugo"?"#dcfce7":"#fef3c7",
+                        color: i.categoria==="vacina"?"#1d4ed8":i.categoria==="vermifugo"?"#15803d":"#92400e" }}>
+                        {i.categoria}
+                      </span>
+                    </td>
+                    <td style={{ padding:"8px 10px", color:"#6b7280" }}>{i.principio_ativo || "—"}</td>
+                    <td style={{ padding:"8px 10px" }}>{i.dose_padrao_ml ? `${i.dose_padrao_ml}ml` : "—"}</td>
+                    <td style={{ padding:"8px 10px", color:"#6b7280" }}>{i.via_padrao || "—"}</td>
+                    <td style={{ padding:"8px 10px" }}>{i.dias_carencia > 0 ? <span style={{ color:"#dc2626", fontWeight:600 }}>{i.dias_carencia}d</span> : "Sem"}</td>
+                    <td style={{ padding:"8px 10px" }}>{i.dias_reforco ? `${i.dias_reforco}d` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
