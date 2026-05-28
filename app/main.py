@@ -491,6 +491,24 @@ async def processar(payload: dict):
             print(f">>> texto recebido: {texto}")
             texto_upper = texto.upper()
 
+            # Deteccao ovino
+            keywords_ovino = ["brinco", "ovino", "ovelha", "cordeiro", "carneiro",
+                              "pesagem", "vacina", "vermifug", "parto", "monta", "famacha",
+                              "abate", "desmame"]
+            if any(k in texto.lower() for k in keywords_ovino):
+                from app.routers.ovino import webhook_whatsapp_ovino, WhatsAppMensagem
+                from app.db import engine
+                from sqlalchemy import text as sqlt
+                with engine.connect() as conn:
+                    row = conn.execute(sqlt(
+                        "SELECT id FROM imoveis_rurais WHERE produtor_id = (SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+                    ), {"tel": "%{}".format(numero[-8:])}).fetchone()
+                    imovel_id = row[0] if row else 1
+                payload_ovino = WhatsAppMensagem(telefone=numero, tipo_midia="texto", conteudo=texto, imovel_id=imovel_id)
+                resultado = webhook_whatsapp_ovino(payload_ovino)
+                await send_msg(numero, resultado["resumo"])
+                return
+
             if numero in sessoes and sessoes[numero].get("_tipo") != "cadastro":
                 if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
                     sess = sessoes.pop(numero)
