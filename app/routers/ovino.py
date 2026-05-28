@@ -95,6 +95,17 @@ class LoteCreate(BaseModel):
     fase: str = "cria"
     data_inicio: date = Field(default_factory=date.today)
 
+
+class ConfigReclassificacao(BaseModel):
+    idade_max_cria_dias: int = 90
+    idade_max_recria_dias: int = 210
+    peso_min_engorda: float = 20.0
+    peso_min_reproducao_femea: float = 28.0
+    idade_min_reproducao_dias: int = 270
+    peso_pre_abate_macho: float = 35.0
+    dry_run: bool = False
+
+
 class WhatsAppMensagem(BaseModel):
     telefone: str
     tipo_midia: str = "texto"
@@ -449,6 +460,133 @@ def dashboard_ovino(imovel_id: int):
             "partos_30d": partos,
             "alertas_7d": alertas,
         }
+    finally:
+        conn.close()
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RECLASSIFICAÇÃO AUTOMÁTICA DE LOTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/animais/reclassificar")
+def reclassificar_rebanho(
+    imovel_id: int = Query(...),
+    config: ConfigReclassificacao = None,
+):
+    from datetime import date as date_type
+    if config is None:
+        config = ConfigReclassificacao()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        fases = ["cria", "recria", "engorda", "reprodução", "descarte"]
+        nomes_padrao = {"cria": "Cria", "recria": "Recria", "engorda": "Engorda",
+                        "reprodução": "Reprodução", "descarte": "Pré-abate"}
+
+        lote_ids = {}
+        for fase in fases:
+            cur.execute("""
+                SELECT id FROM ovino_lotes
+                WHERE imovel_id = %s AND fase = %s AND ativo = TRUE
+                ORDER BY data_inicio DESC LIMIT 1
+            """, (imovel_id, fase))
+            row = cur.fetchone()
+            if row:
+                lote_ids[fase] = row["id"]
+            else:
+                cur.execute("""
+                    INSERT INTO ovino_lotes (imovel_id, nome, fase, data_inicio)
+                    VALUES (%s, %s, %s, CURRENT_DATE) RETURNING id
+                """, (imovel_id, nomes_padrao[fase], fase))
+                lote_ids[fase] = cur.fetchone()["id"]
+
+        if not config.dry_run:
+            conn.commit()
+
+        cur.execute("""
+            SELECT a.id, a.brinco, a.sexo, a.lote_id, a.data_nascimento,
+                   (SELECT peso_kg FROM ovino_pesagens WHERE animal_id = a.id
+                    ORDER BY data_pesagem DESC LIMIT 1) AS ultimo_peso
+            FROM ovino_animais a
+            WHERE a.imovel_id = %s AND a.status = 'ativo'
+            ORDER BY a.brinco
+        """, (imovel_id,))
+        animais = cur.fetchall()
+
+        hoje = date_type.today()
+        movidos = 0
+        sem_alteracao = 0
+        sem_dados = 0
+        detalhes = []
+
+        for animal in animais:
+            animal = dict(animal)
+            sexo = animal["sexo"]
+            peso = float(animal["ultimo_peso"]) if animal["ultimo_peso"] else None
+            dn = animal["data_nascimento"]
+            idade_dias = (hoje - dn).days if dn else None
+
+            fase_destino = None
+            motivo = ""
+
+            if (sexo == "F" and idade_dias is not None
+                    and idade_dias >= config.idade_min_reproducao_dias
+                    and peso is not None and peso >= config.peso_min_reproducao_femea):
+                fase_destino = "reprodução"
+                motivo = f"femea, {idade_dias}d, {peso}kg >= {config.peso_min_reproducao_femea}kg"
+
+            elif sexo == "M" and peso is not None and peso >= config.peso_pre_abate_macho:
+                fase_destino = "descarte"
+                motivo = f"macho, peso {peso}kg >= {config.peso_pre_abate_macho}kg"
+
+            elif idade_dias is not None and idade_dias < config.idade_max_cria_dias:
+                fase_destino = "cria"
+                motivo = f"idade {idade_dias}d < {config.idade_max_cria_dias}d"
+
+            elif (idade_dias is not None and idade_dias <= config.idade_max_recria_dias
+                    and (peso is None or peso < config.peso_min_engorda)):
+                fase_destino = "recria"
+                motivo = f"idade {idade_dias}d, peso {peso or '?'}kg"
+
+            elif idade_dias is not None or peso is not None:
+                fase_destino = "engorda"
+                motivo = f"idade {idade_dias or '?'}d, peso {peso or '?'}kg"
+
+            else:
+                sem_dados += 1
+                detalhes.append({"brinco": animal["brinco"], "acao": "sem_dados"})
+                continue
+
+            lote_destino_id = lote_ids[fase_destino]
+
+            if animal["lote_id"] == lote_destino_id:
+                sem_alteracao += 1
+            else:
+                if not config.dry_run:
+                    cur.execute("UPDATE ovino_animais SET lote_id=%s, updated_at=NOW() WHERE id=%s",
+                                (lote_destino_id, animal["id"]))
+                    cur.execute("""
+                        INSERT INTO ovino_saude (imovel_id, animal_id, tipo, data_evento, observacoes, registrado_por)
+                        VALUES (%s, %s, 'outro', CURRENT_DATE, %s, 'sistema')
+                    """, (imovel_id, animal["id"], f"Reclassificado para {fase_destino}: {motivo}"))
+                movidos += 1
+                detalhes.append({"brinco": animal["brinco"],
+                                  "acao": "movido" if not config.dry_run else "seria_movido",
+                                  "fase": fase_destino, "motivo": motivo})
+
+        if not config.dry_run:
+            conn.commit()
+
+        return {"dry_run": config.dry_run, "total": len(animais),
+                "movidos": movidos, "sem_alteracao": sem_alteracao,
+                "sem_dados": sem_dados, "detalhes": detalhes}
+
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
     finally:
         conn.close()
 

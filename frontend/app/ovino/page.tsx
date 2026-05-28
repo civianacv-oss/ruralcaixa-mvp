@@ -51,6 +51,8 @@ export default function OvinoDashboard() {
   const [novoAnimal, setNovoAnimal] = useState({ brinco: "", sexo: "F", raca: "" });
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
+  const [reclassificando, setReclassificando] = useState(false);
+  const [resultadoReclass, setResultadoReclass] = useState<{movidos:number,total:number,detalhes:any[]} | null>(null);
 
   useEffect(() => {
     carregarTudo();
@@ -73,6 +75,24 @@ export default function OvinoDashboard() {
       console.error(e);
     }
     setLoading(false);
+  }
+
+  async function reclassificarRebanho(dryRun = false) {
+    setReclassificando(true);
+    setResultadoReclass(null);
+    try {
+      const r = await fetch(`${API}/ovino/animais/reclassificar?imovel_id=${IMOVEL_ID}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: dryRun }),
+      });
+      const data = await r.json();
+      setResultadoReclass(data);
+      if (!dryRun) carregarTudo();
+    } catch {
+      setMsg("Erro ao reclassificar.");
+    }
+    setReclassificando(false);
   }
 
   async function cadastrarAnimal() {
@@ -187,6 +207,37 @@ export default function OvinoDashboard() {
             </div>
           </div>
 
+          {/* Reclassificação automática */}
+          <div style={{ marginBottom: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={() => reclassificarRebanho(true)} disabled={reclassificando}
+              style={{ padding: "8px 16px", background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+              {reclassificando ? "..." : "🔍 Simular Classificação"}
+            </button>
+            <button onClick={() => reclassificarRebanho(false)} disabled={reclassificando}
+              style={{ padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+              {reclassificando ? "..." : "⚡ Classificar Rebanho"}
+            </button>
+            {resultadoReclass && (
+              <span style={{ fontSize: 13, color: "#374151" }}>
+                {resultadoReclass.dry_run ? "Simulação: " : ""}
+                <strong>{resultadoReclass.movidos}</strong> movidos de <strong>{resultadoReclass.total}</strong> animais
+              </span>
+            )}
+          </div>
+          {resultadoReclass && resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
+              <strong style={{ display: "block", marginBottom: 6, color: "#15803d" }}>
+                {resultadoReclass.dry_run ? "Seria movido:" : "Movido:"}
+              </strong>
+              {resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
+                <div key={i} style={{ marginBottom: 2 }}>
+                  <span style={{ fontWeight: 600, color: "#15803d" }}>{d.brinco}</span>
+                  {" → "}<span style={{ fontWeight: 600 }}>{d.fase}</span>
+                  {d.motivo && <span style={{ color: "#6b7280" }}> ({d.motivo})</span>}
+                </div>
+              ))}
+            </div>
+          )}
           {/* Lista de animais */}
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
