@@ -926,6 +926,335 @@ def listar_protocolos(imovel_id: Optional[int] = Query(None)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PROTOCOLO SANITÁRIO
+# ══════════════════════════════════════════════════════════════════════════════
+
+class AplicacaoSanitariaCreate(BaseModel):
+    imovel_id: int
+    insumo_id: int
+    animal_id: Optional[int] = None
+    lote_id: Optional[int] = None
+    data_aplicacao: date = Field(default_factory=date.today)
+    dose_ml: Optional[float] = None
+    via: Optional[str] = None
+    lote_produto: Optional[str] = None
+    validade_produto: Optional[date] = None
+    dias_carencia_override: Optional[int] = None  # sobrescreve o padrão do insumo
+    responsavel_nome: Optional[str] = None
+    responsavel_tel: Optional[str] = None
+    observacoes: Optional[str] = None
+    origem: str = "manual"
+
+
+@router.get("/sanitario/insumos")
+def listar_insumos(
+    imovel_id: Optional[int] = Query(None),
+    categoria: Optional[str] = Query(None),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = "SELECT * FROM ovino_insumo_sanitario WHERE ativo = TRUE"
+        params = []
+        if categoria:
+            sql += " AND categoria = %s"; params.append(categoria)
+        sql += " ORDER BY categoria, nome_comercial"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.post("/sanitario/aplicar", status_code=201)
+def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
+    """
+    Registra aplicação sanitária (individual ou por lote).
+    Gera automaticamente:
+    - Período de carência por animal/lote
+    - Tarefa de reforço se o insumo exigir
+    - Bloqueio de abate durante carência
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Busca insumo para obter defaults
+        cur.execute("SELECT * FROM ovino_insumo_sanitario WHERE id = %s", (payload.insumo_id,))
+        insumo = cur.fetchone()
+        if not insumo:
+            raise HTTPException(404, "Insumo não encontrado.")
+        ins = dict(insumo)
+
+        dias_carencia = payload.dias_carencia_override \
+            if payload.dias_carencia_override is not None \
+            else (ins["dias_carencia"] or 0)
+
+        dose = payload.dose_ml or ins["dose_padrao_ml"]
+        via = payload.via or ins["via_padrao"]
+
+        # Se aplicação por lote, expande para todos os animais ativos
+        animais_alvo = []
+        if payload.lote_id and not payload.animal_id:
+            cur.execute("""
+                SELECT id, brinco FROM ovino_animais
+                WHERE lote_id = %s AND status = 'ativo'
+            """, (payload.lote_id,))
+            animais_alvo = [dict(r) for r in cur.fetchall()]
+        elif payload.animal_id:
+            animais_alvo = [{"id": payload.animal_id}]
+
+        aplicacoes_criadas = []
+        tarefas_reforco = 0
+
+        for animal in animais_alvo if animais_alvo else [{"id": None}]:
+            animal_id = animal.get("id")
+
+            # Calcula reforço
+            reforco_previsto = None
+            if ins["dias_reforco"] and not ins.get("reforco_aplicado"):
+                reforco_previsto = payload.data_aplicacao + timedelta(days=ins["dias_reforco"])
+
+            cur.execute("""
+                INSERT INTO ovino_sanitario_aplicacao
+                    (imovel_id, insumo_id, animal_id, lote_id, data_aplicacao,
+                     dose_ml, via, lote_produto, validade_produto, fabricante,
+                     dias_carencia, reforco_previsto,
+                     responsavel_nome, responsavel_tel, observacoes, origem)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id, data_liberacao, reforco_previsto
+            """, (payload.imovel_id, payload.insumo_id, animal_id, payload.lote_id,
+                  payload.data_aplicacao, dose, via, payload.lote_produto,
+                  payload.validade_produto, ins["fabricante"],
+                  dias_carencia, reforco_previsto,
+                  payload.responsavel_nome, payload.responsavel_tel,
+                  payload.observacoes, payload.origem))
+            aplic = dict(cur.fetchone())
+            aplicacoes_criadas.append(aplic)
+
+            # Gera tarefa de reforço se necessário
+            if reforco_previsto and ins["reforco_obrigatorio"] and animal_id:
+                import hashlib
+                titulo_reforco = f"💉 Reforço: {ins['nome_comercial']}"
+                h_raw = f"{animal_id}::{payload.imovel_id}:vacina:{titulo_reforco.lower()}:{reforco_previsto.isoformat()}:protocolo"
+                h = hashlib.sha256(h_raw.encode()).hexdigest()
+                cur.execute("""
+                    INSERT INTO ovino_tarefas
+                        (imovel_id, animal_id, lote_id, tipo, titulo,
+                         prioridade, data_prevista, data_vencimento,
+                         origem, responsavel_nome, responsavel_telefone, hash_unicidade)
+                    VALUES (%s,%s,%s,'vacina',%s,'alta',%s,%s,'protocolo',%s,%s,%s)
+                    ON CONFLICT (hash_unicidade) DO NOTHING
+                    RETURNING id
+                """, (payload.imovel_id, animal_id, payload.lote_id, titulo_reforco,
+                      reforco_previsto, reforco_previsto + timedelta(days=5),
+                      payload.responsavel_nome, payload.responsavel_tel, h))
+                row = cur.fetchone()
+                if row:
+                    tarefas_reforco += 1
+                    # Vincula tarefa à aplicação
+                    cur.execute("""
+                        UPDATE ovino_sanitario_aplicacao
+                        SET tarefa_reforco_id = %s WHERE id = %s
+                    """, (dict(row)["id"], aplic["id"]))
+
+        conn.commit()
+
+        return {
+            "aplicacoes_criadas": len(aplicacoes_criadas),
+            "animais_tratados": len([a for a in animais_alvo if a.get("id")]) or 1,
+            "dias_carencia": dias_carencia,
+            "data_liberacao": aplicacoes_criadas[0]["data_liberacao"].isoformat() if aplicacoes_criadas else None,
+            "reforco_previsto": aplicacoes_criadas[0]["reforco_previsto"].isoformat() if aplicacoes_criadas and aplicacoes_criadas[0].get("reforco_previsto") else None,
+            "tarefas_reforco_criadas": tarefas_reforco,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.get("/sanitario/carencias")
+def listar_carencias(
+    imovel_id: int = Query(...),
+    incluir_lote: Optional[int] = Query(None),
+):
+    """Retorna animais/lotes com carência ativa — bloqueia abate."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT * FROM ovino_carencias_ativas
+            WHERE imovel_id = %s
+        """
+        params = [imovel_id]
+        if incluir_lote:
+            sql += " AND lote_id = %s"; params.append(incluir_lote)
+        sql += " ORDER BY dias_restantes ASC"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.get("/sanitario/verificar-abate/{animal_id}")
+def verificar_carencia_abate(animal_id: int):
+    """
+    Verifica se o animal está liberado para abate.
+    Considera carências do animal e do lote ao qual pertence.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Busca lote atual do animal
+        cur.execute("SELECT lote_id, brinco FROM ovino_animais WHERE id = %s", (animal_id,))
+        animal = cur.fetchone()
+        if not animal:
+            raise HTTPException(404, "Animal não encontrado.")
+        a = dict(animal)
+
+        # Verifica carência do animal
+        cur.execute("""
+            SELECT * FROM ovino_carencias_ativas
+            WHERE animal_id = %s
+            ORDER BY data_liberacao DESC LIMIT 1
+        """, (animal_id,))
+        carencia_animal = cur.fetchone()
+
+        # Verifica carência do lote
+        carencia_lote = None
+        if a["lote_id"]:
+            cur.execute("""
+                SELECT * FROM ovino_carencias_ativas
+                WHERE lote_id = %s
+                ORDER BY data_liberacao DESC LIMIT 1
+            """, (a["lote_id"],))
+            carencia_lote = cur.fetchone()
+
+        bloqueado = carencia_animal is not None or carencia_lote is not None
+        maior_carencia = None
+        if carencia_animal and carencia_lote:
+            ca = dict(carencia_animal)
+            cl = dict(carencia_lote)
+            maior_carencia = ca if ca["data_liberacao"] >= cl["data_liberacao"] else cl
+        elif carencia_animal:
+            maior_carencia = dict(carencia_animal)
+        elif carencia_lote:
+            maior_carencia = dict(carencia_lote)
+
+        return {
+            "animal_id": animal_id,
+            "brinco": a["brinco"],
+            "liberado_para_abate": not bloqueado,
+            "carencia_ativa": maior_carencia,
+            "data_liberacao": maior_carencia["data_liberacao"].isoformat() if maior_carencia else None,
+            "dias_restantes": maior_carencia["dias_restantes"] if maior_carencia else 0,
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/sanitario/historico")
+def historico_sanitario(
+    imovel_id: int = Query(...),
+    animal_id: Optional[int] = Query(None),
+    lote_id: Optional[int] = Query(None),
+    categoria: Optional[str] = Query(None),
+    limit: int = Query(50),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT ap.*,
+                   ins.nome_comercial, ins.principio_ativo, ins.categoria,
+                   an.brinco AS animal_brinco,
+                   l.nome AS lote_nome,
+                   ap.data_liberacao,
+                   CASE WHEN ap.data_liberacao >= CURRENT_DATE THEN TRUE ELSE FALSE END AS carencia_ativa
+            FROM ovino_sanitario_aplicacao ap
+            JOIN ovino_insumo_sanitario ins ON ins.id = ap.insumo_id
+            LEFT JOIN ovino_animais an ON an.id = ap.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = ap.lote_id
+            WHERE ap.imovel_id = %s
+        """
+        params = [imovel_id]
+        if animal_id:
+            sql += " AND ap.animal_id = %s"; params.append(animal_id)
+        if lote_id:
+            sql += " AND ap.lote_id = %s"; params.append(lote_id)
+        if categoria:
+            sql += " AND ins.categoria = %s"; params.append(categoria)
+        sql += f" ORDER BY ap.data_aplicacao DESC LIMIT {limit}"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.get("/sanitario/calendario")
+def calendario_sanitario(
+    imovel_id: int = Query(...),
+    dias: int = Query(60),
+):
+    """Próximas aplicações previstas: reforços pendentes + tarefas sanitárias."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Reforços pendentes de aplicações já feitas
+        cur.execute("""
+            SELECT
+                ap.reforco_previsto AS data_prevista,
+                ins.nome_comercial,
+                ins.categoria,
+                'reforco' AS tipo,
+                an.brinco AS animal_brinco,
+                l.nome AS lote_nome,
+                ap.responsavel_nome
+            FROM ovino_sanitario_aplicacao ap
+            JOIN ovino_insumo_sanitario ins ON ins.id = ap.insumo_id
+            LEFT JOIN ovino_animais an ON an.id = ap.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = ap.lote_id
+            WHERE ap.imovel_id = %s
+              AND ap.reforco_previsto IS NOT NULL
+              AND ap.reforco_aplicado = FALSE
+              AND ap.reforco_previsto <= CURRENT_DATE + %s
+            ORDER BY ap.reforco_previsto
+        """, (imovel_id, dias))
+        reforcos = [dict(r) for r in cur.fetchall()]
+
+        # Tarefas sanitárias pendentes
+        cur.execute("""
+            SELECT t.data_prevista, t.titulo AS nome_comercial,
+                   t.tipo AS categoria, 'tarefa' AS tipo,
+                   an.brinco AS animal_brinco, l.nome AS lote_nome,
+                   t.responsavel_nome
+            FROM ovino_tarefas t
+            LEFT JOIN ovino_animais an ON an.id = t.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = t.lote_id
+            WHERE t.imovel_id = %s
+              AND t.tipo IN ('vacina','vermifugacao')
+              AND t.status = 'pendente'
+              AND t.data_prevista <= CURRENT_DATE + %s
+            ORDER BY t.data_prevista
+        """, (imovel_id, dias))
+        tarefas_san = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "reforcos_pendentes": reforcos,
+            "tarefas_sanitarias": tarefas_san,
+            "total": len(reforcos) + len(tarefas_san),
+        }
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 
