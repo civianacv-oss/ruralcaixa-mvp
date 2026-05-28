@@ -572,10 +572,17 @@ def reclassificar_rebanho(
                         INSERT INTO ovino_saude (imovel_id, animal_id, tipo, data_evento, observacoes, registrado_por)
                         VALUES (%s, %s, 'outro', CURRENT_DATE, %s, 'sistema')
                     """, (imovel_id, animal["id"], f"Reclassificado para {fase_destino}: {motivo}"))
+                alertas_criados_animal = 0
+                if not config.dry_run:
+                    from app.services.ovino_alertas import gerar_alertas_reclassificacao
+                    alertas_criados_animal = gerar_alertas_reclassificacao(
+                        cur, imovel_id, animal["id"], lote_destino_id, fase_destino
+                    )
                 movidos += 1
                 detalhes.append({"brinco": animal["brinco"],
                                   "acao": "movido" if not config.dry_run else "seria_movido",
-                                  "fase": fase_destino, "motivo": motivo})
+                                  "fase": fase_destino, "motivo": motivo,
+                                  "alertas_criados": alertas_criados_animal})
 
         if not config.dry_run:
             conn.commit()
@@ -590,6 +597,102 @@ def reclassificar_rebanho(
     finally:
         conn.close()
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ALERTAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/alertas")
+def listar_alertas(
+    imovel_id: int = Query(...),
+    status: Optional[str] = Query("pendente"),
+    prioridade: Optional[str] = Query(None),
+    lote_id: Optional[int] = Query(None),
+    dias_proximos: Optional[int] = Query(None),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT a.*, an.brinco AS animal_brinco, l.nome AS lote_nome
+            FROM ovino_alertas a
+            LEFT JOIN ovino_animais an ON an.id = a.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = a.lote_id
+            WHERE a.imovel_id = %s
+        """
+        params = [imovel_id]
+        if status:
+            sql += " AND a.status = %s"; params.append(status)
+        if prioridade:
+            sql += " AND a.prioridade = %s"; params.append(prioridade)
+        if lote_id:
+            sql += " AND a.lote_id = %s"; params.append(lote_id)
+        if dias_proximos:
+            sql += " AND a.data_vencimento <= CURRENT_DATE + %s"; params.append(dias_proximos)
+        sql += " ORDER BY a.prioridade DESC, a.data_vencimento ASC LIMIT 200"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.patch("/alertas/{alerta_id}/status")
+def atualizar_status_alerta(
+    alerta_id: int,
+    novo_status: str = Query(..., pattern="^(concluido|cancelado|pendente)$"),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE ovino_alertas SET status = %s, updated_at = NOW()
+            WHERE id = %s RETURNING id, tipo_alerta, status
+        """, (novo_status, alerta_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Alerta não encontrado.")
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+@router.get("/alertas/resumo/{imovel_id}")
+def resumo_alertas(imovel_id: int):
+    """Contagem de alertas por prioridade e por lote — para o dashboard."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                prioridade,
+                COUNT(*) FILTER (WHERE status = 'pendente') AS pendentes,
+                COUNT(*) FILTER (WHERE status = 'pendente'
+                    AND data_vencimento <= CURRENT_DATE) AS vencidos,
+                COUNT(*) FILTER (WHERE status = 'pendente'
+                    AND data_vencimento = CURRENT_DATE + 1) AS amanha
+            FROM ovino_alertas
+            WHERE imovel_id = %s
+            GROUP BY prioridade
+            ORDER BY prioridade
+        """, (imovel_id,))
+        por_prioridade = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT l.nome AS lote_nome, l.fase,
+                   COUNT(*) FILTER (WHERE a.status = 'pendente') AS alertas_pendentes
+            FROM ovino_alertas a
+            JOIN ovino_lotes l ON l.id = a.lote_id
+            WHERE a.imovel_id = %s
+            GROUP BY l.id, l.nome, l.fase
+            HAVING COUNT(*) FILTER (WHERE a.status = 'pendente') > 0
+            ORDER BY alertas_pendentes DESC
+        """, (imovel_id,))
+        por_lote = [dict(r) for r in cur.fetchall()]
+
+        return {"por_prioridade": por_prioridade, "por_lote": por_lote}
+    finally:
+        conn.close()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP

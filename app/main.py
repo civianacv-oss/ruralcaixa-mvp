@@ -32,6 +32,14 @@ GRAPH        = "https://graph.facebook.com/v23.0"
 sessoes = {}
 if ovino_router: app.include_router(ovino_router)
 
+# Cron alertas ovinos
+try:
+    from app.services.ovino_cron import processar_alertas_ovinos
+    print("OVINO CRON LOADED OK")
+except Exception as e:
+    print(f"OVINO CRON FAILED: {e}")
+    processar_alertas_ovinos = None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -278,6 +286,13 @@ async def wapp_inbound(request: Request, background: BackgroundTasks):
     payload = json.loads(body)
     background.add_task(processar, payload)
     return {"status": "ok"}
+
+@app.post("/ovino/processar-alertas")
+async def processar_alertas_ovinos_endpoint(imovel_id: int = None):
+    """Processa e envia alertas ovinos via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_ovinos:
+        return processar_alertas_ovinos(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
 
 @app.post("/cadastro")
 async def cadastrar_produtor(data: CadastroRequest):

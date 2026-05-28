@@ -32,12 +32,14 @@ type Dashboard = {
 
 type Alerta = {
   id: number;
-  tipo: string;
-  data_evento: string;
-  produto: string | null;
-  proximo_em: string;
+  tipo_alerta: string;
+  titulo: string;
+  data_vencimento: string;
+  prioridade: string;
+  status: string;
   animal_brinco: string | null;
   lote_nome: string | null;
+  origem_evento: string | null;
 };
 
 export default function OvinoDashboard() {
@@ -65,7 +67,7 @@ export default function OvinoDashboard() {
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/ovino/saude/alertas?imovel_id=${IMOVEL_ID}&dias_antecedencia=14`).then(r => r.json()),
+        fetch(`${API}/ovino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
       ]);
       setDashboard(dash);
       setAnimais(anim);
@@ -293,27 +295,51 @@ export default function OvinoDashboard() {
         <div>
           {alertas.length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: "#16a34a", fontSize: 15 }}>
-              ✅ Nenhum manejo pendente nos próximos 14 dias.
+              ✅ Nenhum alerta pendente nos próximos 14 dias.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {alertas.map(a => (
-                <div key={a.id} style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{tipoLabel[a.tipo] || a.tipo}</div>
-                    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-                      {a.animal_brinco ? `Animal: ${a.animal_brinco}` : a.lote_nome ? `Lote: ${a.lote_nome}` : "Rebanho geral"}
-                      {a.produto && ` — ${a.produto}`}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {["alta","media","baixa"].map(prio => {
+                const grupo = alertas.filter(a => a.prioridade === prio && a.status === "pendente");
+                if (!grupo.length) return null;
+                const cores: Record<string,{bg:string,border:string,badge:string,text:string}> = {
+                  alta:  {bg:"#fff1f2",border:"#fecdd3",badge:"#dc2626",text:"🔴 Alta prioridade"},
+                  media: {bg:"#fffbeb",border:"#fde68a",badge:"#d97706",text:"🟡 Média prioridade"},
+                  baixa: {bg:"#f0fdf4",border:"#bbf7d0",badge:"#16a34a",text:"🟢 Baixa prioridade"},
+                };
+                const c = cores[prio];
+                return (
+                  <div key={prio}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: c.badge, marginBottom: 6, marginTop: 8 }}>
+                      {c.text} ({grupo.length})
                     </div>
+                    {grupo.map(a => (
+                      <div key={a.id} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8, padding: "10px 14px", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{a.titulo}</div>
+                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                            {a.animal_brinco ? `Animal: ${a.animal_brinco}` : a.lote_nome ? `Lote: ${a.lote_nome}` : "Rebanho"}
+                            {a.origem_evento && <span style={{ marginLeft: 6, opacity: 0.6 }}>• {a.origem_evento}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: c.badge }}>
+                              {new Date(a.data_vencimento + "T00:00:00").toLocaleDateString("pt-BR")}
+                            </div>
+                          </div>
+                          <button onClick={async () => {
+                            await fetch(`${API}/ovino/alertas/${a.id}/status?novo_status=concluido`, {method:"PATCH"});
+                            carregarTudo();
+                          }} style={{ padding:"4px 10px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                            ✓
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#dc2626" }}>
-                      {new Date(a.proximo_em).toLocaleDateString("pt-BR")}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#9ca3af" }}>próximo manejo</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
