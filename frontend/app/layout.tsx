@@ -50,6 +50,15 @@ export default function RootLayout({
         <meta property="og:site_name" content="GestaoAgro Tech" />
       </head>
       <body className="min-h-full flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js')
+                .then(function(reg) { console.log('SW registrado:', reg.scope); })
+                .catch(function(e) { console.warn('SW falhou:', e); });
+            });
+          }
+        ` }} />
         {children}
         {/* Rodape — visivel para validacao Meta WhatsApp Business */}
         <footer className="bg-green-900 text-white text-center py-3 text-xs opacity-70 mt-auto">
