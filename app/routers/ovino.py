@@ -1864,6 +1864,283 @@ def listar_causas():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MANEJO DE PASTAGEM
+# ══════════════════════════════════════════════════════════════════════════════
+
+class PiqueteCreate(BaseModel):
+    imovel_id: int
+    nome: str
+    area_ha: float
+    forrageira: Optional[str] = None
+    capacidade_suporte_ua_ha: float = 5.0
+    peso_referencia_ua_kg: float = 450.0
+    fator_equivalencia_ovino: float = 0.15
+    dias_ocupacao_padrao: int = 7
+    dias_descanso_padrao: int = 28
+    criterio_rotacao: str = "DIAS"
+    observacoes: Optional[str] = None
+
+
+class MoverLoteRequest(BaseModel):
+    lote_id: int
+    registrado_por: Optional[str] = None
+    origem: str = "dashboard"
+
+
+@router.get("/pastagem/piquetes/{imovel_id}")
+def listar_piquetes(imovel_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM ovino_piquete_status
+            WHERE imovel_id = %s
+            ORDER BY status, piquete_nome
+        """, (imovel_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.post("/pastagem/piquetes", status_code=201)
+def criar_piquete(payload: PiqueteCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_piquete
+                (imovel_id, nome, area_ha, forrageira,
+                 capacidade_suporte_ua_ha, peso_referencia_ua_kg,
+                 fator_equivalencia_ovino, dias_ocupacao_padrao,
+                 dias_descanso_padrao, criterio_rotacao, observacoes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id, nome, area_ha, status
+        """, (payload.imovel_id, payload.nome, payload.area_ha,
+              payload.forrageira, payload.capacidade_suporte_ua_ha,
+              payload.peso_referencia_ua_kg, payload.fator_equivalencia_ovino,
+              payload.dias_ocupacao_padrao, payload.dias_descanso_padrao,
+              payload.criterio_rotacao, payload.observacoes))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/pastagem/piquetes/{piquete_id}/mover-lote")
+def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
+    """
+    Move um lote para o piquete. Fecha o piquete anterior e abre o novo.
+    Calcula UA e pressão de pastejo automaticamente.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Busca piquete
+        cur.execute("SELECT * FROM ovino_piquete WHERE id = %s AND ativo = TRUE", (piquete_id,))
+        piquete = cur.fetchone()
+        if not piquete:
+            raise HTTPException(404, "Piquete não encontrado.")
+        p = dict(piquete)
+
+        if p["status"] == "descanso":
+            raise HTTPException(422, f"Piquete em descanso até {p['data_liberacao_descanso']}.")
+        if p["status"] == "recuperacao":
+            raise HTTPException(422, "Piquete em recuperação — não pode receber lote.")
+
+        # Calcula UA do lote
+        cur.execute("""
+            SELECT COUNT(*) AS total,
+                   SUM(COALESCE((
+                       SELECT peso_kg FROM ovino_pesagens
+                       WHERE animal_id = a.id
+                       ORDER BY data_pesagem DESC LIMIT 1
+                   ), 0)) AS peso_total
+            FROM ovino_animais a
+            WHERE a.lote_id = %s AND a.status = 'ativo'
+        """, (payload.lote_id,))
+        lote_info = dict(cur.fetchone())
+        ua_lote = round(lote_info["total"] * p["fator_equivalencia_ovino"], 2)
+        capacidade = round(p["area_ha"] * p["capacidade_suporte_ua_ha"], 2)
+        pressao = round(ua_lote / capacidade * 100, 1) if capacidade > 0 else 0
+
+        data_saida_prev = date.today() + timedelta(days=p["dias_ocupacao_padrao"])
+
+        # Fecha movimentação anterior do lote se existir
+        cur.execute("""
+            UPDATE ovino_piquete_movimentacao
+            SET data_saida = CURRENT_DATE, motivo_saida = 'rotacao'
+            WHERE lote_id = %s AND data_saida IS NULL
+        """, (payload.lote_id,))
+
+        # Fecha piquete anterior do lote
+        cur.execute("""
+            UPDATE ovino_piquete
+            SET status = 'descanso',
+                lote_id_atual = NULL,
+                data_entrada_atual = NULL,
+                data_saida_prevista = NULL,
+                ultima_ocupacao_inicio = data_entrada_atual,
+                ultima_ocupacao_fim = CURRENT_DATE,
+                data_liberacao_descanso = CURRENT_DATE + dias_descanso_padrao,
+                updated_at = NOW()
+            WHERE lote_id_atual = %s AND id != %s
+        """, (payload.lote_id, piquete_id))
+
+        # Registra movimentação
+        cur.execute("""
+            INSERT INTO ovino_piquete_movimentacao
+                (piquete_id, lote_id, imovel_id, data_entrada,
+                 ua_entrada, pressao_entrada_pct, registrado_por, origem)
+            VALUES (%s,%s,%s,CURRENT_DATE,%s,%s,%s,%s)
+        """, (piquete_id, payload.lote_id, p["imovel_id"],
+              ua_lote, pressao, payload.registrado_por, payload.origem))
+
+        # Atualiza piquete
+        cur.execute("""
+            UPDATE ovino_piquete
+            SET status = 'ocupado',
+                lote_id_atual = %s,
+                data_entrada_atual = CURRENT_DATE,
+                data_saida_prevista = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """, (payload.lote_id, data_saida_prev, piquete_id))
+
+        # Alerta se pressão > 110%
+        alerta_pressao = None
+        if pressao > 110:
+            alerta_pressao = {
+                "severidade": "alta",
+                "mensagem": f"⚠️ Pressão de pastejo {pressao}% — acima da capacidade do piquete",
+            }
+
+        conn.commit()
+        return {
+            "piquete": p["nome"],
+            "lote_id": payload.lote_id,
+            "ua_lote": ua_lote,
+            "capacidade_ua": capacidade,
+            "pressao_pct": pressao,
+            "data_saida_prevista": data_saida_prev.isoformat(),
+            "alerta_pressao": alerta_pressao,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.post("/pastagem/piquetes/{piquete_id}/fechar")
+def fechar_piquete(piquete_id: int, motivo: str = Query("rotacao")):
+    """Fecha o piquete e inicia período de descanso."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM ovino_piquete WHERE id = %s", (piquete_id,))
+        p = dict(cur.fetchone())
+
+        cur.execute("""
+            UPDATE ovino_piquete_movimentacao
+            SET data_saida = CURRENT_DATE, motivo_saida = %s
+            WHERE piquete_id = %s AND data_saida IS NULL
+        """, (motivo, piquete_id))
+
+        cur.execute("""
+            UPDATE ovino_piquete
+            SET status = 'descanso',
+                lote_id_atual = NULL,
+                data_entrada_atual = NULL,
+                ultima_ocupacao_inicio = data_entrada_atual,
+                ultima_ocupacao_fim = CURRENT_DATE,
+                data_liberacao_descanso = CURRENT_DATE + dias_descanso_padrao,
+                updated_at = NOW()
+            WHERE id = %s
+        """, (piquete_id,))
+        conn.commit()
+        return {"status": "descanso", "data_liberacao": (date.today() + timedelta(days=p["dias_descanso_padrao"])).isoformat()}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.get("/pastagem/alertas/{imovel_id}")
+def alertas_pastagem(imovel_id: int):
+    """Gera alertas operacionais de pastagem."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM ovino_piquete_status WHERE imovel_id = %s", (imovel_id,))
+        piquetes = [dict(r) for r in cur.fetchall()]
+
+        alertas = []
+        for p in piquetes:
+            dias_ocup = p.get("dias_ocupacao_atual") or 0
+            pressao = float(p.get("pressao_pct") or 0)
+            dias_lib = p.get("dias_para_liberar")
+
+            # Crítico: pressão > 110%
+            if pressao > 110:
+                alertas.append({"piquete": p["piquete_nome"], "severidade": "alta",
+                    "tipo": "pressao_excessiva",
+                    "mensagem": f"Pressão {pressao}% — mover lote imediatamente"})
+
+            # Alto: tempo máximo excedido
+            if p["status"] == "ocupado" and dias_ocup and dias_ocup > p["dias_ocupacao_padrao"]:
+                alertas.append({"piquete": p["piquete_nome"], "severidade": "alta",
+                    "tipo": "tempo_excedido",
+                    "mensagem": f"Lote há {dias_ocup} dias (máx {p['dias_ocupacao_padrao']}d) — rotacionar"})
+
+            # Médio: descanso concluído
+            if p["status"] == "descanso" and dias_lib is not None and dias_lib <= 0:
+                alertas.append({"piquete": p["piquete_nome"], "severidade": "media",
+                    "tipo": "descanso_concluido",
+                    "mensagem": f"Piquete pronto para reocupação"})
+
+            # Médio: descanso concluindo em breve
+            if p["status"] == "descanso" and dias_lib is not None and 0 < dias_lib <= 3:
+                alertas.append({"piquete": p["piquete_nome"], "severidade": "media",
+                    "tipo": "descanso_proximidade",
+                    "mensagem": f"Piquete liberado em {dias_lib} dia(s)"})
+
+            # Médio: pressão alta mas não crítica
+            if 80 <= pressao <= 110:
+                alertas.append({"piquete": p["piquete_nome"], "severidade": "media",
+                    "tipo": "pressao_alta",
+                    "mensagem": f"Pressão {pressao}% — monitorar lotação"})
+
+        return {"alertas": alertas, "total": len(alertas), "piquetes": piquetes}
+    finally:
+        conn.close()
+
+
+@router.get("/pastagem/historico/{piquete_id}")
+def historico_piquete(piquete_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT m.*, l.nome AS lote_nome, l.fase
+            FROM ovino_piquete_movimentacao m
+            JOIN ovino_lotes l ON l.id = m.lote_id
+            WHERE m.piquete_id = %s
+            ORDER BY m.data_entrada DESC LIMIT 50
+        """, (piquete_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 

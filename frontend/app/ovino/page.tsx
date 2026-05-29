@@ -30,6 +30,25 @@ type Dashboard = {
   alertas_7d: { total_alertas: number };
 };
 
+type Piquete = {
+  piquete_id: number;
+  piquete_nome: string;
+  area_ha: number;
+  forrageira: string | null;
+  status: string;
+  lote_nome: string | null;
+  dias_ocupacao_atual: number | null;
+  dias_ocupacao_padrao: number;
+  dias_descanso_padrao: number;
+  animais_no_piquete: number;
+  ua_atual: number;
+  capacidade_total_ua: number;
+  pressao_pct: number | null;
+  data_saida_prevista: string | null;
+  data_liberacao_descanso: string | null;
+  dias_para_liberar: number | null;
+};
+
 type MorteEvento = {
   id: number;
   brinco: string;
@@ -137,7 +156,7 @@ export default function OvinoDashboard() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [resumoTarefas, setResumoTarefas] = useState<any>(null);
-  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "mortalidade" | "agenda" | "sanitario" | "alertas">("rebanho");
+  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "mortalidade" | "pastagem" | "agenda" | "sanitario" | "alertas">("rebanho");
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState("ativo");
   const [novoAnimal, setNovoAnimal] = useState({ brinco: "", sexo: "F", raca: "" });
@@ -147,6 +166,11 @@ export default function OvinoDashboard() {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [racao, setRacao] = useState<RacaoPrevisao | null>(null);
   const [mortes, setMortes] = useState<MorteEvento[]>([]);
+  const [piquetes, setPiquetes] = useState<Piquete[]>([]);
+  const [alertasPastagem, setAlertasPastagem] = useState<any[]>([]);
+  const [novoPiquete, setNovoPiquete] = useState({ nome: "", area_ha: "", forrageira: "", capacidade_suporte_ua_ha: "5", dias_ocupacao_padrao: "7", dias_descanso_padrao: "28" });
+  const [salvandoPiquete, setSalvandoPiquete] = useState(false);
+  const [msgPiquete, setMsgPiquete] = useState("");
   const [indicMortalidade, setIndicMortalidade] = useState<any>(null);
   const [novaMorte, setNovaMorte] = useState({ brinco: "", causa_categoria: "doenca", causa_subcategoria: "", observacoes: "" });
   const [salvandoMorte, setSalvandoMorte] = useState(false);
@@ -168,7 +192,7 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert, ins, indic, rac, mort, indicMort, car, taref, resumoT] = await Promise.all([
+      const [dash, anim, lots, alert, ins, indic, rac, mort, pastAlertas, indicMort, car, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
@@ -177,6 +201,7 @@ export default function OvinoDashboard() {
         fetch(`${API}/ovino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/ovino/pastagem/alertas/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
         fetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
@@ -192,6 +217,7 @@ export default function OvinoDashboard() {
       if (indic && indic.por_lote) setIndicadores(indic);
       if (rac && rac.totais) setRacao(rac);
       setMortes(Array.isArray(mort) ? mort : []);
+      if (pastAlertas) { setPiquetes(pastAlertas.piquetes || []); setAlertasPastagem(pastAlertas.alertas || []); }
       if (indicMort) setIndicMortalidade(indicMort);
       setCarencias(Array.isArray(car) ? car : []);
     } catch (e) {
@@ -301,12 +327,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "indicadores", "racao", "mortalidade", "agenda", "sanitario", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "indicadores", "racao", "mortalidade", "pastagem", "agenda", "sanitario", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "mortalidade" ? `💀 Mortalidade${mortes.length > 0 ? ` (${mortes.length})` : ""}` : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "mortalidade" ? `💀 Mortalidade${mortes.length > 0 ? ` (${mortes.length})` : ""}` : a === "pastagem" ? `🌿 Pastagem${alertasPastagem.filter(a=>a.severidade==="alta").length > 0 ? " ⚠️" : ""}` : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -413,6 +439,118 @@ export default function OvinoDashboard() {
             </div>
           ))}
           {lotes.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Nenhum lote cadastrado.</p>}
+        </div>
+      )}
+
+      {/* Aba Pastagem */}
+      {aba === "pastagem" && (
+        <div>
+          {/* Alertas */}
+          {alertasPastagem.filter(a=>a.severidade==="alta").length > 0 && (
+            <div style={{ background:"#fff1f2", border:"1px solid #fecdd3", borderRadius:10, padding:"12px 16px", marginBottom:16 }}>
+              <div style={{ fontWeight:700, color:"#dc2626", marginBottom:8 }}>🚨 Alertas de pastagem</div>
+              {alertasPastagem.filter(a=>a.severidade==="alta").map((a:any,i:number) => (
+                <div key={i} style={{ fontSize:13, marginBottom:4 }}>
+                  <strong>{a.piquete}:</strong> {a.mensagem}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Cadastrar piquete */}
+          <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:10, padding:14, marginBottom:16 }}>
+            <div style={{ fontWeight:600, fontSize:14, marginBottom:10 }}>+ Cadastrar Piquete</div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <input placeholder="Nome *" value={novoPiquete.nome} onChange={e=>setNovoPiquete(p=>({...p,nome:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:120 }} />
+              <input placeholder="Área (ha) *" type="number" step="0.1" value={novoPiquete.area_ha} onChange={e=>setNovoPiquete(p=>({...p,area_ha:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:100 }} />
+              <input placeholder="Forrageira" value={novoPiquete.forrageira} onChange={e=>setNovoPiquete(p=>({...p,forrageira:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:120 }} />
+              <input placeholder="UA/ha" type="number" step="0.5" value={novoPiquete.capacidade_suporte_ua_ha} onChange={e=>setNovoPiquete(p=>({...p,capacidade_suporte_ua_ha:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:80 }} />
+              <input placeholder="Dias ocup." type="number" value={novoPiquete.dias_ocupacao_padrao} onChange={e=>setNovoPiquete(p=>({...p,dias_ocupacao_padrao:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:80 }} />
+              <input placeholder="Dias desc." type="number" value={novoPiquete.dias_descanso_padrao} onChange={e=>setNovoPiquete(p=>({...p,dias_descanso_padrao:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:80 }} />
+              <button onClick={async () => {
+                if (!novoPiquete.nome || !novoPiquete.area_ha) return;
+                setSalvandoPiquete(true);
+                const r = await fetch(`${API}/ovino/pastagem/piquetes`, {
+                  method:"POST", headers:{"Content-Type":"application/json"},
+                  body: JSON.stringify({ imovel_id: IMOVEL_ID, nome: novoPiquete.nome,
+                    area_ha: Number(novoPiquete.area_ha), forrageira: novoPiquete.forrageira || null,
+                    capacidade_suporte_ua_ha: Number(novoPiquete.capacidade_suporte_ua_ha),
+                    dias_ocupacao_padrao: Number(novoPiquete.dias_ocupacao_padrao),
+                    dias_descanso_padrao: Number(novoPiquete.dias_descanso_padrao) })
+                });
+                const data = await r.json();
+                if (r.ok) { setMsgPiquete(`✅ Piquete "${data.nome}" cadastrado`); setNovoPiquete({nome:"",area_ha:"",forrageira:"",capacidade_suporte_ua_ha:"5",dias_ocupacao_padrao:"7",dias_descanso_padrao:"28"}); carregarTudo(); }
+                else { setMsgPiquete(`❌ ${data.detail || "Erro."}`); }
+                setSalvandoPiquete(false); setTimeout(()=>setMsgPiquete(""),4000);
+              }} disabled={salvandoPiquete || !novoPiquete.nome || !novoPiquete.area_ha}
+                style={{ padding:"7px 16px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontWeight:600, cursor:"pointer", fontSize:13 }}>
+                {salvandoPiquete ? "..." : "Cadastrar"}
+              </button>
+            </div>
+            {msgPiquete && <div style={{ marginTop:8, fontSize:13, color:msgPiquete.startsWith("✅")?"#16a34a":"#dc2626" }}>{msgPiquete}</div>}
+          </div>
+
+          {/* Cards de piquetes */}
+          {piquetes.length === 0 ? (
+            <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>
+              Nenhum piquete cadastrado.<br/><span style={{ fontSize:13 }}>Cadastre os piquetes da fazenda para controlar a rotação.</span>
+            </div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:12 }}>
+              {piquetes.map(p => {
+                const pressao = Number(p.pressao_pct || 0);
+                const statusCor: Record<string,string> = { ocupado:"#16a34a", descanso:"#d97706", recuperacao:"#dc2626", disponivel:"#6b7280", inativo:"#9ca3af" };
+                const corStatus = statusCor[p.status] || "#6b7280";
+                return (
+                  <div key={p.piquete_id} style={{ background:"#fff", border:`1px solid ${pressao>110?"#fecdd3":"#e5e7eb"}`, borderRadius:10, padding:14 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                      <div style={{ fontWeight:700, fontSize:15 }}>{p.piquete_nome}</div>
+                      <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:600, background:`${corStatus}22`, color:corStatus }}>{p.status}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:"#6b7280", marginBottom:8 }}>
+                      {p.area_ha} ha {p.forrageira && `· ${p.forrageira}`}
+                    </div>
+                    {p.status === "ocupado" && (
+                      <div style={{ marginBottom:8 }}>
+                        <div style={{ fontSize:13, marginBottom:4 }}>🐑 {p.lote_nome} · {p.animais_no_piquete} animais · {p.ua_atual} UA</div>
+                        <div style={{ fontSize:12, color:"#6b7280", marginBottom:4 }}>Dia {p.dias_ocupacao_atual || 0} de {p.dias_ocupacao_padrao}</div>
+                        <div style={{ background:"#f3f4f6", borderRadius:4, height:8, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${Math.min(pressao,100)}%`, background:pressao>100?"#dc2626":pressao>80?"#d97706":"#16a34a", transition:"width 0.3s" }} />
+                        </div>
+                        <div style={{ fontSize:11, color:pressao>100?"#dc2626":pressao>80?"#d97706":"#16a34a", marginTop:2 }}>{pressao}% da capacidade</div>
+                      </div>
+                    )}
+                    {p.status === "descanso" && p.dias_para_liberar !== null && (
+                      <div style={{ fontSize:13, color:"#d97706" }}>
+                        {p.dias_para_liberar <= 0 ? "✅ Pronto para reocupar" : `⏳ Libera em ${p.dias_para_liberar} dia(s)`}
+                      </div>
+                    )}
+                    {p.status === "disponivel" && (
+                      <div style={{ fontSize:13, color:"#16a34a" }}>✅ Disponível para uso</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Alertas médios */}
+          {alertasPastagem.filter(a=>a.severidade==="media").length > 0 && (
+            <div style={{ marginTop:16 }}>
+              <div style={{ fontWeight:600, fontSize:13, color:"#d97706", marginBottom:8 }}>🟡 Alertas médios</div>
+              {alertasPastagem.filter(a=>a.severidade==="media").map((a:any,i:number) => (
+                <div key={i} style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:8, padding:"8px 12px", marginBottom:6, fontSize:13 }}>
+                  <strong>{a.piquete}:</strong> {a.mensagem}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
