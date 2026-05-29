@@ -1,5 +1,5 @@
-// RuralCaixa Service Worker
-const CACHE_NAME = 'ruralcaixa-v1';
+// RuralCaixa Service Worker v2
+const CACHE_NAME = 'ruralcaixa-v2';
 const API = 'https://ruralcaixa-mvp-production.up.railway.app';
 
 const STATIC_ASSETS = ['/', '/ovino'];
@@ -21,15 +21,20 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  // Ignora requisições não-GET (POST, PATCH, etc.)
+  if (e.request.method !== 'GET') return;
+
   const url = new URL(e.request.url);
 
-  // API: NetworkFirst com fallback para cache
-  if (url.origin === API || url.hostname.includes('railway')) {
+  // API GET: NetworkFirst com fallback para cache
+  if (url.hostname.includes('railway')) {
     e.respondWith(
       fetch(e.request)
         .then(resp => {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          }
           return resp;
         })
         .catch(() => caches.match(e.request))
@@ -45,7 +50,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Demais: CacheFirst
+  // Demais assets: CacheFirst
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
