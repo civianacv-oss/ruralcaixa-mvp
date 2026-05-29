@@ -30,6 +30,29 @@ type Dashboard = {
   alertas_7d: { total_alertas: number };
 };
 
+type RacaoLote = {
+  lote_nome: string;
+  fase: string;
+  fase_racao: string;
+  animais: number;
+  peso_medio: number | null;
+  pct_ms_usado: number;
+  ms_dia: number;
+  racao_dia_kg: number;
+  racao_7d_kg: number;
+  racao_15d_kg: number;
+  racao_30d_kg: number;
+  custo_dia_rs: number | null;
+  custo_30d_rs: number | null;
+};
+
+type RacaoPrevisao = {
+  config: { pct_ms_racao: number; perda_cocho_pct: number; preco_racao_kg: number | null; estoque_atual_kg: number | null; margem_seguranca_dias: number };
+  por_lote: RacaoLote[];
+  totais: { animais_com_peso: number; animais_sem_peso: number; racao_dia_kg: number; racao_7d_kg: number; racao_15d_kg: number; racao_30d_kg: number; custo_dia_rs: number | null; custo_30d_rs: number | null; dias_estoque_restante: number | null };
+  alerta_estoque: { severidade: string; mensagem: string; repor_kg: number; custo_reposicao_rs: number | null } | null;
+};
+
 type IndicadorLote = {
   lote_id: number;
   lote_nome: string;
@@ -111,6 +134,10 @@ export default function OvinoDashboard() {
   const [msg, setMsg] = useState("");
   const [reclassificando, setReclassificando] = useState(false);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
+  const [racao, setRacao] = useState<RacaoPrevisao | null>(null);
+  const [precoRacao, setPrecoRacao] = useState("");
+  const [estoqueRacao, setEstoqueRacao] = useState("");
+  const [salvandoRacao, setSalvandoRacao] = useState(false);
   const [indicadores, setIndicadores] = useState<{consolidado:any, por_lote:IndicadorLote[]} | null>(null);
   const [carencias, setCarencias] = useState<Carencia[]>([]);
   const [novaAplic, setNovaAplic] = useState({ insumo_id: 0, animal_id: "", lote_id: "", dose_ml: "", via: "", lote_produto: "", responsavel_nome: "" });
@@ -125,7 +152,7 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert, ins, indic, car, taref, resumoT] = await Promise.all([
+      const [dash, anim, lots, alert, ins, indic, rac, car, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
@@ -141,6 +168,7 @@ export default function OvinoDashboard() {
       setResumoTarefas(resumoT);
       setInsumos(Array.isArray(ins) ? ins : []);
       if (indic && indic.por_lote) setIndicadores(indic);
+      if (rac && rac.totais) setRacao(rac);
       setCarencias(Array.isArray(car) ? car : []);
     } catch (e) {
       console.error(e);
@@ -249,12 +277,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "indicadores", "agenda", "sanitario", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "indicadores", "racao", "agenda", "sanitario", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -361,6 +389,114 @@ export default function OvinoDashboard() {
             </div>
           ))}
           {lotes.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Nenhum lote cadastrado.</p>}
+        </div>
+      )}
+
+      {/* Aba Ração */}
+      {aba === "racao" && (
+        <div>
+          {/* Alerta de estoque */}
+          {racao?.alerta_estoque && (
+            <div style={{ background: racao.alerta_estoque.severidade === "alta" ? "#fff1f2" : "#fffbeb", border: `1px solid ${racao.alerta_estoque.severidade === "alta" ? "#fecdd3" : "#fde68a"}`, borderRadius:10, padding:"12px 16px", marginBottom:16 }}>
+              <div style={{ fontWeight:700, color: racao.alerta_estoque.severidade === "alta" ? "#dc2626" : "#d97706" }}>
+                ⚠️ {racao.alerta_estoque.mensagem}
+              </div>
+              <div style={{ fontSize:13, marginTop:4, color:"#374151" }}>
+                Repor: <strong>{racao.alerta_estoque.repor_kg} kg</strong>
+                {racao.alerta_estoque.custo_reposicao_rs && ` — R$ ${racao.alerta_estoque.custo_reposicao_rs.toLocaleString("pt-BR", {minimumFractionDigits:2})}`}
+              </div>
+            </div>
+          )}
+
+          {/* KPIs totais */}
+          {racao?.totais && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }}>
+              {[
+                { label:"Ração/dia", value:`${racao.totais.racao_dia_kg} kg`, color:"#16a34a" },
+                { label:"Ração 7 dias", value:`${racao.totais.racao_7d_kg} kg`, color:"#2563eb" },
+                { label:"Ração 30 dias", value:`${racao.totais.racao_30d_kg} kg`, color:"#7c3aed" },
+                { label:"Estoque", value: racao.totais.dias_estoque_restante ? `${racao.totais.dias_estoque_restante}d` : "—", color: racao.totais.dias_estoque_restante && racao.totais.dias_estoque_restante <= 7 ? "#dc2626" : "#16a34a" },
+              ].map(k => (
+                <div key={k.label} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:k.color }}>{k.value}</div>
+                  <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Configuração rápida */}
+          <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:10, padding:14, marginBottom:16 }}>
+            <div style={{ fontWeight:600, fontSize:14, marginBottom:10 }}>⚙️ Configuração</div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+              <input placeholder="Preço ração (R$/kg)" value={precoRacao}
+                onChange={e=>setPrecoRacao(e.target.value)} type="number" step="0.01"
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:160 }} />
+              <input placeholder="Estoque atual (kg)" value={estoqueRacao}
+                onChange={e=>setEstoqueRacao(e.target.value)} type="number"
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:150 }} />
+              <button onClick={async () => {
+                setSalvandoRacao(true);
+                const body: any = {};
+                if (precoRacao) body.preco_racao_kg = Number(precoRacao);
+                if (estoqueRacao) body.estoque_atual_kg = Number(estoqueRacao);
+                await fetch(`${API}/ovino/racao/config/${IMOVEL_ID}`, {
+                  method:"PATCH", headers:{"Content-Type":"application/json"},
+                  body: JSON.stringify(body)
+                });
+                setPrecoRacao(""); setEstoqueRacao("");
+                setSalvandoRacao(false);
+                carregarTudo();
+              }} disabled={salvandoRacao || (!precoRacao && !estoqueRacao)}
+                style={{ padding:"7px 16px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontWeight:600, cursor:"pointer", fontSize:13 }}>
+                {salvandoRacao ? "..." : "Salvar"}
+              </button>
+              {racao?.config.preco_racao_kg && <span style={{ fontSize:12, color:"#6b7280" }}>Preço atual: R$ {racao.config.preco_racao_kg}/kg</span>}
+            </div>
+          </div>
+
+          {/* Tabela por lote */}
+          {racao?.por_lote && racao.por_lote.length > 0 ? (
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:"#f3f4f6" }}>
+                    {["Lote","Fase","Animais","Peso Médio","MS %PV","Ração/dia","7 dias","15 dias","30 dias","Custo/mês"].map(h=>(
+                      <th key={h} style={{ padding:"9px 10px", textAlign:"left", fontWeight:600, color:"#374151", borderBottom:"1px solid #e5e7eb", whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {racao.por_lote.map((l,i) => (
+                    <tr key={i} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                      <td style={{ padding:"9px 10px", fontWeight:600, color:"#15803d" }}>{l.lote_nome}</td>
+                      <td style={{ padding:"9px 10px", fontSize:12, color:"#6b7280" }}>{l.fase_racao}</td>
+                      <td style={{ padding:"9px 10px", textAlign:"center" }}>{l.animais}</td>
+                      <td style={{ padding:"9px 10px" }}>{l.peso_medio ? `${l.peso_medio} kg` : "—"}</td>
+                      <td style={{ padding:"9px 10px", color:"#6b7280" }}>{l.pct_ms_usado}%</td>
+                      <td style={{ padding:"9px 10px", fontWeight:600, color:"#15803d" }}>{l.racao_dia_kg} kg</td>
+                      <td style={{ padding:"9px 10px" }}>{l.racao_7d_kg} kg</td>
+                      <td style={{ padding:"9px 10px" }}>{l.racao_15d_kg} kg</td>
+                      <td style={{ padding:"9px 10px", fontWeight:600 }}>{l.racao_30d_kg} kg</td>
+                      <td style={{ padding:"9px 10px", color: l.custo_30d_rs ? "#374151" : "#9ca3af" }}>
+                        {l.custo_30d_rs ? `R$ ${l.custo_30d_rs.toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {racao.totais.animais_sem_peso > 0 && (
+                <div style={{ fontSize:12, color:"#9ca3af", marginTop:8 }}>
+                  ⚠️ {racao.totais.animais_sem_peso} animal(is) sem pesagem — não incluído(s) no cálculo
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>
+              Nenhum animal com peso cadastrado.<br/>
+              <span style={{ fontSize:13 }}>Registre pesagens para calcular a demanda de ração.</span>
+            </div>
+          )}
         </div>
       )}
 

@@ -1419,6 +1419,221 @@ def processar_desvios_endpoint(imovel_id: Optional[int] = Query(None)):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PREVISÃO DE DEMANDA DE RAÇÃO
+# ══════════════════════════════════════════════════════════════════════════════
+
+class RacaoConfigUpdate(BaseModel):
+    pct_ms_racao: Optional[float] = None
+    preco_racao_kg: Optional[float] = None
+    estoque_atual_kg: Optional[float] = None
+    margem_seguranca_dias: Optional[int] = None
+    perda_cocho_pct: Optional[float] = None
+
+
+def _resolver_fase_racao(fase_lote: str, sexo: str) -> str:
+    """Mapeia fase do lote para categoria de consumo de ração."""
+    if fase_lote == "reprodução":
+        return "matriz_seca" if sexo == "F" else "reprodutor"
+    mapa = {
+        "cria": "cria", "recria": "recria",
+        "engorda": "engorda", "descarte": "descarte",
+    }
+    return mapa.get(fase_lote, "engorda")
+
+
+@router.get("/racao/previsao/{imovel_id}")
+def previsao_racao(imovel_id: int):
+    """
+    Calcula previsão de demanda de ração por lote e total da fazenda.
+    Retorna consumo diário, projeção 7/15/30 dias, custo e alerta de estoque.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Configuração da fazenda
+        cur.execute("""
+            SELECT * FROM ovino_racao_config WHERE imovel_id = %s
+        """, (imovel_id,))
+        config_row = cur.fetchone()
+        config = dict(config_row) if config_row else {
+            "pct_ms_racao": 88.0, "preco_racao_kg": None,
+            "estoque_atual_kg": None, "margem_seguranca_dias": 7,
+            "perda_cocho_pct": 5.0
+        }
+
+        pct_ms = float(config["pct_ms_racao"]) / 100
+        perda = float(config["perda_cocho_pct"]) / 100
+        preco = float(config["preco_racao_kg"]) if config["preco_racao_kg"] else None
+        estoque = float(config["estoque_atual_kg"]) if config["estoque_atual_kg"] else None
+        margem_dias = config["margem_seguranca_dias"] or 7
+
+        # Parâmetros de consumo por fase
+        cur.execute("""
+            SELECT fase, pct_ms_pv_dia FROM ovino_racao_parametro
+            WHERE ativo = TRUE AND (imovel_id = %s OR imovel_id IS NULL)
+            ORDER BY imovel_id DESC NULLS LAST
+        """, (imovel_id,))
+        params_ms = {}
+        for r in cur.fetchall():
+            p = dict(r)
+            if p["fase"] not in params_ms:
+                params_ms[p["fase"]] = float(p["pct_ms_pv_dia"]) / 100
+
+        # Animais ativos com última pesagem e lote
+        cur.execute("""
+            SELECT a.id, a.brinco, a.sexo, a.lote_id,
+                   l.nome AS lote_nome, l.fase AS lote_fase,
+                   (SELECT peso_kg FROM ovino_pesagens
+                    WHERE animal_id = a.id
+                    ORDER BY data_pesagem DESC LIMIT 1) AS peso_atual
+            FROM ovino_animais a
+            LEFT JOIN ovino_lotes l ON l.id = a.lote_id
+            WHERE a.imovel_id = %s AND a.status = 'ativo'
+        """, (imovel_id,))
+        animais = [dict(r) for r in cur.fetchall()]
+
+        # Calcula por lote
+        lotes_calc = {}
+        total_ms_dia = 0.0
+        sem_peso = 0
+
+        for a in animais:
+            peso = float(a["peso_atual"]) if a["peso_atual"] else None
+            if not peso:
+                sem_peso += 1
+                continue
+
+            fase_racao = _resolver_fase_racao(a.get("lote_fase") or "engorda", a.get("sexo", "M"))
+            pct = params_ms.get(fase_racao, 0.035)
+
+            ms_animal_dia = peso * pct
+            racao_animal_dia = (ms_animal_dia / pct_ms) * (1 + perda)
+
+            lote_key = a.get("lote_id") or 0
+            lote_nome = a.get("lote_nome") or "Sem lote"
+            fase_lote = a.get("lote_fase") or "—"
+
+            if lote_key not in lotes_calc:
+                lotes_calc[lote_key] = {
+                    "lote_id": lote_key,
+                    "lote_nome": lote_nome,
+                    "fase": fase_lote,
+                    "fase_racao": fase_racao,
+                    "animais": 0,
+                    "peso_total": 0.0,
+                    "ms_dia": 0.0,
+                    "racao_dia": 0.0,
+                    "pct_ms_usado": round(pct * 100, 1),
+                }
+
+            lotes_calc[lote_key]["animais"] += 1
+            lotes_calc[lote_key]["peso_total"] += peso
+            lotes_calc[lote_key]["ms_dia"] += ms_animal_dia
+            lotes_calc[lote_key]["racao_dia"] += racao_animal_dia
+            total_ms_dia += ms_animal_dia
+
+        # Monta resultado por lote
+        por_lote = []
+        for lk, l in lotes_calc.items():
+            r_dia = round(l["racao_dia"], 2)
+            custo_dia = round(r_dia * preco, 2) if preco else None
+            por_lote.append({
+                **l,
+                "peso_medio": round(l["peso_total"] / l["animais"], 1) if l["animais"] else None,
+                "ms_dia": round(l["ms_dia"], 2),
+                "racao_dia_kg": r_dia,
+                "racao_7d_kg": round(r_dia * 7, 1),
+                "racao_15d_kg": round(r_dia * 15, 1),
+                "racao_30d_kg": round(r_dia * 30, 1),
+                "custo_dia_rs": custo_dia,
+                "custo_30d_rs": round(custo_dia * 30, 2) if custo_dia else None,
+            })
+
+        # Totais da fazenda
+        total_racao_dia = sum(l["racao_dia_kg"] for l in por_lote)
+        total_custo_dia = round(total_racao_dia * preco, 2) if preco else None
+
+        # Alerta de estoque
+        alerta_estoque = None
+        dias_estoque = None
+        if estoque and total_racao_dia > 0:
+            dias_estoque = round(estoque / total_racao_dia, 1)
+            if dias_estoque <= margem_dias:
+                alerta_estoque = {
+                    "severidade": "alta" if dias_estoque <= 3 else "media",
+                    "mensagem": f"Estoque para {dias_estoque} dias — reposição necessária",
+                    "repor_kg": round(total_racao_dia * 30 - estoque, 1),
+                    "custo_reposicao_rs": round((total_racao_dia * 30 - estoque) * preco, 2) if preco else None,
+                }
+
+        return {
+            "config": {
+                "pct_ms_racao": config["pct_ms_racao"],
+                "perda_cocho_pct": config["perda_cocho_pct"],
+                "preco_racao_kg": preco,
+                "estoque_atual_kg": estoque,
+                "margem_seguranca_dias": margem_dias,
+            },
+            "por_lote": sorted(por_lote, key=lambda x: x["racao_dia_kg"], reverse=True),
+            "totais": {
+                "animais_com_peso": sum(l["animais"] for l in por_lote),
+                "animais_sem_peso": sem_peso,
+                "racao_dia_kg": round(total_racao_dia, 2),
+                "racao_7d_kg": round(total_racao_dia * 7, 1),
+                "racao_15d_kg": round(total_racao_dia * 15, 1),
+                "racao_30d_kg": round(total_racao_dia * 30, 1),
+                "custo_dia_rs": total_custo_dia,
+                "custo_30d_rs": round(total_custo_dia * 30, 2) if total_custo_dia else None,
+                "dias_estoque_restante": dias_estoque,
+            },
+            "alerta_estoque": alerta_estoque,
+        }
+    finally:
+        conn.close()
+
+
+@router.patch("/racao/config/{imovel_id}")
+def atualizar_config_racao(imovel_id: int, payload: RacaoConfigUpdate):
+    """Atualiza configuração de ração da fazenda."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        fields = []
+        values = []
+        if payload.pct_ms_racao is not None:
+            fields.append("pct_ms_racao = %s"); values.append(payload.pct_ms_racao)
+        if payload.preco_racao_kg is not None:
+            fields.append("preco_racao_kg = %s"); values.append(payload.preco_racao_kg)
+        if payload.estoque_atual_kg is not None:
+            fields.append("estoque_atual_kg = %s"); values.append(payload.estoque_atual_kg)
+            fields.append("data_ultimo_estoque = CURRENT_DATE")
+        if payload.margem_seguranca_dias is not None:
+            fields.append("margem_seguranca_dias = %s"); values.append(payload.margem_seguranca_dias)
+        if payload.perda_cocho_pct is not None:
+            fields.append("perda_cocho_pct = %s"); values.append(payload.perda_cocho_pct)
+
+        if not fields:
+            raise HTTPException(400, "Nenhum campo informado.")
+
+        fields.append("updated_at = NOW()")
+        values.append(imovel_id)
+
+        cur.execute(f"""
+            INSERT INTO ovino_racao_config (imovel_id) VALUES (%s)
+            ON CONFLICT (imovel_id) DO NOTHING
+        """, (imovel_id,))
+        cur.execute(f"""
+            UPDATE ovino_racao_config SET {", ".join(fields)}
+            WHERE imovel_id = %s
+        """, values)
+        conn.commit()
+        return {"status": "atualizado", "imovel_id": imovel_id}
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 
