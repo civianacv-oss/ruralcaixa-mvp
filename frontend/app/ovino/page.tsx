@@ -126,7 +126,7 @@ export default function OvinoDashboard() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [resumoTarefas, setResumoTarefas] = useState<any>(null);
-  const [aba, setAba] = useState<"rebanho" | "lotes" | "alertas">("rebanho");
+  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "agenda" | "sanitario" | "alertas">("rebanho");
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState("ativo");
   const [novoAnimal, setNovoAnimal] = useState({ brinco: "", sexo: "F", raca: "" });
