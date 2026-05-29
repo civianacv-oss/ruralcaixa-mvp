@@ -157,8 +157,12 @@ export default function OvinoDashboard() {
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
-        fetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()),
-        fetch(`${API}/ovino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()),
+        fetch(`${API}/ovino/sanitario/insumos`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/ovino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        fetch(`${API}/ovino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        fetch(`${API}/ovino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/ovino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
       ]);
       setDashboard(dash);
       setAnimais(anim);
