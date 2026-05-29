@@ -2247,6 +2247,40 @@ def analise_sazonalidade(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MULTIESPÉCIE — ESPÉCIES E FASES PRODUTIVAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/especies")
+def listar_especies():
+    """Lista espécies disponíveis no sistema."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM especie WHERE ativo = TRUE ORDER BY nome")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.get("/especies/{codigo}/fases")
+def listar_fases(codigo: str):
+    """Lista fases produtivas de uma espécie."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT f.*, e.nome AS especie_nome
+            FROM fase_produtiva f
+            JOIN especie e ON e.id = f.especie_id
+            WHERE e.codigo = %s AND f.ativo = TRUE
+            ORDER BY f.ordem
+        """, (codigo.upper(),))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 
