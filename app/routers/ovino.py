@@ -1408,6 +1408,16 @@ def indicadores_animal(animal_id: int):
         conn.close()
 
 
+@router.post("/desvios/processar")
+def processar_desvios_endpoint(imovel_id: Optional[int] = Query(None)):
+    """Detecta desvios zootécnicos e emite alertas. Chamado pelo cron."""
+    try:
+        from app.services.ovino_desvios import processar_desvios_ovinos
+        return processar_desvios_ovinos(imovel_id=imovel_id)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════

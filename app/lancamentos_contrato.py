@@ -429,6 +429,12 @@ def processar_expirados():
             resultado_ovino = processar_alertas_ovinos(dias_antecedencia=1)
         except Exception as oe:
             resultado_ovino = {"erro": str(oe)}
+
+        try:
+            from app.services.ovino_desvios import processar_desvios_ovinos
+            resultado_desvios = processar_desvios_ovinos()
+        except Exception as de:
+            resultado_desvios = {"erro": str(de)}
         return {"processados": len(processados), "detalhes": processados, "ovino_alertas": resultado_ovino}
     except Exception as e:
         conn.rollback()
