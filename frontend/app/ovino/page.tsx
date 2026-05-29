@@ -143,7 +143,7 @@ export default function OvinoDashboard() {
   const [novaAplic, setNovaAplic] = useState({ insumo_id: 0, animal_id: "", lote_id: "", dose_ml: "", via: "", lote_produto: "", responsavel_nome: "" });
   const [salvandoAplic, setSalvandoAplic] = useState(false);
   const [msgAplic, setMsgAplic] = useState("");
-  const [resultadoReclass, setResultadoReclass] = useState<{movidos:number,total:number,detalhes:any[]} | null>(null);
+  const [resultadoReclass, setResultadoReclass] = useState<{dry_run:boolean,movidos:number,total:number,detalhes:any[]} | null>(null);
 
   useEffect(() => {
     carregarTudo();
