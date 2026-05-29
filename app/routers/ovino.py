@@ -2141,6 +2141,112 @@ def historico_piquete(piquete_id: int):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ANÁLISE DE SAZONALIDADE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/sazonalidade/{imovel_id}")
+def analise_sazonalidade(
+    imovel_id: int,
+    meses: int = Query(24),
+):
+    """
+    Análise de sazonalidade de abates e margens por mês.
+    Identifica os meses mais lucrativos para venda.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Dados mensais de abates
+        cur.execute("""
+            SELECT
+                TO_CHAR(data_abate, 'YYYY-MM')          AS mes,
+                TO_CHAR(data_abate, 'MM')               AS mes_num,
+                TO_CHAR(data_abate, 'Mon/YYYY', 'NLS_DATE_LANGUAGE=PORTUGUESE') AS mes_label,
+                COUNT(*)                                 AS total_abates,
+                ROUND(AVG(peso_vivo_kg)::NUMERIC, 1)    AS peso_vivo_medio,
+                ROUND(AVG(peso_carcaca_kg)::NUMERIC, 1) AS peso_carcaca_medio,
+                ROUND(AVG(rendimento_pct)::NUMERIC, 1)  AS rendimento_medio,
+                SUM(valor_total_rs)                     AS receita_total,
+                ROUND(AVG(valor_total_rs)::NUMERIC, 2)  AS receita_media_animal,
+                ROUND(
+                    SUM(valor_total_rs) /
+                    NULLIF(SUM(peso_carcaca_kg), 0), 2
+                )                                       AS preco_medio_kg_carcaca
+            FROM ovino_abates
+            WHERE imovel_id = %s
+              AND data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
+            GROUP BY TO_CHAR(data_abate, 'YYYY-MM'), TO_CHAR(data_abate, 'MM')
+            ORDER BY mes
+        """, (imovel_id, meses))
+        por_mes = [dict(r) for r in cur.fetchall()]
+
+        # Agrega por mês do ano (ignora ano) para sazonalidade
+        cur.execute("""
+            SELECT
+                TO_CHAR(data_abate, 'MM')               AS mes_num,
+                TO_CHAR(data_abate, 'TMMonth')          AS mes_nome,
+                COUNT(*)                                 AS total_abates,
+                ROUND(AVG(valor_total_rs)::NUMERIC, 2)  AS receita_media,
+                ROUND(
+                    SUM(valor_total_rs) /
+                    NULLIF(SUM(peso_carcaca_kg), 0), 2
+                )                                       AS preco_medio_kg,
+                ROUND(AVG(rendimento_pct)::NUMERIC, 1)  AS rendimento_medio
+            FROM ovino_abates
+            WHERE imovel_id = %s
+              AND data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
+            GROUP BY TO_CHAR(data_abate, 'MM'), TO_CHAR(data_abate, 'TMMonth')
+            ORDER BY mes_num
+        """, (imovel_id, meses))
+        por_mes_ano = [dict(r) for r in cur.fetchall()]
+
+        # Ranking de meses mais lucrativos
+        ranking = sorted(
+            [m for m in por_mes_ano if m["preco_medio_kg"]],
+            key=lambda x: float(x["preco_medio_kg"] or 0),
+            reverse=True
+        )
+
+        # Melhor e pior mês
+        melhor_mes = ranking[0] if ranking else None
+        pior_mes = ranking[-1] if len(ranking) > 1 else None
+
+        # Totais gerais
+        cur.execute("""
+            SELECT
+                COUNT(*)                                AS total_abates,
+                SUM(valor_total_rs)                     AS receita_total,
+                ROUND(AVG(valor_total_rs)::NUMERIC, 2)  AS ticket_medio,
+                ROUND(AVG(rendimento_pct)::NUMERIC, 1)  AS rendimento_medio,
+                ROUND(SUM(valor_total_rs) /
+                    NULLIF(SUM(peso_carcaca_kg), 0), 2) AS preco_medio_kg_geral
+            FROM ovino_abates
+            WHERE imovel_id = %s
+              AND data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
+        """, (imovel_id, meses))
+        totais = dict(cur.fetchone())
+
+        return {
+            "periodo_meses": meses,
+            "totais": totais,
+            "por_mes": por_mes,
+            "sazonalidade": por_mes_ano,
+            "ranking_preco_kg": ranking,
+            "melhor_mes": melhor_mes,
+            "pior_mes": pior_mes,
+            "recomendacao": (
+                f"Melhor época para venda: {melhor_mes['mes_nome']} "
+                f"(R$ {melhor_mes['preco_medio_kg']}/kg de carcaça em média)"
+                if melhor_mes else
+                "Registre abates para gerar análise de sazonalidade."
+            ),
+        }
+    finally:
+        conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 

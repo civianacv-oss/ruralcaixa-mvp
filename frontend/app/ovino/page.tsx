@@ -156,7 +156,7 @@ export default function OvinoDashboard() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [resumoTarefas, setResumoTarefas] = useState<any>(null);
-  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "mortalidade" | "pastagem" | "agenda" | "sanitario" | "alertas">("rebanho");
+  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "mortalidade" | "pastagem" | "sazonalidade" | "agenda" | "sanitario" | "alertas">("rebanho");
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState("ativo");
   const [novoAnimal, setNovoAnimal] = useState({ brinco: "", sexo: "F", raca: "" });
@@ -167,6 +167,7 @@ export default function OvinoDashboard() {
   const [racao, setRacao] = useState<RacaoPrevisao | null>(null);
   const [mortes, setMortes] = useState<MorteEvento[]>([]);
   const [piquetes, setPiquetes] = useState<Piquete[]>([]);
+  const [sazonalidade, setSazonalidade] = useState<any>(null);
   const [alertasPastagem, setAlertasPastagem] = useState<any[]>([]);
   const [novoPiquete, setNovoPiquete] = useState({ nome: "", area_ha: "", forrageira: "", capacidade_suporte_ua_ha: "5", dias_ocupacao_padrao: "7", dias_descanso_padrao: "28" });
   const [salvandoPiquete, setSalvandoPiquete] = useState(false);
@@ -192,7 +193,7 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert, ins, indic, rac, mort, pastAlertas, indicMort, car, taref, resumoT] = await Promise.all([
+      const [dash, anim, lots, alert, ins, indic, rac, mort, pastAlertas, sazonal, indicMort, car, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
@@ -202,6 +203,7 @@ export default function OvinoDashboard() {
         fetch(`${API}/ovino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
         fetch(`${API}/ovino/pastagem/alertas/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        fetch(`${API}/ovino/sazonalidade/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
         fetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
@@ -218,6 +220,7 @@ export default function OvinoDashboard() {
       if (rac && rac.totais) setRacao(rac);
       setMortes(Array.isArray(mort) ? mort : []);
       if (pastAlertas) { setPiquetes(pastAlertas.piquetes || []); setAlertasPastagem(pastAlertas.alertas || []); }
+      if (sazonal) setSazonalidade(sazonal);
       if (indicMort) setIndicMortalidade(indicMort);
       setCarencias(Array.isArray(car) ? car : []);
     } catch (e) {
@@ -327,12 +330,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "indicadores", "racao", "mortalidade", "pastagem", "agenda", "sanitario", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "indicadores", "racao", "mortalidade", "pastagem", "sazonalidade", "agenda", "sanitario", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "mortalidade" ? `💀 Mortalidade${mortes.length > 0 ? ` (${mortes.length})` : ""}` : a === "pastagem" ? `🌿 Pastagem${alertasPastagem.filter(a=>a.severidade==="alta").length > 0 ? " ⚠️" : ""}` : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "mortalidade" ? `💀 Mortalidade${mortes.length > 0 ? ` (${mortes.length})` : ""}` : a === "pastagem" ? `🌿 Pastagem${alertasPastagem.filter(a=>a.severidade==="alta").length > 0 ? " ⚠️" : ""}` : a === "sazonalidade" ? "📈 Sazonalidade" : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -862,6 +865,106 @@ export default function OvinoDashboard() {
             <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>
               Nenhum dado de pesagem disponível para calcular indicadores.<br/>
               <span style={{ fontSize:13 }}>Registre pesagens via WhatsApp ou pelo endpoint /ovino/pesagens</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Aba Sazonalidade */}
+      {aba === "sazonalidade" && (
+        <div>
+          {!sazonalidade || sazonalidade.totais?.total_abates === 0 ? (
+            <div style={{ textAlign:"center", padding:40 }}>
+              <div style={{ fontSize:48, marginBottom:16 }}>📈</div>
+              <div style={{ fontWeight:600, fontSize:16, color:"#374151", marginBottom:8 }}>
+                Nenhum abate registrado ainda
+              </div>
+              <div style={{ fontSize:14, color:"#9ca3af", maxWidth:400, margin:"0 auto" }}>
+                Registre abates com valor de venda para gerar a análise de sazonalidade.
+                O sistema identificará automaticamente os meses mais lucrativos da sua fazenda.
+              </div>
+            </div>
+          ) : (
+            <div>
+              {/* Recomendação */}
+              {sazonalidade.melhor_mes && (
+                <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:10, padding:"14px 16px", marginBottom:16 }}>
+                  <div style={{ fontWeight:700, color:"#15803d", fontSize:15 }}>
+                    🏆 {sazonalidade.recomendacao}
+                  </div>
+                  {sazonalidade.pior_mes && (
+                    <div style={{ fontSize:13, color:"#6b7280", marginTop:4 }}>
+                      Menor preço: {sazonalidade.pior_mes.mes_nome} (R$ {sazonalidade.pior_mes.preco_medio_kg}/kg)
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* KPIs */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }}>
+                {[
+                  { label:"Total abates", value: sazonalidade.totais.total_abates, color:"#374151" },
+                  { label:"Receita total", value: sazonalidade.totais.receita_total ? `R$ ${Number(sazonalidade.totais.receita_total).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—", color:"#16a34a" },
+                  { label:"Ticket médio", value: sazonalidade.totais.ticket_medio ? `R$ ${Number(sazonalidade.totais.ticket_medio).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—", color:"#2563eb" },
+                  { label:"Preço médio/kg", value: sazonalidade.totais.preco_medio_kg_geral ? `R$ ${sazonalidade.totais.preco_medio_kg_geral}` : "—", color:"#7c3aed" },
+                ].map(k => (
+                  <div key={k.label} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:10, padding:"12px 14px", textAlign:"center" }}>
+                    <div style={{ fontSize:18, fontWeight:700, color:k.color }}>{k.value}</div>
+                    <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>{k.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Gráfico de barras por mês */}
+              {sazonalidade.sazonalidade?.length > 0 && (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontWeight:600, fontSize:14, marginBottom:12 }}>Preço médio por kg de carcaça (R$)</div>
+                  <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:140, padding:"0 4px" }}>
+                    {(() => {
+                      const maxPreco = Math.max(...sazonalidade.sazonalidade.map((m:any) => Number(m.preco_medio_kg || 0)));
+                      return sazonalidade.sazonalidade.map((m:any, i:number) => {
+                        const preco = Number(m.preco_medio_kg || 0);
+                        const altura = maxPreco > 0 ? Math.round((preco / maxPreco) * 100) : 0;
+                        const eMelhor = sazonalidade.melhor_mes?.mes_num === m.mes_num;
+                        return (
+                          <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                            <div style={{ fontSize:10, color:"#374151", fontWeight:600 }}>
+                              {preco > 0 ? `R$${preco}` : ""}
+                            </div>
+                            <div style={{
+                              width:"100%", height:`${altura}%`, minHeight:4,
+                              background: eMelhor ? "#16a34a" : "#93c5fd",
+                              borderRadius:"4px 4px 0 0", transition:"height 0.3s"
+                            }} />
+                            <div style={{ fontSize:9, color:"#6b7280", textAlign:"center" }}>{m.mes_nome?.slice(0,3)}</div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Ranking */}
+              {sazonalidade.ranking_preco_kg?.length > 0 && (
+                <div>
+                  <div style={{ fontWeight:600, fontSize:14, marginBottom:8 }}>Ranking por preço/kg</div>
+                  {sazonalidade.ranking_preco_kg.map((m:any, i:number) => (
+                    <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background: i===0?"#f0fdf4":"#fff", border:"1px solid #e5e7eb", borderRadius:8, marginBottom:4 }}>
+                      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                        <span style={{ fontWeight:700, color: i===0?"#16a34a":i===sazonalidade.ranking_preco_kg.length-1?"#dc2626":"#374151" }}>
+                          {i===0?"🏆":i===sazonalidade.ranking_preco_kg.length-1?"📉":`${i+1}.`}
+                        </span>
+                        <span style={{ fontWeight:600 }}>{m.mes_nome}</span>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontWeight:700, color:"#16a34a" }}>R$ {m.preco_medio_kg}/kg</div>
+                        <div style={{ fontSize:12, color:"#9ca3af" }}>{m.total_abates} abate(s)</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
