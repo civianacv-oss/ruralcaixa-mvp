@@ -30,6 +30,17 @@ type Dashboard = {
   alertas_7d: { total_alertas: number };
 };
 
+type MorteEvento = {
+  id: number;
+  brinco: string;
+  data_morte: string;
+  causa_categoria: string;
+  causa_subcategoria: string | null;
+  diagnostico: string | null;
+  faixa_etaria: string;
+  lote_nome: string | null;
+};
+
 type RacaoLote = {
   lote_nome: string;
   fase: string;
@@ -126,7 +137,7 @@ export default function OvinoDashboard() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [resumoTarefas, setResumoTarefas] = useState<any>(null);
-  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "agenda" | "sanitario" | "alertas">("rebanho");
+  const [aba, setAba] = useState<"rebanho" | "lotes" | "indicadores" | "racao" | "mortalidade" | "agenda" | "sanitario" | "alertas">("rebanho");
   const [loading, setLoading] = useState(true);
   const [filtroStatus, setFiltroStatus] = useState("ativo");
   const [novoAnimal, setNovoAnimal] = useState({ brinco: "", sexo: "F", raca: "" });
@@ -135,6 +146,11 @@ export default function OvinoDashboard() {
   const [reclassificando, setReclassificando] = useState(false);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [racao, setRacao] = useState<RacaoPrevisao | null>(null);
+  const [mortes, setMortes] = useState<MorteEvento[]>([]);
+  const [indicMortalidade, setIndicMortalidade] = useState<any>(null);
+  const [novaMorte, setNovaMorte] = useState({ brinco: "", causa_categoria: "doenca", causa_subcategoria: "", observacoes: "" });
+  const [salvandoMorte, setSalvandoMorte] = useState(false);
+  const [msgMorte, setMsgMorte] = useState("");
   const [precoRacao, setPrecoRacao] = useState("");
   const [estoqueRacao, setEstoqueRacao] = useState("");
   const [salvandoRacao, setSalvandoRacao] = useState(false);
@@ -152,7 +168,7 @@ export default function OvinoDashboard() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [dash, anim, lots, alert, ins, indic, rac, car, taref, resumoT] = await Promise.all([
+      const [dash, anim, lots, alert, ins, indic, rac, mort, indicMort, car, taref, resumoT] = await Promise.all([
         fetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
         fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
         fetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
@@ -160,6 +176,8 @@ export default function OvinoDashboard() {
         fetch(`${API}/ovino/sanitario/insumos`).then(r => r.json()).catch(() => []),
         fetch(`${API}/ovino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        fetch(`${API}/ovino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/ovino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
         fetch(`${API}/ovino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
         fetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
         fetch(`${API}/ovino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
@@ -173,6 +191,8 @@ export default function OvinoDashboard() {
       setInsumos(Array.isArray(ins) ? ins : []);
       if (indic && indic.por_lote) setIndicadores(indic);
       if (rac && rac.totais) setRacao(rac);
+      setMortes(Array.isArray(mort) ? mort : []);
+      if (indicMort) setIndicMortalidade(indicMort);
       setCarencias(Array.isArray(car) ? car : []);
     } catch (e) {
       console.error(e);
@@ -281,12 +301,12 @@ export default function OvinoDashboard() {
 
       {/* Abas */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {(["rebanho", "lotes", "indicadores", "racao", "agenda", "sanitario", "alertas"] as const).map(a => (
+        {(["rebanho", "lotes", "indicadores", "racao", "mortalidade", "agenda", "sanitario", "alertas"] as const).map(a => (
           <button key={a} onClick={() => setAba(a)} style={{
             padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14,
             background: aba === a ? "#16a34a" : "#f3f4f6", color: aba === a ? "#fff" : "#374151",
           }}>
-            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
+            {a === "rebanho" ? "🐑 Rebanho" : a === "lotes" ? "📦 Lotes" : a === "indicadores" ? "📊 Indicadores" : a === "racao" ? `🌾 Ração${racao?.alerta_estoque ? " ⚠️" : ""}` : a === "mortalidade" ? `💀 Mortalidade${mortes.length > 0 ? ` (${mortes.length})` : ""}` : a === "agenda" ? `📅 Agenda${tarefas.filter(t=>t.status==="pendente").length > 0 ? ` (${tarefas.filter(t=>t.status==="pendente").length})` : ""}` : a === "sanitario" ? `💉 Sanitário${carencias.length > 0 ? ` (${carencias.length}🚫)` : ""}` : `⚠️ Alertas${alertas.length > 0 ? ` (${alertas.length})` : ""}`}
           </button>
         ))}
       </div>
@@ -393,6 +413,127 @@ export default function OvinoDashboard() {
             </div>
           ))}
           {lotes.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Nenhum lote cadastrado.</p>}
+        </div>
+      )}
+
+      {/* Aba Mortalidade */}
+      {aba === "mortalidade" && (
+        <div>
+          {/* Alertas de taxa alta */}
+          {indicMortalidade?.alertas_taxa?.length > 0 && (
+            <div style={{ background:"#fff1f2", border:"1px solid #fecdd3", borderRadius:10, padding:"12px 16px", marginBottom:16 }}>
+              <div style={{ fontWeight:700, color:"#dc2626", marginBottom:8 }}>🚨 Alertas de mortalidade</div>
+              {indicMortalidade.alertas_taxa.map((a:any, i:number) => (
+                <div key={i} style={{ fontSize:13, marginBottom:4 }}>
+                  <strong>{a.lote_nome}</strong>: {a.taxa}% em 30 dias ({a.mortes_30d} mortes)
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* KPIs por causa */}
+          {indicMortalidade?.por_causa?.length > 0 && (
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontWeight:600, fontSize:14, marginBottom:8 }}>Por causa (90 dias)</div>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                {indicMortalidade.por_causa.map((c:any, i:number) => (
+                  <div key={i} style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:8, padding:"10px 14px", minWidth:120 }}>
+                    <div style={{ fontSize:20, fontWeight:700, color:"#dc2626" }}>{c.total}</div>
+                    <div style={{ fontSize:12, color:"#374151" }}>{c.causa_categoria}</div>
+                    {c.causa_subcategoria && <div style={{ fontSize:11, color:"#9ca3af" }}>{c.causa_subcategoria}</div>}
+                    <div style={{ fontSize:11, color:"#d97706", marginTop:2 }}>{c.ultimos_30d} nos últimos 30d</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Registrar morte */}
+          <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:10, padding:14, marginBottom:16 }}>
+            <div style={{ fontWeight:600, fontSize:14, marginBottom:10 }}>+ Registrar Morte</div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <input placeholder="Brinco *" value={novaMorte.brinco}
+                onChange={e=>setNovaMorte(p=>({...p,brinco:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:100 }} />
+              <select value={novaMorte.causa_categoria}
+                onChange={e=>setNovaMorte(p=>({...p,causa_categoria:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13 }}>
+                {["doenca","acidente","predador","neonatal","descarte_sanitario","causa_desconhecida","outro"].map(c=>(
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <input placeholder="Subcategoria" value={novaMorte.causa_subcategoria}
+                onChange={e=>setNovaMorte(p=>({...p,causa_subcategoria:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:130 }} />
+              <input placeholder="Observações" value={novaMorte.observacoes}
+                onChange={e=>setNovaMorte(p=>({...p,observacoes:e.target.value}))}
+                style={{ padding:"7px 10px", borderRadius:6, border:"1px solid #d1d5db", fontSize:13, width:180 }} />
+              <button onClick={async () => {
+                if (!novaMorte.brinco) return;
+                setSalvandoMorte(true);
+                const ar = await fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+                const found = ar.find((a:any) => a.brinco.toLowerCase() === novaMorte.brinco.toLowerCase());
+                if (!found) { setMsgMorte("Animal não encontrado."); setSalvandoMorte(false); return; }
+                const r = await fetch(`${API}/ovino/mortalidade`, {
+                  method:"POST", headers:{"Content-Type":"application/json"},
+                  body: JSON.stringify({
+                    imovel_id: IMOVEL_ID, animal_id: found.id,
+                    causa_categoria: novaMorte.causa_categoria,
+                    causa_subcategoria: novaMorte.causa_subcategoria || null,
+                    observacoes: novaMorte.observacoes || null,
+                    origem: "dashboard",
+                  })
+                });
+                const data = await r.json();
+                if (r.ok) {
+                  setMsgMorte(`✅ Morte registrada — ${data.brinco}, ${data.faixa_etaria}${data.alerta_cluster ? " | " + data.alerta_cluster.mensagem : ""}`);
+                  setNovaMorte({ brinco:"", causa_categoria:"doenca", causa_subcategoria:"", observacoes:"" });
+                  carregarTudo();
+                } else { setMsgMorte(`❌ ${data.detail || "Erro."}`); }
+                setSalvandoMorte(false);
+                setTimeout(()=>setMsgMorte(""),6000);
+              }} disabled={salvandoMorte || !novaMorte.brinco}
+                style={{ padding:"7px 16px", background:"#dc2626", color:"#fff", border:"none", borderRadius:6, fontWeight:600, cursor:"pointer", fontSize:13 }}>
+                {salvandoMorte ? "..." : "Registrar"}
+              </button>
+            </div>
+            {msgMorte && <div style={{ marginTop:8, fontSize:13, color: msgMorte.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{msgMorte}</div>}
+          </div>
+
+          {/* Histórico */}
+          {mortes.length === 0 ? (
+            <div style={{ textAlign:"center", padding:30, color:"#9ca3af" }}>Nenhuma morte registrada nos últimos 90 dias.</div>
+          ) : (
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:"#f3f4f6" }}>
+                    {["Brinco","Data","Causa","Subcausa","Faixa","Lote"].map(h=>(
+                      <th key={h} style={{ padding:"8px 10px", textAlign:"left", fontWeight:600, color:"#374151", borderBottom:"1px solid #e5e7eb" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mortes.map(m => (
+                    <tr key={m.id} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                      <td style={{ padding:"8px 10px", fontWeight:600, color:"#dc2626" }}>{m.brinco}</td>
+                      <td style={{ padding:"8px 10px", color:"#6b7280" }}>{new Date(m.data_morte+"T00:00:00").toLocaleDateString("pt-BR")}</td>
+                      <td style={{ padding:"8px 10px" }}>{m.causa_categoria}</td>
+                      <td style={{ padding:"8px 10px", color:"#6b7280" }}>{m.causa_subcategoria || "—"}</td>
+                      <td style={{ padding:"8px 10px" }}>
+                        <span style={{ padding:"2px 8px", borderRadius:12, fontSize:11, fontWeight:600,
+                          background: m.faixa_etaria==="neonatal"?"#fef3c7":m.faixa_etaria==="jovem"?"#dbeafe":"#f3f4f6",
+                          color: m.faixa_etaria==="neonatal"?"#92400e":m.faixa_etaria==="jovem"?"#1d4ed8":"#374151" }}>
+                          {m.faixa_etaria}
+                        </span>
+                      </td>
+                      <td style={{ padding:"8px 10px", color:"#6b7280" }}>{m.lote_nome || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
