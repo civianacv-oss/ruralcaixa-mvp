@@ -1634,6 +1634,236 @@ def atualizar_config_racao(imovel_id: int, payload: RacaoConfigUpdate):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# CONTROLE DE MORTALIDADE
+# ══════════════════════════════════════════════════════════════════════════════
+
+CAUSAS_CATEGORIA = {
+    "doenca": ["respiratoria","digestiva","clostridiose","parasitaria","nervosa","outro"],
+    "acidente": ["trauma","afogamento","intoxicacao","outro"],
+    "predador": ["cao","onca","raposa","outro"],
+    "neonatal": ["natimorto","hipotermia","inanição","malformacao","outro"],
+    "descarte_sanitario": ["brucelose","tuberculose","outro"],
+    "causa_desconhecida": [],
+    "outro": [],
+}
+
+def _calcular_faixa_etaria(data_nascimento, data_morte) -> str:
+    if not data_nascimento:
+        return "desconhecida"
+    dias = (data_morte - data_nascimento).days
+    if dias < 30:
+        return "neonatal"
+    if dias < 180:
+        return "jovem"
+    return "adulto"
+
+
+class MorteCreate(BaseModel):
+    imovel_id: int
+    animal_id: int
+    data_morte: date = Field(default_factory=date.today)
+    causa_categoria: str
+    causa_subcategoria: Optional[str] = None
+    diagnostico: Optional[str] = None
+    peso_morte_kg: Optional[float] = None
+    observacoes: Optional[str] = None
+    registrado_por: Optional[str] = None
+    origem: str = "dashboard"
+
+
+@router.post("/mortalidade", status_code=201)
+def registrar_morte(payload: MorteCreate):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Busca dados do animal
+        cur.execute("""
+            SELECT a.*, l.id AS lote_id_atual
+            FROM ovino_animais a
+            LEFT JOIN ovino_lotes l ON l.id = a.lote_id
+            WHERE a.id = %s AND a.status = 'ativo'
+        """, (payload.animal_id,))
+        animal = cur.fetchone()
+        if not animal:
+            raise HTTPException(404, "Animal não encontrado ou já inativo.")
+        a = dict(animal)
+
+        faixa = _calcular_faixa_etaria(a.get("data_nascimento"), payload.data_morte)
+
+        # Registra morte
+        cur.execute("""
+            INSERT INTO ovino_mortalidade
+                (imovel_id, animal_id, lote_id, data_morte,
+                 causa_categoria, causa_subcategoria, diagnostico,
+                 faixa_etaria, peso_morte_kg, observacoes,
+                 registrado_por, origem)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (payload.imovel_id, payload.animal_id, a.get("lote_id"),
+              payload.data_morte, payload.causa_categoria,
+              payload.causa_subcategoria, payload.diagnostico,
+              faixa, payload.peso_morte_kg, payload.observacoes,
+              payload.registrado_por, payload.origem))
+        morte_id = cur.fetchone()["id"]
+
+        # Atualiza status do animal
+        cur.execute("""
+            UPDATE ovino_animais
+            SET status = 'morto', data_morte = %s,
+                causa_morte_id = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (payload.data_morte, morte_id, payload.animal_id))
+
+        # Verifica se deve gerar alerta de cluster
+        cur.execute("""
+            SELECT COUNT(*) AS mortes, causa_categoria
+            FROM ovino_mortalidade
+            WHERE lote_id = %s AND data_morte >= %s
+            GROUP BY causa_categoria
+            ORDER BY mortes DESC LIMIT 1
+        """, (a.get("lote_id"), payload.data_morte - timedelta(days=7)))
+        cluster = cur.fetchone()
+
+        alerta_cluster = None
+        if cluster:
+            c = dict(cluster)
+            if c["mortes"] >= 2:
+                alerta_cluster = {
+                    "tipo": "cluster_mortalidade",
+                    "causa": c["causa_categoria"],
+                    "mortes_7d": c["mortes"],
+                    "mensagem": f"⚠️ Cluster: {c['mortes']} mortes por {c['causa_categoria']} em 7 dias no lote"
+                }
+                # Gera alerta no sistema
+                import hashlib
+                h = hashlib.sha256(
+                    f"{a.get('lote_id')}:cluster_mortalidade:{payload.causa_categoria}:{payload.data_morte.isoformat()[:7]}".encode()
+                ).hexdigest()
+                cur.execute("""
+                    INSERT INTO ovino_alertas
+                        (imovel_id, lote_id, tipo_alerta, titulo, prioridade,
+                         data_referencia, data_vencimento, origem_evento, hash_unicidade)
+                    VALUES (%s,%s,'cluster_mortalidade',%s,'alta',CURRENT_DATE,CURRENT_DATE+1,'desvio',%s)
+                    ON CONFLICT (hash_unicidade) DO NOTHING
+                """, (payload.imovel_id, a.get("lote_id"),
+                      alerta_cluster["mensagem"], h))
+
+        conn.commit()
+        return {
+            "morte_id": morte_id,
+            "brinco": a["brinco"],
+            "faixa_etaria": faixa,
+            "causa": f"{payload.causa_categoria}/{payload.causa_subcategoria or '—'}",
+            "alerta_cluster": alerta_cluster,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+@router.get("/mortalidade/{imovel_id}")
+def listar_mortes(
+    imovel_id: int,
+    dias: int = Query(90),
+    causa_categoria: Optional[str] = Query(None),
+    lote_id: Optional[int] = Query(None),
+):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT m.*, a.brinco, a.sexo, a.data_nascimento,
+                   l.nome AS lote_nome, l.fase AS lote_fase
+            FROM ovino_mortalidade m
+            JOIN ovino_animais a ON a.id = m.animal_id
+            LEFT JOIN ovino_lotes l ON l.id = m.lote_id
+            WHERE m.imovel_id = %s AND m.data_morte >= %s
+        """
+        params = [imovel_id, date.today() - timedelta(days=dias)]
+        if causa_categoria:
+            sql += " AND m.causa_categoria = %s"; params.append(causa_categoria)
+        if lote_id:
+            sql += " AND m.lote_id = %s"; params.append(lote_id)
+        sql += " ORDER BY m.data_morte DESC LIMIT 200"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.get("/mortalidade/indicadores/{imovel_id}")
+def indicadores_mortalidade(imovel_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        # Por lote
+        cur.execute("""
+            SELECT * FROM ovino_mortalidade_indicadores
+            WHERE imovel_id = %s
+            ORDER BY mortes_30d DESC
+        """, (imovel_id,))
+        por_lote = [dict(r) for r in cur.fetchall()]
+
+        # Por causa (90 dias)
+        cur.execute("""
+            SELECT causa_categoria, causa_subcategoria,
+                   COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE data_morte >= CURRENT_DATE-30) AS ultimos_30d
+            FROM ovino_mortalidade
+            WHERE imovel_id = %s AND data_morte >= CURRENT_DATE - 90
+            GROUP BY causa_categoria, causa_subcategoria
+            ORDER BY total DESC
+        """, (imovel_id,))
+        por_causa = [dict(r) for r in cur.fetchall()]
+
+        # Tendência mensal (12 meses)
+        cur.execute("""
+            SELECT TO_CHAR(data_morte, 'YYYY-MM') AS mes,
+                   COUNT(*) AS mortes,
+                   COUNT(*) FILTER (WHERE causa_categoria = 'doenca') AS doenca,
+                   COUNT(*) FILTER (WHERE causa_categoria = 'neonatal') AS neonatal
+            FROM ovino_mortalidade
+            WHERE imovel_id = %s AND data_morte >= CURRENT_DATE - 365
+            GROUP BY mes ORDER BY mes
+        """, (imovel_id,))
+        tendencia = [dict(r) for r in cur.fetchall()]
+
+        # Alertas de taxa alta
+        alertas_taxa = []
+        for l in por_lote:
+            taxa = float(l["taxa_mortalidade_30d_pct"] or 0)
+            mortes = l["mortes_30d"]
+            if taxa > 5 or (taxa > 3 and mortes >= 2):
+                alertas_taxa.append({
+                    "lote_nome": l["lote_nome"],
+                    "taxa": taxa,
+                    "mortes_30d": mortes,
+                    "severidade": "alta" if taxa > 5 else "media",
+                })
+
+        return {
+            "por_lote": por_lote,
+            "por_causa": por_causa,
+            "tendencia_mensal": tendencia,
+            "alertas_taxa": alertas_taxa,
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/mortalidade/causas/lista")
+def listar_causas():
+    """Retorna categorias e subcategorias disponíveis."""
+    return CAUSAS_CATEGORIA
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
 # ══════════════════════════════════════════════════════════════════════════════
 
