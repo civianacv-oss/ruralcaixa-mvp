@@ -10,10 +10,12 @@ type Animal = {
   sexo: string;
   raca: string | null;
   status: string;
+  lote_id: number | null;
   lote_nome: string | null;
   ultimo_peso: number | null;
   data_ultimo_peso: string | null;
   data_nascimento: string | null;
+  observacoes: string | null;
 };
 
 type Lote = {
