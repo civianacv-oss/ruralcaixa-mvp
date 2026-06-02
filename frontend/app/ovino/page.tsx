@@ -251,6 +251,19 @@ export default function OvinoDashboard() {
         }),
       });
       if (r.ok) {
+        // Registra pesagem se informada
+        if (editando.novo_peso && Number(editando.novo_peso) > 0) {
+          await fetch(`${API}/ovino/pesagens`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              animal_id: editando.id,
+              peso_kg: Number(editando.novo_peso),
+              motivo: "manual",
+              registrado_por: "usuario",
+            }),
+          });
+        }
         setMsgEdit("✅ Animal atualizado!");
         setTimeout(() => { setEditando(null); setMsgEdit(""); carregarTudo(); }, 1000);
       } else {
@@ -452,7 +465,7 @@ export default function OvinoDashboard() {
                       </span>
                     </td>
                     <td style={{ padding: "10px 12px" }}>
-                      <button onClick={() => setEditando({...a, lote_id: a.lote_id || ""})}
+                      <button onClick={() => setEditando({...a, lote_id: a.lote_id || "", novo_peso: ""})}
                         style={{ padding: "4px 10px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12, cursor: "pointer", color: "#374151" }}>
                         ✏️ Editar
                       </button>
@@ -1312,6 +1325,12 @@ export default function OvinoDashboard() {
                   <option value="">— Sem lote —</option>
                   {lotes.map((l:any) => <option key={l.id} value={l.id}>{l.nome} ({l.fase})</option>)}
                 </select>
+              </div>
+              <div>
+                <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Registrar Pesagem (kg)</label>
+                <input type="number" step="0.1" placeholder={editando.ultimo_peso ? `Último: ${editando.ultimo_peso} kg` : "Informe o peso atual"}
+                  value={editando.novo_peso||""} onChange={e=>setEditando((p:any)=>({...p,novo_peso:e.target.value}))}
+                  style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" as const }} />
               </div>
               <div>
                 <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Observações</label>
