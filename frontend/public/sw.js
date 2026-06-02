@@ -21,8 +21,9 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Ignora requisições não-GET (POST, PATCH, etc.)
+  // Ignora requisições não-GET (POST, PATCH, etc.) e requests para a API
   if (e.request.method !== 'GET') return;
+  if (e.request.url.includes('railway.app')) return;
 
   const url = new URL(e.request.url);
 
