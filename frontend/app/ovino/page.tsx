@@ -270,7 +270,7 @@ export default function OvinoDashboard() {
         const e = await r.json();
         setMsgEdit("❌ " + (e.detail || "Erro ao salvar."));
       }
-    } catch { setMsgEdit("❌ Erro de conexão."); }
+    } catch(err: any) { setMsgEdit("❌ " + (err?.message || "Erro de conexão.")); console.error("Erro edição:", err); }
     setSalvandoEdit(false);
   }
 
