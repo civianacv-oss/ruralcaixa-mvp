@@ -324,6 +324,32 @@ def criar_pesagem(payload: dict):
         conn.close()
 
 
+@router.post("/pesagens", status_code=201)
+def criar_pesagem(payload: dict):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ovino_pesagens (animal_id, peso_kg, data_pesagem, motivo, registrado_por)
+            VALUES (%s, %s, COALESCE(%s::date, CURRENT_DATE), %s, %s)
+            RETURNING id, animal_id, peso_kg, data_pesagem
+        """, (
+            payload["animal_id"],
+            payload["peso_kg"],
+            payload.get("data_pesagem"),
+            payload.get("motivo", "manual"),
+            payload.get("registrado_por", "usuario"),
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
 @router.get("/pesagens/{animal_id}")
 def historico_pesagens(animal_id: int):
     conn = get_db()
