@@ -73,18 +73,18 @@ export default function Dashboard() {
 
   // ── sidebar nav ──────────────────────────────────────────────
   const navGestao = [
-    {id:"dashboard",  label:"Dashboard",       icon:Icons.dashboard},
-    {id:"propriedades",label:"Propriedades",   icon:Icons.property},
-    {id:"contratos",  label:"Contratos Rurais",icon:Icons.contracts},
-    {id:"rebanhos",   label:"Rebanhos",        icon:Icons.animals, href:"/ovino"},
-    {id:"saude",      label:"Saúde Animal",    icon:Icons.health},
-    {id:"reproducao", label:"Reprodução",      icon:Icons.reproduce},
-    {id:"financeiro", label:"Financeiro",      icon:Icons.financial},
-    {id:"relatorios", label:"Relatórios",      icon:Icons.reports, href:"/relatorio"},
+    {id:"dashboard",   label:"Dashboard",        icon:Icons.dashboard,  href:"/"},
+    {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
+    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/assinar"},
+    {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/ovino"},
+    {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/ovino"},
+    {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/ovino"},
+    {id:"financeiro",  label:"Financeiro",        icon:Icons.financial,  href:"/relatorio"},
+    {id:"relatorios",  label:"Relatórios",        icon:Icons.reports,    href:"/relatorio"},
   ];
   const navAdmin = [
-    {id:"usuarios",   label:"Usuários",        icon:Icons.users},
-    {id:"configuracoes",label:"Configurações", icon:Icons.settings},
+    {id:"usuarios",     label:"Usuários",        icon:Icons.users,     href:"/terceiros"},
+    {id:"configuracoes",label:"Configurações",   icon:Icons.settings,  href:"/"},
   ];
 
   const especieBar = [
@@ -126,7 +126,7 @@ export default function Dashboard() {
           <div style={{fontSize:10,color:"#5a7a5a",letterSpacing:"2px",textTransform:"uppercase",padding:"0 12px",marginBottom:8}}>Gestão</div>
           {navGestao.map(item => (
             <a key={item.id} href={item.href || "#"}
-              onClick={e => { if(!item.href){e.preventDefault();setActiveMenu(item.id);} }}
+              onClick={() => setActiveMenu(item.id)}
               style={{
                 display:"flex",alignItems:"center",gap:10,
                 padding:"9px 12px",borderRadius:8,marginBottom:2,
