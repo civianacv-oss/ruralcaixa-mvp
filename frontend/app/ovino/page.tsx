@@ -259,7 +259,7 @@ export default function OvinoDashboard() {
             body: JSON.stringify({
               animal_id: editando.id,
               peso_kg: Number(editando.novo_peso),
-              motivo: "manual",
+              motivo: "rotina",
               registrado_por: "usuario",
             }),
           });
