@@ -297,22 +297,6 @@ def listar_lotes(imovel_id: int = Query(...)):
 # PESAGENS
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/pesagens", status_code=201)
-def registrar_pesagem(payload: PesagemCreate):
-    conn = get_db()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO ovino_pesagens (animal_id, data_pesagem, peso_kg, motivo, registrado_por)
-            VALUES (%(animal_id)s, %(data_pesagem)s, %(peso_kg)s, %(motivo)s, %(registrado_por)s)
-            RETURNING id, animal_id, data_pesagem, peso_kg, motivo
-        """, payload.model_dump())
-        row = dict(cur.fetchone())
-        conn.commit()
-        return row
-    finally:
-        conn.close()
-
 
 @router.get("/pesagens/{animal_id}")
 def historico_pesagens(animal_id: int):
