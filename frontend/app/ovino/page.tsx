@@ -1281,7 +1281,7 @@ export default function OvinoDashboard() {
                 <div style={{ flex:1 }}>
                   <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Brinco *</label>
                   <input value={editando.brinco} onChange={e=>setEditando((p:any)=>({...p,brinco:e.target.value}))}
-                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" }} />
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" as const }} />
                 </div>
                 <div style={{ flex:1 }}>
                   <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Sexo</label>
@@ -1296,12 +1296,12 @@ export default function OvinoDashboard() {
                 <div style={{ flex:1 }}>
                   <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Raça</label>
                   <input value={editando.raca||""} onChange={e=>setEditando((p:any)=>({...p,raca:e.target.value}))}
-                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" }} />
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" as const }} />
                 </div>
                 <div style={{ flex:1 }}>
                   <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Data Nascimento</label>
                   <input type="date" value={editando.data_nascimento||""} onChange={e=>setEditando((p:any)=>({...p,data_nascimento:e.target.value}))}
-                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" }} />
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" as const }} />
                 </div>
               </div>
               <div>
@@ -1309,13 +1309,13 @@ export default function OvinoDashboard() {
                 <select value={editando.lote_id||""} onChange={e=>setEditando((p:any)=>({...p,lote_id:e.target.value}))}
                   style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14 }}>
                   <option value="">— Sem lote —</option>
-                  {lotes.map(l => <option key={l.id} value={l.id}>{l.nome} ({l.fase})</option>)}
+                  {lotes.map((l:any) => <option key={l.id} value={l.id}>{l.nome} ({l.fase})</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Observações</label>
                 <textarea value={editando.observacoes||""} onChange={e=>setEditando((p:any)=>({...p,observacoes:e.target.value}))}
-                  rows={2} style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,resize:"vertical",boxSizing:"border-box" }} />
+                  rows={2} style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,resize:"vertical" as const,boxSizing:"border-box" as const }} />
               </div>
               {msgEdit && <div style={{ fontSize:13,color:msgEdit.startsWith("✅")?"#16a34a":"#dc2626",fontWeight:600 }}>{msgEdit}</div>}
               <div style={{ display:"flex",gap:8,justifyContent:"flex-end",marginTop:4 }}>
