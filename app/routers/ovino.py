@@ -2206,10 +2206,10 @@ def analise_sazonalidade(
                     SUM(valor_total_rs) /
                     NULLIF(SUM(peso_carcaca_kg), 0), 2
                 )                                       AS preco_medio_kg_carcaca
-            FROM ovino_abates
-            WHERE imovel_id = %s
-              AND data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
-            GROUP BY TO_CHAR(data_abate, 'YYYY-MM'), TO_CHAR(data_abate, 'MM')
+            FROM ovino_abates ab JOIN ovino_animais ani ON ani.id = ab.animal_id
+            WHERE ani.imovel_id = %s
+              AND ab.data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
+            GROUP BY TO_CHAR(ab.data_abate, 'YYYY-MM'), TO_CHAR(ab.data_abate, 'MM')
             ORDER BY mes
         """, (imovel_id, meses))
         por_mes = [dict(r) for r in cur.fetchall()]
@@ -2226,9 +2226,9 @@ def analise_sazonalidade(
                     NULLIF(SUM(peso_carcaca_kg), 0), 2
                 )                                       AS preco_medio_kg,
                 ROUND(AVG(rendimento_pct)::NUMERIC, 1)  AS rendimento_medio
-            FROM ovino_abates
-            WHERE imovel_id = %s
-              AND data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
+            FROM ovino_abates ab JOIN ovino_animais ani ON ani.id = ab.animal_id
+            WHERE ani.imovel_id = %s
+              AND ab.data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
             GROUP BY TO_CHAR(data_abate, 'MM'), TO_CHAR(data_abate, 'TMMonth')
             ORDER BY mes_num
         """, (imovel_id, meses))
@@ -2254,9 +2254,9 @@ def analise_sazonalidade(
                 ROUND(AVG(rendimento_pct)::NUMERIC, 1)  AS rendimento_medio,
                 ROUND(SUM(valor_total_rs) /
                     NULLIF(SUM(peso_carcaca_kg), 0), 2) AS preco_medio_kg_geral
-            FROM ovino_abates
-            WHERE imovel_id = %s
-              AND data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
+            FROM ovino_abates ab JOIN ovino_animais ani ON ani.id = ab.animal_id
+            WHERE ani.imovel_id = %s
+              AND ab.data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
         """, (imovel_id, meses))
         totais = dict(cur.fetchone())
 
