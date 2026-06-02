@@ -2195,7 +2195,7 @@ def analise_sazonalidade(
             SELECT
                 TO_CHAR(data_abate, 'YYYY-MM')          AS mes,
                 TO_CHAR(data_abate, 'MM')               AS mes_num,
-                TO_CHAR(data_abate, 'Mon/YYYY', 'NLS_DATE_LANGUAGE=PORTUGUESE') AS mes_label,
+                TO_CHAR(data_abate, 'MM/YYYY') AS mes_label,
                 COUNT(*)                                 AS total_abates,
                 ROUND(AVG(peso_vivo_kg)::NUMERIC, 1)    AS peso_vivo_medio,
                 ROUND(AVG(peso_carcaca_kg)::NUMERIC, 1) AS peso_carcaca_medio,
@@ -2218,7 +2218,7 @@ def analise_sazonalidade(
         cur.execute("""
             SELECT
                 TO_CHAR(data_abate, 'MM')               AS mes_num,
-                TO_CHAR(data_abate, 'TMMonth')          AS mes_nome,
+                TO_CHAR(data_abate, 'Month')             AS mes_nome,
                 COUNT(*)                                 AS total_abates,
                 ROUND(AVG(valor_total_rs)::NUMERIC, 2)  AS receita_media,
                 ROUND(
