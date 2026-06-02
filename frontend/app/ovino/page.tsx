@@ -161,6 +161,9 @@ export default function OvinoDashboard() {
   const [filtroStatus, setFiltroStatus] = useState("ativo");
   const [novoAnimal, setNovoAnimal] = useState({ brinco: "", sexo: "F", raca: "" });
   const [salvando, setSalvando] = useState(false);
+  const [editando, setEditando] = useState<any>(null);
+  const [salvandoEdit, setSalvandoEdit] = useState(false);
+  const [msgEdit, setMsgEdit] = useState("");
   const [msg, setMsg] = useState("");
   const [reclassificando, setReclassificando] = useState(false);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
@@ -227,6 +230,33 @@ export default function OvinoDashboard() {
       console.error(e);
     }
     setLoading(false);
+  }
+
+  async function salvarEdicao() {
+    if (!editando) return;
+    setSalvandoEdit(true);
+    try {
+      const r = await fetch(`${API}/ovino/animais/${editando.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brinco: editando.brinco,
+          sexo: editando.sexo,
+          raca: editando.raca || null,
+          data_nascimento: editando.data_nascimento || null,
+          lote_id: editando.lote_id ? Number(editando.lote_id) : null,
+          observacoes: editando.observacoes || null,
+        }),
+      });
+      if (r.ok) {
+        setMsgEdit("✅ Animal atualizado!");
+        setTimeout(() => { setEditando(null); setMsgEdit(""); carregarTudo(); }, 1000);
+      } else {
+        const e = await r.json();
+        setMsgEdit("❌ " + (e.detail || "Erro ao salvar."));
+      }
+    } catch { setMsgEdit("❌ Erro de conexão."); }
+    setSalvandoEdit(false);
   }
 
   async function reclassificarRebanho(dryRun = false) {
@@ -400,7 +430,7 @@ export default function OvinoDashboard() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
-                  {["Brinco", "Sexo", "Raça", "Lote", "Último Peso", "Data Peso", "Status"].map(h => (
+                  {["Brinco", "Sexo", "Raça", "Lote", "Último Peso", "Data Peso", "Status", ""].map(h => (
                     <th key={h} style={{ padding: "10px 12px", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
@@ -418,6 +448,12 @@ export default function OvinoDashboard() {
                       <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 12, fontWeight: 600, background: a.status === "ativo" ? "#dcfce7" : "#fee2e2", color: a.status === "ativo" ? "#15803d" : "#dc2626" }}>
                         {a.status}
                       </span>
+                    </td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <button onClick={() => setEditando({...a, lote_id: a.lote_id || ""})}
+                        style={{ padding: "4px 10px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 12, cursor: "pointer", color: "#374151" }}>
+                        ✏️ Editar
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1227,6 +1263,75 @@ export default function OvinoDashboard() {
         </div>
       )}
     </div>
+
+      {/* Modal de edição */}
+      {editando && (
+        <div style={{
+          position:"fixed",top:0,left:0,right:0,bottom:0,
+          background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",
+          zIndex:1000,padding:16,
+        }} onClick={e => { if(e.target===e.currentTarget) setEditando(null); }}>
+          <div style={{ background:"#fff",borderRadius:14,padding:24,width:"100%",maxWidth:480,boxShadow:"0 20px 60px rgba(0,0,0,0.2)" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
+              <h3 style={{ margin:0,fontSize:16,fontWeight:700,color:"#15803d" }}>✏️ Editar Animal — {editando.brinco}</h3>
+              <button onClick={()=>setEditando(null)} style={{ background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#6b7280" }}>×</button>
+            </div>
+            <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+              <div style={{ display:"flex",gap:10 }}>
+                <div style={{ flex:1 }}>
+                  <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Brinco *</label>
+                  <input value={editando.brinco} onChange={e=>setEditando((p:any)=>({...p,brinco:e.target.value}))}
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" }} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Sexo</label>
+                  <select value={editando.sexo} onChange={e=>setEditando((p:any)=>({...p,sexo:e.target.value}))}
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14 }}>
+                    <option value="M">Macho</option>
+                    <option value="F">Fêmea</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display:"flex",gap:10 }}>
+                <div style={{ flex:1 }}>
+                  <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Raça</label>
+                  <input value={editando.raca||""} onChange={e=>setEditando((p:any)=>({...p,raca:e.target.value}))}
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" }} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Data Nascimento</label>
+                  <input type="date" value={editando.data_nascimento||""} onChange={e=>setEditando((p:any)=>({...p,data_nascimento:e.target.value}))}
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,boxSizing:"border-box" }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Lote</label>
+                <select value={editando.lote_id||""} onChange={e=>setEditando((p:any)=>({...p,lote_id:e.target.value}))}
+                  style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14 }}>
+                  <option value="">— Sem lote —</option>
+                  {lotes.map(l => <option key={l.id} value={l.id}>{l.nome} ({l.fase})</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize:12,color:"#6b7280",display:"block",marginBottom:4 }}>Observações</label>
+                <textarea value={editando.observacoes||""} onChange={e=>setEditando((p:any)=>({...p,observacoes:e.target.value}))}
+                  rows={2} style={{ width:"100%",padding:"8px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:14,resize:"vertical",boxSizing:"border-box" }} />
+              </div>
+              {msgEdit && <div style={{ fontSize:13,color:msgEdit.startsWith("✅")?"#16a34a":"#dc2626",fontWeight:600 }}>{msgEdit}</div>}
+              <div style={{ display:"flex",gap:8,justifyContent:"flex-end",marginTop:4 }}>
+                <button onClick={()=>setEditando(null)}
+                  style={{ padding:"8px 18px",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",fontSize:14 }}>
+                  Cancelar
+                </button>
+                <button onClick={salvarEdicao} disabled={salvandoEdit||!editando.brinco}
+                  style={{ padding:"8px 18px",background:"#16a34a",color:"#fff",border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",fontSize:14 }}>
+                  {salvandoEdit ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
   );
 }
 

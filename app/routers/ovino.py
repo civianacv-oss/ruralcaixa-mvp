@@ -117,6 +117,39 @@ class WhatsAppMensagem(BaseModel):
 # ANIMAIS
 # ══════════════════════════════════════════════════════════════════════════════
 
+@router.patch("/animais/{animal_id}")
+def editar_animal(animal_id: int, payload: dict):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        campos = []
+        valores = []
+        for campo in ["brinco","sexo","raca","data_nascimento","lote_id","observacoes"]:
+            if campo in payload:
+                campos.append(f"{campo} = %s")
+                valores.append(payload[campo] if payload[campo] != "" else None)
+        if not campos:
+            raise HTTPException(400, "Nenhum campo informado.")
+        campos.append("updated_at = NOW()")
+        valores.append(animal_id)
+        cur.execute(f"""
+            UPDATE ovino_animais SET {", ".join(campos)}
+            WHERE id = %s RETURNING id, brinco, sexo, raca, lote_id, status
+        """, valores)
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Animal não encontrado.")
+        conn.commit()
+        return dict(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
 @router.post("/animais", status_code=201)
 def criar_animal(payload: AnimalCreate):
     conn = get_db()
