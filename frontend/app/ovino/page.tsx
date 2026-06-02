@@ -1262,7 +1262,6 @@ export default function OvinoDashboard() {
           )}
         </div>
       )}
-    </div>
 
       {/* Modal de edição */}
       {editando && (
@@ -1332,6 +1331,7 @@ export default function OvinoDashboard() {
           </div>
         </div>
       )}
+    </div>
   );
 }
 
