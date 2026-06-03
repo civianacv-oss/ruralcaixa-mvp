@@ -143,7 +143,6 @@ def editar_animal(animal_id: int, payload: dict):
         return dict(row)
     except HTTPException:
         raise
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -171,7 +170,6 @@ def criar_animal(payload: AnimalCreate):
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
         raise HTTPException(409, f"Brinco '{payload.brinco}' já cadastrado neste imóvel.")
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -317,7 +315,6 @@ def criar_pesagem(payload: dict):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -343,7 +340,6 @@ def criar_pesagem(payload: dict):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -369,7 +365,6 @@ def criar_pesagem(payload: dict):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -395,7 +390,6 @@ def criar_pesagem(payload: dict):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -421,7 +415,6 @@ def criar_pesagem(payload: dict):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -750,7 +743,6 @@ def reclassificar_rebanho(
                 "movidos": movidos, "sem_alteracao": sem_alteracao,
                 "sem_dados": sem_dados, "detalhes": detalhes}
 
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -943,7 +935,6 @@ def criar_tarefa(payload: TarefaCreate):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         if "unique" in str(e).lower():
             raise HTTPException(409, "Tarefa já existe.")
@@ -969,7 +960,6 @@ def concluir_tarefa_endpoint(
             "tarefa_id": tarefa_id,
             "proxima_tarefa_id": nova_id,
         }
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -1004,7 +994,6 @@ def reagendar_tarefa(
         return dict(row)
     except HTTPException:
         raise
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -1223,7 +1212,6 @@ def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
 
     except HTTPException:
         raise
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -1561,7 +1549,6 @@ def processar_desvios_endpoint(imovel_id: Optional[int] = Query(None)):
     try:
         from app.services.ovino_desvios import processar_desvios_ovinos
         return processar_desvios_ovinos(imovel_id=imovel_id)
-    except Exception as e:
         raise HTTPException(500, str(e))
 
 
@@ -1906,7 +1893,6 @@ def registrar_morte(payload: MorteCreate):
         }
     except HTTPException:
         raise
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -2070,7 +2056,6 @@ def criar_piquete(payload: PiqueteCreate):
         row = dict(cur.fetchone())
         conn.commit()
         return row
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -2178,7 +2163,6 @@ def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
         }
     except HTTPException:
         raise
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -2213,7 +2197,6 @@ def fechar_piquete(piquete_id: int, motivo: str = Query("rotacao")):
         """, (piquete_id,))
         conn.commit()
         return {"status": "descanso", "data_liberacao": (date.today() + timedelta(days=p["dias_descanso_padrao"])).isoformat()}
-    except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
     finally:
@@ -2389,10 +2372,6 @@ def analise_sazonalidade(
                 "Registre abates para gerar análise de sazonalidade."
             ),
         }
-    except Exception as e:
-        import traceback as _tb
-        from fastapi import HTTPException as _H
-        raise _H(status_code=500, detail=_tb.format_exc())
     finally:
         conn.close()
 
@@ -2533,7 +2512,6 @@ def webhook_whatsapp_ovino(payload: WhatsAppMensagem):
 
         conn.commit()
 
-    except Exception as e:
         conn.rollback()
         status_log = "erro"
         erro_msg = str(e)
@@ -2553,7 +2531,6 @@ def webhook_whatsapp_ovino(payload: WhatsAppMensagem):
               intent, json.dumps(entidades, default=str),
               status_log, evento_id, evento_tab, erro_msg))
         conn.commit()
-    except Exception as e:
         logger.warning("Falha ao salvar log WhatsApp: %s", e)
     finally:
         conn.close()
