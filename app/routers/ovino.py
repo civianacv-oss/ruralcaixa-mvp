@@ -2343,7 +2343,7 @@ def analise_sazonalidade(
             FROM ovino_abates ab JOIN ovino_animais ani ON ani.id = ab.animal_id
             WHERE ani.imovel_id = %s
               AND ab.data_abate >= CURRENT_DATE - (%s * INTERVAL '1 month')
-            GROUP BY TO_CHAR(data_abate, 'MM'), TO_CHAR(data_abate, 'TMMonth')
+            GROUP BY TO_CHAR(data_abate, 'MM'), TO_CHAR(data_abate, 'Month')
             ORDER BY mes_num
         """, (imovel_id, meses))
         por_mes_ano = [dict(r) for r in cur.fetchall()]
