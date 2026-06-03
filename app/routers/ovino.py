@@ -2389,6 +2389,10 @@ def analise_sazonalidade(
                 "Registre abates para gerar análise de sazonalidade."
             ),
         }
+    except Exception as e:
+        import traceback as _tb
+        from fastapi import HTTPException as _H
+        raise _H(status_code=500, detail=_tb.format_exc())
     finally:
         conn.close()
 
