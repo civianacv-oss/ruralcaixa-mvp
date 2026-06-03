@@ -75,7 +75,7 @@ export default function Dashboard() {
   const navGestao = [
     {id:"dashboard",   label:"Dashboard",        icon:Icons.dashboard,  href:"/"},
     {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
-    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
+    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/assinar"},
     {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/ovino"},
     {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/ovino"},
     {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/ovino"},
@@ -301,7 +301,7 @@ export default function Dashboard() {
               {[
                 {label:"Nova Propriedade",   icon:"📍", href:"/cadastro"},
                 {label:"Cadastrar Animal",   icon:"🐑", href:"/ovino"},
-                {label:"Novo Contrato",      icon:"📄", href:"/contratos"},
+                {label:"Novo Contrato",      icon:"📄", href:"/assinar"},
                 {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
               ].map(item => (
                 <a key={item.label} href={item.href}
