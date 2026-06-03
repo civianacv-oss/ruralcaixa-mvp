@@ -59,21 +59,6 @@ export default function RootLayout({
             });
           }
         ` }} />
-
-  <script dangerouslySetInnerHTML={{ __html: `
-    (function() {
-      var SENHA = 'rural2026';
-      var KEY = 'rc_auth';
-      if (sessionStorage.getItem(KEY) !== '1') {
-        var s = prompt('Acesso restrito. Digite a senha:');
-        if (s !== SENHA) {
-          document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#6b7280;">Acesso negado.</div>';
-          throw new Error('Acesso negado');
-        }
-        sessionStorage.setItem(KEY, '1');
-      }
-    })();
-  ` }} />
         {children}
         {/* Rodape — visivel para validacao Meta WhatsApp Business */}
         <footer className="bg-green-900 text-white text-center py-3 text-xs opacity-70 mt-auto">
