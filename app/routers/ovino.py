@@ -1549,6 +1549,7 @@ def processar_desvios_endpoint(imovel_id: Optional[int] = Query(None)):
     try:
         from app.services.ovino_desvios import processar_desvios_ovinos
         return processar_desvios_ovinos(imovel_id=imovel_id)
+    except Exception as e:
         raise HTTPException(500, str(e))
 
 
