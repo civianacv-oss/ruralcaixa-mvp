@@ -81,6 +81,8 @@ export default function Dashboard() {
     {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/ovino"},
     {id:"financeiro",  label:"Financeiro",        icon:Icons.financial,  href:"/relatorio"},
     {id:"relatorios",  label:"Relatórios",        icon:Icons.reports,    href:"/relatorio"},
+    {id:"nfe",         label:"NF-e Produtor",      icon:Icons.financial,  href:"/nfe"},
+    {id:"esocial",     label:"eSocial Rural",      icon:Icons.users,      href:"/esocial"},
   ];
   const navAdmin = [
     {id:"usuarios",     label:"Usuários",        icon:Icons.users,     href:"/terceiros"},

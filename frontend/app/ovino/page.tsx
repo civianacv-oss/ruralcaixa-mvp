@@ -342,6 +342,7 @@ export default function OvinoDashboard() {
 
       {/* Header */}
       <div style={{ marginBottom: 20, borderBottom: "2px solid #16a34a", paddingBottom: 12 }}>
+        <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#6b7280", textDecoration: "none", marginBottom: 8 }}>← Dashboard</a>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#15803d", margin: 0 }}>🐑 Ovino de Corte</h1>
         <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 13 }}>Fazenda Boa Esperança — Imóvel #{IMOVEL_ID}</p>
       </div>
