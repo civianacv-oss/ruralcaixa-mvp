@@ -2532,6 +2532,7 @@ def webhook_whatsapp_ovino(payload: WhatsAppMensagem):
               intent, json.dumps(entidades, default=str),
               status_log, evento_id, evento_tab, erro_msg))
         conn.commit()
+    except Exception as e:
         logger.warning("Falha ao salvar log WhatsApp: %s", e)
     finally:
         conn.close()
