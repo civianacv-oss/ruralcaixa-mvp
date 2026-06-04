@@ -1,0 +1,373 @@
+"use client";
+import { useState, useEffect } from "react";
+
+const API = "https://ruralcaixa-mvp-production.up.railway.app";
+const FAZENDA_ID = 1;
+
+type Produtor = { id: number; nome: string; cpf: string; telefone?: string };
+type Contrato = {
+  id: string; tipo: string; status: string; data_inicio: string; data_fim: string;
+  percentual_outorgante: number; percentual_outorgado: number;
+  outorgante_nome: string; outorgado_nome: string;
+  frequencia_pagamento: string; area_parceria_hectares: number | null;
+  criado_em: string; assinaturas_concluidas: number; assinaturas_total: number;
+};
+type ParceiroExterno = { nome: string; tipo_documento: string; documento: string; telefone?: string };
+
+const TIPOS = [
+  { value: "agricola",       label: "Parceria Agrícola",       icon: "🌾" },
+  { value: "pecuaria",       label: "Parceria Pecuária",       icon: "🐄" },
+  { value: "agroindustrial", label: "Parceria Agroindustrial", icon: "🏭" },
+  { value: "extrativa",      label: "Parceria Extrativa",      icon: "🌲" },
+  { value: "condominio",     label: "Condomínio Rural",        icon: "🤝" },
+];
+
+const FREQ = [
+  { value: "safra",     label: "Por Safra" },
+  { value: "mensal",    label: "Mensal" },
+  { value: "anual",     label: "Anual" },
+  { value: "semestral", label: "Semestral" },
+];
+
+const ST: Record<string, { bg: string; color: string; label: string }> = {
+  rascunho:               { bg: "#f0e8d8", color: "#7a6a4a", label: "Rascunho" },
+  aguardando_assinaturas: { bg: "#e8f0fa", color: "#2a5a8a", label: "Aguard. Assinaturas" },
+  ativo:                  { bg: "#e8f5e9", color: "#2a6a3a", label: "Ativo" },
+  encerrado:              { bg: "#f0f0f0", color: "#5a5a5a", label: "Encerrado" },
+  cancelado:              { bg: "#fce8e8", color: "#8a2a2a", label: "Cancelado" },
+};
+
+function fmtDate(s: string) {
+  if (!s) return "—";
+  return new Date(s + "T00:00:00").toLocaleDateString("pt-BR");
+}
+
+function ParteSelector({ label, produtores, origem, setOrigem, prodId, setProdId, externo, setExterno }: {
+  label: string; produtores: Produtor[];
+  origem: "cadastrado" | "externo"; setOrigem: (v: "cadastrado" | "externo") => void;
+  prodId: number | null; setProdId: (v: number | null) => void;
+  externo: ParceiroExterno; setExterno: (v: ParceiroExterno) => void;
+}) {
+  const prod = produtores.find(p => p.id === prodId);
+  const inp: React.CSSProperties = { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #d8d0c0", fontSize: 13, background: "#faf8f4", color: "#1a2e1a", boxSizing: "border-box" };
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: "#3a4a3a" }}>{label}</label>
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["cadastrado", "externo"] as const).map(op => (
+            <button key={op} onClick={() => setOrigem(op)} style={{
+              padding: "3px 12px", borderRadius: 20, border: "1.5px solid",
+              borderColor: origem === op ? "#4a7a3a" : "#d0c8b8",
+              background: origem === op ? "#4a7a3a" : "transparent",
+              color: origem === op ? "#fff" : "#6a7a6a",
+              fontSize: 11, fontWeight: 600, cursor: "pointer",
+            }}>{op === "cadastrado" ? "Produtor cadastrado" : "Externo"}</button>
+          ))}
+        </div>
+      </div>
+      {origem === "cadastrado" ? (
+        <div>
+          <select value={prodId ?? ""} onChange={e => setProdId(e.target.value ? Number(e.target.value) : null)} style={inp}>
+            <option value="">Selecione...</option>
+            {produtores.map(p => <option key={p.id} value={p.id}>{p.nome} — {p.cpf}</option>)}
+          </select>
+          {prod && (
+            <div style={{ marginTop: 6, padding: "8px 12px", borderRadius: 8, background: "#e8f5e9", fontSize: 12, color: "#2a6a3a" }}>
+              ✓ {prod.nome} · CPF: {prod.cpf}{prod.telefone ? ` · ${prod.telefone}` : ""}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <input placeholder="Nome completo" value={externo.nome} onChange={e => setExterno({ ...externo, nome: e.target.value })} style={{ ...inp, gridColumn: "1 / -1" }} />
+          <select value={externo.tipo_documento} onChange={e => setExterno({ ...externo, tipo_documento: e.target.value })} style={inp}>
+            <option value="CPF">CPF</option><option value="CNPJ">CNPJ</option>
+          </select>
+          <input placeholder={externo.tipo_documento === "CPF" ? "000.000.000-00" : "00.000.000/0001-00"} value={externo.documento} onChange={e => setExterno({ ...externo, documento: e.target.value })} style={inp} />
+          <input placeholder="WhatsApp (opcional)" value={externo.telefone ?? ""} onChange={e => setExterno({ ...externo, telefone: e.target.value })} style={inp} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ContratosPage() {
+  const [contratos, setContratos] = useState<Contrato[]>([]);
+  const [produtores, setProdutores] = useState<Produtor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
+
+  const [tipo, setTipo] = useState("agricola");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [percOut, setPercOut] = useState(50);
+  const [freq, setFreq] = useState("safra");
+  const [area, setArea] = useState("");
+
+  const [origemOut1, setOrigemOut1] = useState<"cadastrado" | "externo">("cadastrado");
+  const [prodOut1, setProdOut1] = useState<number | null>(null);
+  const [extOut1, setExtOut1] = useState<ParceiroExterno>({ nome: "", tipo_documento: "CPF", documento: "", telefone: "" });
+
+  const [origemOut2, setOrigemOut2] = useState<"cadastrado" | "externo">("cadastrado");
+  const [prodOut2, setProdOut2] = useState<number | null>(null);
+  const [extOut2, setExtOut2] = useState<ParceiroExterno>({ nome: "", tipo_documento: "CPF", documento: "", telefone: "" });
+
+  const percOtd = 100 - percOut;
+
+  useEffect(() => { carregar(); }, []);
+
+  async function carregar() {
+    setLoading(true);
+    try {
+      const [cs, ps] = await Promise.all([
+        fetch(`${API}/contratos/?fazenda_id=${FAZENDA_ID}`).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(`${API}/produtores`).then(r => r.json()).catch(() => []),
+      ]);
+      setContratos(Array.isArray(cs.data) ? cs.data : []);
+      setProdutores(Array.isArray(ps) ? ps : []);
+    } finally { setLoading(false); }
+  }
+
+  function reset() {
+    setTipo("agricola"); setDataInicio(""); setDataFim(""); setPercOut(50);
+    setFreq("safra"); setArea(""); setErro(""); setSucesso("");
+    setOrigemOut1("cadastrado"); setProdOut1(null); setExtOut1({ nome: "", tipo_documento: "CPF", documento: "", telefone: "" });
+    setOrigemOut2("cadastrado"); setProdOut2(null); setExtOut2({ nome: "", tipo_documento: "CPF", documento: "", telefone: "" });
+  }
+
+  const prazoAlerta = (() => {
+    if (!dataInicio || !dataFim) return null;
+    const anos = (new Date(dataFim).getTime() - new Date(dataInicio).getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+    const min = tipo === "extrativa" ? 7 : 3;
+    if (anos < min) return `⚠️ Prazo mínimo legal: ${min} anos. Atual: ${anos.toFixed(1)} anos.`;
+    return null;
+  })();
+
+  async function criar() {
+    setErro("");
+    if (!dataInicio || !dataFim) return setErro("Informe as datas de início e fim.");
+    if (origemOut1 === "cadastrado" && !prodOut1) return setErro("Selecione o outorgante.");
+    if (origemOut1 === "externo" && (!extOut1.nome || !extOut1.documento)) return setErro("Preencha nome e documento do outorgante externo.");
+    if (origemOut2 === "cadastrado" && !prodOut2) return setErro("Selecione o outorgado.");
+    if (origemOut2 === "externo" && (!extOut2.nome || !extOut2.documento)) return setErro("Preencha nome e documento do outorgado externo.");
+    setSalvando(true);
+    try {
+      const body: Record<string, unknown> = {
+        fazenda_id: FAZENDA_ID, tipo,
+        data_inicio: dataInicio, data_fim: dataFim,
+        percentual_outorgante: percOut, percentual_outorgado: percOtd,
+        frequencia_pagamento: freq,
+        area_parceria_hectares: area ? parseFloat(area) : null,
+      };
+      if (origemOut1 === "cadastrado") body.outorgante_socio_id = prodOut1;
+      else body.outorgante_externo = { ...extOut1, telefone: extOut1.telefone || undefined };
+      if (origemOut2 === "cadastrado") body.outorgado_socio_id = prodOut2;
+      else body.outorgado_externo = { ...extOut2, telefone: extOut2.telefone || undefined };
+
+      const r = await fetch(`${API}/contratos/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Erro ao criar contrato");
+      setSucesso("Contrato criado com sucesso!");
+      setShowModal(false); reset(); await carregar();
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : "Erro");
+    } finally { setSalvando(false); }
+  }
+
+  async function enviar(id: string) {
+    setEnviando(id);
+    try {
+      const r = await fetch(`${API}/contratos/${id}/enviar`, { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Erro");
+      setSucesso(`Enviado! ${data.partes_notificadas?.length ?? 0} parte(s) notificada(s).`);
+      await carregar();
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : "Erro");
+    } finally { setEnviando(null); }
+  }
+
+  async function deletar(id: string) {
+    if (!confirm("Excluir este rascunho?")) return;
+    await fetch(`${API}/contratos/${id}`, { method: "DELETE" });
+    await carregar();
+  }
+
+  const inp: React.CSSProperties = { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #d8d0c0", fontSize: 13, background: "#faf8f4", color: "#1a2e1a", boxSizing: "border-box" };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "'DM Sans',system-ui,sans-serif" }}>
+      <header style={{ background: "#1a2e1a", color: "#e8e0d0", padding: "16px 32px", display: "flex", alignItems: "center", gap: 16 }}>
+        <a href="/" style={{ color: "#7ac05a", textDecoration: "none", fontSize: 13, fontWeight: 600 }}>← Painel Principal</a>
+        <div style={{ width: 1, height: 20, background: "#2d4a2d" }} />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 18 }}>Contratos Rurais</div>
+          <div style={{ fontSize: 12, color: "#7a9a6a" }}>Parceria agrícola, pecuária e condomínio rural</div>
+        </div>
+        <div style={{ marginLeft: "auto" }}>
+          <button onClick={() => { reset(); setShowModal(true); }} style={{ background: "#4a7a3a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            + Novo Contrato
+          </button>
+        </div>
+      </header>
+
+      <div style={{ padding: "28px 32px" }}>
+        {sucesso && (
+          <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: 10, padding: "12px 18px", marginBottom: 20, color: "#2a6a3a", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            ✅ {sucesso}
+            <button onClick={() => setSucesso("")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#2a6a3a" }}>×</button>
+          </div>
+        )}
+        {erro && !showModal && (
+          <div style={{ background: "#fce8e8", border: "1px solid #ef9a9a", borderRadius: 10, padding: "12px 18px", marginBottom: 20, color: "#8a2a2a", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            ❌ {erro}
+            <button onClick={() => setErro("")} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#8a2a2a" }}>×</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 48, color: "#8a9a8a" }}>Carregando contratos...</div>
+        ) : contratos.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 64, color: "#8a9a8a" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Nenhum contrato cadastrado</div>
+            <div style={{ fontSize: 13, marginBottom: 24 }}>Clique em "+ Novo Contrato" para começar.</div>
+            <button onClick={() => { reset(); setShowModal(true); }} style={{ background: "#4a7a3a", color: "#fff", border: "none", padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              + Novo Contrato
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {contratos.map(c => {
+              const st = ST[c.status] ?? ST.rascunho;
+              const tl = TIPOS.find(t => t.value === c.tipo);
+              return (
+                <div key={c.id} style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", border: "1px solid #e8e0d0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 20, alignItems: "center" }}>
+                  <div style={{ textAlign: "center", minWidth: 56 }}>
+                    <div style={{ fontSize: 28 }}>{tl?.icon ?? "📄"}</div>
+                    <div style={{ fontSize: 10, color: "#7a8a6a", marginTop: 2, fontWeight: 600 }}>{tl?.label ?? c.tipo}</div>
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 15, color: "#1a2e1a" }}>{c.outorgante_nome ?? "—"} → {c.outorgado_nome ?? "—"}</span>
+                      <span style={{ ...st, padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{st.label}</span>
+                      {c.assinaturas_total > 0 && <span style={{ fontSize: 11, color: "#5a7a5a" }}>{c.assinaturas_concluidas}/{c.assinaturas_total} assinaturas</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#6a7a6a", flexWrap: "wrap" }}>
+                      <span>📅 {fmtDate(c.data_inicio)} → {fmtDate(c.data_fim)}</span>
+                      <span>⚖️ {c.percentual_outorgante}% / {c.percentual_outorgado}%</span>
+                      {c.area_parceria_hectares ? <span>🌱 {c.area_parceria_hectares} ha</span> : null}
+                      <span>🔄 {FREQ.find(f => f.value === c.frequencia_pagamento)?.label ?? c.frequencia_pagamento}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {c.status === "rascunho" && (
+                      <>
+                        <button onClick={() => enviar(c.id)} disabled={enviando === c.id} style={{ background: "#3a6a9a", color: "#fff", border: "none", padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: enviando === c.id ? "not-allowed" : "pointer", opacity: enviando === c.id ? 0.6 : 1 }}>
+                          {enviando === c.id ? "Enviando..." : "✉️ Enviar"}
+                        </button>
+                        <button onClick={() => deletar(c.id)} style={{ background: "#fce8e8", color: "#8a2a2a", border: "none", padding: "8px 12px", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>🗑️</button>
+                      </>
+                    )}
+                    {c.status === "aguardando_assinaturas" && (
+                      <a href={`/assinar/${c.id}`} style={{ background: "#e8f0fa", color: "#2a5a8a", textDecoration: "none", padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600 }}>✍️ Ver Assinaturas</a>
+                    )}
+                    {c.status === "ativo" && (
+                      <span style={{ background: "#e8f5e9", color: "#2a6a3a", padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600 }}>✅ Ativo</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowModal(false); reset(); } }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ background: "#1a2e1a", color: "#e8e0d0", padding: "18px 24px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Novo Contrato Rural</div>
+                <div style={{ fontSize: 12, color: "#7a9a6a" }}>Estatuto da Terra · Lei 4.504/1964 · Decreto 59.566/1966</div>
+              </div>
+              <button onClick={() => { setShowModal(false); reset(); }} style={{ background: "none", border: "none", color: "#a0b890", fontSize: 24, cursor: "pointer" }}>×</button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#3a4a3a", display: "block", marginBottom: 8 }}>Tipo de Contrato</label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+                  {TIPOS.map(t => (
+                    <button key={t.value} onClick={() => setTipo(t.value)} style={{ padding: "10px 8px", borderRadius: 10, border: "1.5px solid", borderColor: tipo === t.value ? "#4a7a3a" : "#d8d0c0", background: tipo === t.value ? "#f0f8ea" : "#faf8f4", cursor: "pointer", fontSize: 12, fontWeight: tipo === t.value ? 700 : 400, color: tipo === t.value ? "#2a5a1a" : "#4a5a4a", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 20 }}>{t.icon}</span>
+                      <span style={{ textAlign: "center", lineHeight: 1.3 }}>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                {([["Data Início", dataInicio, setDataInicio], ["Data Fim", dataFim, setDataFim]] as [string, string, (v: string) => void][]).map(([l, v, s]) => (
+                  <div key={l}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#5a6a5a", display: "block", marginBottom: 4 }}>{l}</label>
+                    <input type="date" value={v} onChange={e => s(e.target.value)} style={inp} />
+                  </div>
+                ))}
+              </div>
+
+              {prazoAlerta && <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#7a5a00" }}>{prazoAlerta}</div>}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#5a6a5a", display: "block", marginBottom: 4 }}>% Outorgante</label>
+                  <input type="number" min={0} max={100} value={percOut} onChange={e => setPercOut(Math.min(100, Math.max(0, Number(e.target.value))))} style={inp} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#5a6a5a", display: "block", marginBottom: 4 }}>% Outorgado</label>
+                  <div style={{ padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e8e0d0", fontSize: 13, background: "#f0f0f0", color: "#5a5a5a" }}>{percOtd}%</div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#5a6a5a", display: "block", marginBottom: 4 }}>Frequência</label>
+                  <select value={freq} onChange={e => setFreq(e.target.value)} style={inp}>
+                    {FREQ.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#5a6a5a", display: "block", marginBottom: 4 }}>Área (hectares)</label>
+                <input type="number" min={0} step={0.01} placeholder="0,00" value={area} onChange={e => setArea(e.target.value)} style={inp} />
+              </div>
+
+              <div style={{ height: 1, background: "#e8e0d0", margin: "20px 0" }} />
+
+              <ParteSelector label="Outorgante (quem cede)" produtores={produtores} origem={origemOut1} setOrigem={setOrigemOut1} prodId={prodOut1} setProdId={setProdOut1} externo={extOut1} setExterno={setExtOut1} />
+              <ParteSelector label="Outorgado (quem recebe)" produtores={produtores} origem={origemOut2} setOrigem={setOrigemOut2} prodId={prodOut2} setProdId={setProdOut2} externo={extOut2} setExterno={setExtOut2} />
+
+              {erro && <div style={{ background: "#fce8e8", border: "1px solid #ef9a9a", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#8a2a2a", fontSize: 13 }}>❌ {erro}</div>}
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => { setShowModal(false); reset(); }} style={{ padding: "10px 20px", borderRadius: 10, border: "1.5px solid #d8d0c0", background: "transparent", color: "#5a6a5a", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+                <button onClick={criar} disabled={salvando} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: salvando ? "#a0b890" : "#3a6a2a", color: "#fff", fontSize: 13, fontWeight: 700, cursor: salvando ? "not-allowed" : "pointer" }}>
+                  {salvando ? "Salvando..." : "Criar Contrato"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer style={{ padding: "24px 32px", borderTop: "1px solid #e0d8c8", marginTop: 40, textAlign: "center", fontSize: 12, color: "#8a9a8a" }}>
+        <strong>GestaoAgro Tech</strong> — Soluções tecnológicas para gestão rural<br />
+        LCDPR · NF-e Produtor Rural · DRE Gerencial · WhatsApp Bot<br />
+        contato: civiana.cv@gmail.com · ruralcaixa-mvp.vercel.app
+      </footer>
+    </div>
+  );
+}
