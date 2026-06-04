@@ -475,6 +475,91 @@ def deletar_contrato(contrato_id: str):
         conn.close()
 
 
+
+
+# -------------------------------------------------------------
+# POST /contratos/{id}/condominos
+# Adiciona condômino a um contrato do tipo condominio
+# -------------------------------------------------------------
+class CondomininoAdd(BaseModel):
+    produtor_id: Optional[int] = None
+    parceiro_externo: Optional[ParceiroExterno] = None
+    percentual_cota: float
+    data_entrada: Optional[str] = None
+
+@router.post("/{contrato_id}/condominos", status_code=201)
+def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT tipo, status FROM contratos WHERE id = %s", (contrato_id,))
+        c = cur.fetchone()
+        if not c:
+            raise HTTPException(404, "Contrato nao encontrado")
+        if c["tipo"] != "condominio":
+            raise HTTPException(400, "Este contrato nao e do tipo condominio")
+
+        parceiro_id = None
+        if body.parceiro_externo:
+            cur.execute("""
+                INSERT INTO parceiros_externos (nome, tipo_documento, documento, telefone, email)
+                VALUES (%s,%s,%s,%s,%s)
+                ON CONFLICT (tipo_documento, documento) DO UPDATE SET nome = EXCLUDED.nome
+                RETURNING id
+            """, (body.parceiro_externo.nome, body.parceiro_externo.tipo_documento,
+                  body.parceiro_externo.documento, body.parceiro_externo.telefone,
+                  body.parceiro_externo.email))
+            parceiro_id = cur.fetchone()["id"]
+
+        cur.execute("""
+            INSERT INTO contrato_condominos
+                (contrato_id, produtor_id, parceiro_id, percentual_cota, data_entrada, ativo)
+            VALUES (%s,%s,%s,%s,%s,TRUE)
+            RETURNING id
+        """, (contrato_id, body.produtor_id, parceiro_id,
+              body.percentual_cota, body.data_entrada or None))
+        row = cur.fetchone()
+
+        log_auditoria(cur, contrato_id, "condomino_adicionado",
+                      f"Condomino adicionado: perc={body.percentual_cota}",
+                      str(request.client.host))
+        conn.commit()
+        return {"id": str(row["id"])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------------------
+# GET /contratos/{id}/condominos
+# -------------------------------------------------------------
+@router.get("/{contrato_id}/condominos")
+def listar_condominos(contrato_id: str):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.id, cc.percentual_cota, cc.data_entrada, cc.ativo,
+                   p.nome  AS produtor_nome,  p.cpf  AS produtor_cpf,
+                   pe.nome AS parceiro_nome, pe.documento AS parceiro_doc
+            FROM contrato_condominos cc
+            LEFT JOIN produtores p       ON p.id  = cc.produtor_id
+            LEFT JOIN parceiros_externos pe ON pe.id = cc.parceiro_id
+            WHERE cc.contrato_id = %s AND cc.ativo = TRUE
+            ORDER BY cc.criado_em
+        """, (contrato_id,))
+        rows = [dict(r) for r in cur.fetchall()]
+        total_perc = sum(float(r["percentual_cota"] or 0) for r in rows)
+        return {"condominos": rows, "total_percentual": round(total_perc, 2)}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    finally:
+        conn.close()
+
 # -------------------------------------------------------------
 # HELPERS INTERNOS
 # -------------------------------------------------------------
