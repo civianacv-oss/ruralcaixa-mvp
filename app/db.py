@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+﻿from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 import os
 
@@ -101,7 +101,7 @@ def buscar_produtor_por_numero(telefone: str):
 
 def cadastrar(produtor: dict, imovel: dict) -> int:
     with engine.connect() as conn:
-        # Verifica se CPF já existe
+        # Verifica se CPF jÃ¡ existe
         cpf_limpo = produtor.get("cpf", "").replace(".", "").replace("-", "").replace(" ", "")
         existente = conn.execute(text(
             "SELECT id FROM produtores WHERE cpf = :cpf"
@@ -123,7 +123,7 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
             conn.commit()
             produtor_id = result.fetchone()[0]
 
-        # Só cadastra imóvel se nome foi fornecido
+        # SÃ³ cadastra imÃ³vel se nome foi fornecido
         # Se imovel_id foi fornecido, vincula ao imovel existente
         if imovel.get("imovel_id"):
             conn.execute(text("""
@@ -155,7 +155,7 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
 
         return produtor_id
 
-# ─── Painel do contador ───────────────────────────────────────────────────────
+# â”€â”€â”€ Painel do contador â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def listar_produtores():
     with engine.connect() as conn:
@@ -240,7 +240,10 @@ def buscar_imoveis_por_cpf(cpf: str):
             JOIN produtores p ON p.id = i.produtor_id
             WHERE REPLACE(REPLACE(REPLACE(p.cpf, '.', ''), '-', ''), ' ', '') = :cpf
         """), {"cpf": cpf_limpo}).fetchall()
-        return [dict(r._mapping) for r in result]import psycopg2
+        return [dict(r._mapping) for r in result]
+
+
+import psycopg2
 import psycopg2.extras
 import os
 
