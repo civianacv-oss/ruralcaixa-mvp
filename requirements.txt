@@ -14,3 +14,5 @@ boto3
 # r2-trigger
 python-multipart
 anthropic>=0.30.0
+
+# cache bust 3
