@@ -1,3 +1,4 @@
+﻿# bovino module enabled
 from app.routers.bovino import router as bovino_router
 import hmac, hashlib, json, os
 import httpx
@@ -58,7 +59,7 @@ app.include_router(consorcios_router)
 app.include_router(contratos_rurais_router)
 app.include_router(bovino_router)
 
-# ─── Models ──────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class ClassificarTexto(BaseModel):
     texto: str
@@ -110,7 +111,7 @@ class TerceiroUpdate(BaseModel):
     area_ha: float = 0
     investimento: float = 0
 
-# ─── Endpoints ─────────────────────────────────────────────────────────────── 
+# â”€â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ 
 @app.put("/terceiros/{terceiro_id}")
 def update_terceiro(terceiro_id: int, data: TerceiroUpdate):
     from app.db import engine
@@ -181,7 +182,7 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
     if abs(alfa + beta - 1.0) > 0.01:
         raise HTTPException(status_code=400, detail="alfa + beta deve ser igual a 1")
     with engine.connect() as conn:
-        # Buscar imóvel e terceiros
+        # Buscar imÃ³vel e terceiros
         imovel = conn.execute(text(
             "SELECT area_declarante, investimento_declarante FROM imoveis_rurais WHERE id = :id"
         ), {"id": imovel_id}).fetchone()
@@ -190,18 +191,18 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
         ), {"id": imovel_id}).fetchall()
 
         if not imovel:
-            raise HTTPException(status_code=404, detail="Imóvel não encontrado")
+            raise HTTPException(status_code=404, detail="ImÃ³vel nÃ£o encontrado")
 
         # Calcular totais
         area_total = float(imovel[0] or 0) + sum(float(t[1] or 0) for t in terceiros)
         inv_total = float(imovel[1] or 0) + sum(float(t[2] or 0) for t in terceiros)
 
-        # Calcular participação do declarante
+        # Calcular participaÃ§Ã£o do declarante
         c_terra_decl = float(imovel[0] or 0) / area_total if area_total > 0 else 0
         c_inv_decl = float(imovel[1] or 0) / inv_total if inv_total > 0 else 0
         perc_decl = round((alfa * c_terra_decl + beta * c_inv_decl) * 100, 2)
 
-        # Atualizar imóvel
+        # Atualizar imÃ³vel
         conn.execute(text("""
             UPDATE imoveis_rurais 
             SET participacao = :perc, alfa = :alfa, beta = :beta,
@@ -273,15 +274,15 @@ async def verify_webhook(
     token: str = Query(None, alias="hub.verify_token"),
     challenge: str = Query(None, alias="hub.challenge")
 ):
-    print(f"--- TENTATIVA DE VALIDAÇÃO ---")
+    print(f"--- TENTATIVA DE VALIDAÃ‡ÃƒO ---")
     print(f"Mode: {mode}, Token: {token}, Challenge: {challenge}")
     
     if mode == "subscribe" and token == "campo_digital_2026":
-        print("VALIDAÇÃO APROVADA!")
+        print("VALIDAÃ‡ÃƒO APROVADA!")
         from fastapi.responses import Response
         return Response(content=challenge, media_type="text/plain")
     
-    print("VALIDAÇÃO FALHOU: Token incorreto ou parâmetros ausentes.")
+    print("VALIDAÃ‡ÃƒO FALHOU: Token incorreto ou parÃ¢metros ausentes.")
     raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/wapp/inbound")
@@ -296,7 +297,7 @@ async def processar_alertas_ovinos_endpoint(imovel_id: int = None):
     """Processa e envia alertas ovinos via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_ovinos:
         return processar_alertas_ovinos(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 
 @app.post("/cadastro")
 async def cadastrar_produtor(data: CadastroRequest):
@@ -383,7 +384,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
     from sqlalchemy import text
     lancamentos = buscar_lancamentos(produtor_id, mes, atividade)
     
-    # Buscar participação do produtor nos imóveis
+    # Buscar participaÃ§Ã£o do produtor nos imÃ³veis
     with engine.connect() as conn:
         imoveis = conn.execute(text("""
             SELECT id, participacao FROM imoveis_rurais WHERE produtor_id = :pid
@@ -476,7 +477,7 @@ def atualizar_produtor(produtor_id: int, data: ProdutorUpdate):
         conn.commit()
     return {"status": "ok"}
 
-# ─── WhatsApp helpers ─────────────────────────────────────────────────────────
+# â”€â”€â”€ WhatsApp helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def send_msg(to: str, body: str):
     async with httpx.AsyncClient() as client:
@@ -486,7 +487,7 @@ async def send_msg(to: str, body: str):
             json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
         )
 
-# ─── Processamento WhatsApp ───────────────────────────────────────────────────
+# â”€â”€â”€ Processamento WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
@@ -766,12 +767,12 @@ def get_terceiros_validacao(imovel_id: int):
                  "tipo": r[3], "percentual": float(r[4] or 0)}
                 for r in terceiros
             ]
-        }# ════════════════════════════════════════════════════════════════════════════
-# PATCH main.py — NF-e Produtor Rural
-# Cole no final do main.py (antes da função processar)
-# ════════════════════════════════════════════════════════════════════════════
+        }# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# PATCH main.py â€” NF-e Produtor Rural
+# Cole no final do main.py (antes da funÃ§Ã£o processar)
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-# ── Models ───────────────────────────────────────────────────────────────────
+# â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class NFeConfigUpdate(BaseModel):
     inscricao_estadual: Optional[str] = None
@@ -833,7 +834,7 @@ class NFeCreate(BaseModel):
     lancamento_id: Optional[int] = None
     itens: List[ItemNFeCreate]
 
-# ── Endpoints NF-e ────────────────────────────────────────────────────────────
+# â”€â”€ Endpoints NF-e â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/produtores/{produtor_id}/nfe/config")
 def get_nfe_config(produtor_id: int):
@@ -950,7 +951,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
     from sqlalchemy import text
     from app.services.nfe_service import calcular_impostos
     with engine.connect() as conn:
-        # Próximo número
+        # PrÃ³ximo nÃºmero
         cfg = conn.execute(text(
             "SELECT serie, proxima_numero FROM nfe_config WHERE produtor_id=:pid"
         ), {"pid":produtor_id}).fetchone()
@@ -1015,7 +1016,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
                 "vdesc":item.valor_desconto,
             })
 
-        # Incrementa próximo número
+        # Incrementa prÃ³ximo nÃºmero
         conn.execute(text(
             "UPDATE nfe_config SET proxima_numero=:n WHERE produtor_id=:pid"
         ), {"n":numero+1,"pid":produtor_id})
@@ -1111,7 +1112,7 @@ def get_documento(lancamento_id: int):
 # deploy-r2-v2
 
 
-# ── eSocial ────────────────────────────────────────────────────────────────────
+# â”€â”€ eSocial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from fastapi import Body
 
@@ -1249,7 +1250,7 @@ def resumo_esocial(produtor_id: int, per_apur: str = None):
 # dre-fix
 
 
-# ── Aportes de Capital e Participacao Dinamica ────────────────────────────────
+# â”€â”€ Aportes de Capital e Participacao Dinamica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/imoveis/{imovel_id}/aportes")
 def registrar_aporte(imovel_id: int, dados: dict = Body(...)):
@@ -1294,3 +1295,4 @@ def listar_aportes(imovel_id: int):
                 'historico': [{'id': r[0], 'produtor_id': r[1], 'nome': r[2], 'valor': float(r[3]), 'data_aporte': str(r[4]), 'descricao': r[5]} for r in rows]}
 
 # ovino-redeploy-trigger
+
