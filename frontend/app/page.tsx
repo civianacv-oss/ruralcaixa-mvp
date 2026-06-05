@@ -66,7 +66,9 @@ export default function Dashboard() {
       setFinanceiro({receitas:rec,despesas:desp,saldo:rec-desp});
       const anim = Array.isArray(animais) ? animais : [];
       setAnimaisAtivos(anim.length);
-      setTotalAnimaisEspecie({ovino:anim.length,bovino:0,caprino:0,suino:0});
+      fetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
+        setTotalAnimaisEspecie({ovino:anim.length,bovino:Array.isArray(bov)?bov.length:0,caprino:0,suino:0});
+      });
     } catch(e) { console.error(e); }
     setLoading(false);
   }
