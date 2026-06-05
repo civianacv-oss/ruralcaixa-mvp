@@ -65,9 +65,10 @@ export default function Dashboard() {
       const desp = ls.filter((l:Lancamento) => l.tipo==="despesa").reduce((s:number,l:Lancamento)=>s+l.valor,0);
       setFinanceiro({receitas:rec,despesas:desp,saldo:rec-desp});
       const anim = Array.isArray(animais) ? animais : [];
-      setAnimaisAtivos(anim.length);
       fetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
-        setTotalAnimaisEspecie({ovino:anim.length,bovino:Array.isArray(bov)?bov.length:0,caprino:0,suino:0});
+        const bovCount = Array.isArray(bov) ? bov.length : 0;
+        setAnimaisAtivos(anim.length + bovCount);
+        setTotalAnimaisEspecie({ovino:anim.length,bovino:bovCount,caprino:0,suino:0});
       });
     } catch(e) { console.error(e); }
     setLoading(false);
