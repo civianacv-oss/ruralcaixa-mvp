@@ -1,525 +1,525 @@
 "use client";
 import { useState, useEffect } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
+const API = "https://ruralcaixa-mvp-production.up.railway.app";
+const IMOVEL_ID = 1;
 
-// ─── Types ───────────────────────────────────────────────────
-type Aptidao = "corte" | "leite" | "todos";
-type TabPrincipal = "rebanho" | "corte" | "leite" | "sanitario" | "reproducao";
+type Animal = {
+  id: number;
+  brinco: string;
+  sexo: string;
+  raca_nome: string | null;
+  aptidao_manejo: string;
+  categoria: string;
+  status: string;
+  lote_id: number | null;
+  lote_nome: string | null;
+  ultimo_peso: number | null;
+  data_ultimo_peso: string | null;
+  data_nascimento: string | null;
+  observacoes: string | null;
+};
 
-interface Animal {
-  id: number; brinco: string; nome?: string; sexo: string;
-  aptidao_manejo: string; categoria: string; status: string;
-  raca_nome?: string; lote_nome?: string;
-  ultimo_peso?: number; data_ultimo_peso?: string;
-}
-interface Dashboard {
-  rebanho_por_categoria: Array<{aptidao_manejo:string;categoria:string;sexo:string;qtd:number;peso_medio_kg:number}>;
+type Lote = {
+  id: number;
+  nome: string;
+  aptidao: string;
+  qtd_animais: number;
+};
+
+type Raca = {
+  id: number;
+  nome: string;
+  aptidao: string;
+};
+
+type Dashboard = {
   totais: { total_corte: number; total_leite: number; total_geral: number };
   leite_30d: { volume_l: number; receita: number };
   alertas: { reforcos_sanitarios: number; femeas_prenhas: number };
-}
+  rebanho_por_categoria: { categoria: string; aptidao_manejo: string; sexo: string; qtd: number }[];
+};
 
-// ─── Componente principal ────────────────────────────────────
+type Pesagem = {
+  id: number;
+  data: string;
+  peso_kg: number;
+  motivo: string;
+};
+
+type AbateIn = {
+  animal_id: number;
+  data: string;
+  tipo: string;
+  peso_vivo_kg: string;
+  peso_carcaca_kg: string;
+  preco_arroba: string;
+  comprador: string;
+};
+
+const TABS = ["Rebanho", "Lotes", "Pesagens", "Leite", "Sanitário", "Reprodução", "Abates"] as const;
+type Tab = typeof TABS[number];
+
 export default function BovinoPage() {
-  const [imovelId] = useState<number>(1); // TODO: pegar do contexto do produtor
-  const [tab, setTab] = useState<TabPrincipal>("rebanho");
-  const [aptidaoFiltro, setAptidaoFiltro] = useState<Aptidao>("todos");
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [tab, setTab] = useState<Tab>("Rebanho");
   const [animais, setAnimais] = useState<Animal[]>([]);
+  const [lotes, setLotes] = useState<Lote[]>([]);
+  const [racas, setRacas] = useState<Raca[]>([]);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [formTipo, setFormTipo] = useState<"animal"|"pesagem"|"leite"|"sanitario">("animal");
+  const [aptidaoFiltro, setAptidaoFiltro] = useState<"todos" | "corte" | "leite">("todos");
 
-  // ── Fetch dashboard ──────────────────────────────────────
+  // Cadastro animal
+  const [showCadastro, setShowCadastro] = useState(false);
+  const [brinco, setBrinco] = useState("");
+  const [nome, setNome] = useState("");
+  const [sexo, setSexo] = useState("M");
+  const [aptidao, setAptidao] = useState("corte");
+  const [categoria, setCategoria] = useState("bezerro");
+  const [racaId, setRacaId] = useState("");
+  const [loteId, setLoteId] = useState("");
+  const [dataNasc, setDataNasc] = useState("");
+  const [pesoNasc, setPesoNasc] = useState("");
+  const [origem, setOrigem] = useState("nascimento");
+  const [valorAquis, setValorAquis] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  // Pesagem
+  const [animalPesagem, setAnimalPesagem] = useState<Animal | null>(null);
+  const [pesagens, setPesagens] = useState<Pesagem[]>([]);
+  const [pesagemData, setPesagemData] = useState(new Date().toISOString().split("T")[0]);
+  const [pesagemPeso, setPesagemPeso] = useState("");
+  const [pesagemMotivo, setPesagemMotivo] = useState("rotina");
+
+  // Abate
+  const [showAbate, setShowAbate] = useState(false);
+  const [abateAnimalId, setAbateAnimalId] = useState("");
+  const [abateData, setAbateData] = useState(new Date().toISOString().split("T")[0]);
+  const [abateTipo, setAbateTipo] = useState("venda_em_pe");
+  const [abatePesoVivo, setAbatePesoVivo] = useState("");
+  const [abatePesoCarcaca, setAbatePesoCarcaca] = useState("");
+  const [abatePrecoArroba, setAbatePrecoArroba] = useState("");
+  const [abateComprador, setAbateComprador] = useState("");
+
   useEffect(() => {
-    fetch(`${API}/bovino/dashboard/${imovelId}`)
-      .then(r => r.json())
-      .then(setDashboard)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [imovelId]);
+    loadData();
+  }, []);
 
-  // ── Fetch animais quando muda tab/filtro ─────────────────
-  useEffect(() => {
-    if (tab !== "rebanho" && tab !== "corte" && tab !== "leite") return;
-    const ap = tab === "corte" ? "corte" : tab === "leite" ? "leite" : aptidaoFiltro === "todos" ? undefined : aptidaoFiltro;
-    const qs = ap ? `?aptidao=${ap}` : "";
-    fetch(`${API}/bovino/animais/${imovelId}${qs}`)
-      .then(r => r.json())
-      .then(setAnimais)
-      .catch(console.error);
-  }, [tab, aptidaoFiltro, imovelId]);
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [animRes, lotesRes, racasRes, dashRes] = await Promise.all([
+        fetch(`${API}/bovino/animais/${IMOVEL_ID}?status=ativo`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/bovino/lotes/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/bovino/racas`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/bovino/dashboard/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+      ]);
+      setAnimais(Array.isArray(animRes) ? animRes : []);
+      setLotes(Array.isArray(lotesRes) ? lotesRes : []);
+      setRacas(Array.isArray(racasRes) ? racasRes : []);
+      setDashboard(dashRes);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  // ─────────────────────────────────────────────────────────
+  async function cadastrarAnimal() {
+    if (!brinco || !sexo || !aptidao || !categoria) { setMsg("Preencha brinco, sexo, aptidão e categoria."); return; }
+    setSaving(true); setMsg("");
+    try {
+      const body: Record<string, unknown> = {
+        imovel_id: IMOVEL_ID, brinco, nome: nome || null,
+        sexo, aptidao_manejo: aptidao, categoria,
+        raca_id: racaId ? Number(racaId) : null,
+        lote_id: loteId ? Number(loteId) : null,
+        data_nascimento: dataNasc || null,
+        peso_nascimento: pesoNasc ? Number(pesoNasc) : null,
+        origem,
+        valor_aquisicao: valorAquis ? Number(valorAquis) : null,
+      };
+      const res = await fetch(`${API}/bovino/animais`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) {
+        setMsg("✅ Animal cadastrado!");
+        setBrinco(""); setNome(""); setPesoNasc(""); setValorAquis(""); setDataNasc("");
+        setShowCadastro(false);
+        loadData();
+      } else {
+        const err = await res.json();
+        setMsg("Erro: " + (err.detail || res.status));
+      }
+    } catch (e) { setMsg("Erro de conexão"); }
+    setSaving(false);
+  }
+
+  async function carregarPesagens(animal: Animal) {
+    setAnimalPesagem(animal);
+    const res = await fetch(`${API}/bovino/pesagens/${animal.id}`).then(r => r.json()).catch(() => []);
+    setPesagens(Array.isArray(res) ? res : []);
+  }
+
+  async function registrarPesagem() {
+    if (!animalPesagem || !pesagemPeso) return;
+    const res = await fetch(`${API}/bovino/pesagens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ animal_id: animalPesagem.id, data: pesagemData, peso_kg: Number(pesagemPeso), motivo: pesagemMotivo })
+    });
+    if (res.ok) {
+      setPesagemPeso("");
+      carregarPesagens(animalPesagem);
+      loadData();
+    }
+  }
+
+  async function registrarAbate() {
+    if (!abateAnimalId) { alert("Selecione um animal"); return; }
+    const body = {
+      animal_id: Number(abateAnimalId), data: abateData, tipo: abateTipo,
+      peso_vivo_kg: abatePesoVivo ? Number(abatePesoVivo) : null,
+      peso_carcaca_kg: abatePesoCarcaca ? Number(abatePesoCarcaca) : null,
+      preco_arroba: abatePrecoArroba ? Number(abatePrecoArroba) : null,
+      comprador: abateComprador || null,
+    };
+    const res = await fetch(`${API}/bovino/abates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) { setShowAbate(false); loadData(); alert("Abate/venda registrado!"); }
+  }
+
+  const animaisFiltrados = aptidaoFiltro === "todos" ? animais : animais.filter(a => a.aptidao_manejo === aptidaoFiltro);
+  const categorias = aptidao === "corte"
+    ? ["bezerro", "novilho", "novilha", "boi", "vaca", "touro", "reprodutor"]
+    : ["bezerra", "novilha", "vaca_solteira", "vaca_lactante", "touro", "reprodutor"];
+
+  const green = "#2d5a27";
+  const lightGreen = "#e8f0e6";
+  const accent = "#5a8c52";
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#f5f0e8" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 48 }}>🐄</div>
+        <p style={{ color: green, fontWeight: 600, marginTop: 12 }}>Carregando módulo bovino...</p>
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{ fontFamily: "'Nunito', sans-serif", minHeight: "100vh", background: "#f5f7f0", color: "#1a2e12" }}>
+    <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #1a5c0f 0%, #2d7a1a 50%, #3a8f22 100%)", padding: "16px 20px 0", color: "#fff" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ background: green, color: "white", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <a href="/" style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, textDecoration: "none" }}>← Painel Principal</a>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 28 }}>🐄</span>
           <div>
-            <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: 2, textTransform: "uppercase" }}>RuralCaixa</div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>🐄 Módulo Bovino</h1>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>Bovino — Leite & Corte</div>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>Fazenda Boa Esperança — Imóvel #1</div>
           </div>
-          <button
-            onClick={() => { setShowForm(true); setFormTipo("animal"); }}
-            style={{ background: "#fff", color: "#1a5c0f", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-            + Animal
-          </button>
         </div>
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 0 }}>
-          {([
-            { key: "rebanho", label: "Rebanho", emoji: "📊" },
-            { key: "corte",   label: "Corte",   emoji: "🥩" },
-            { key: "leite",   label: "Leite",   emoji: "🥛" },
-            { key: "sanitario", label: "Saúde", emoji: "💉" },
-            { key: "reproducao", label: "Reprodução", emoji: "🐮" },
-          ] as {key:TabPrincipal;label:string;emoji:string}[]).map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              background: tab === t.key ? "#fff" : "transparent",
-              color: tab === t.key ? "#1a5c0f" : "rgba(255,255,255,0.8)",
-              border: "none", borderRadius: "8px 8px 0 0", padding: "8px 14px",
-              fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
-              transition: "all 0.2s"
-            }}>
-              {t.emoji} {t.label}
-            </button>
-          ))}
-        </div>
+        <button onClick={() => setShowCadastro(!showCadastro)}
+          style={{ background: "white", color: green, border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+          + Cadastrar Animal
+        </button>
       </div>
 
-      <div style={{ padding: "16px 16px 80px" }}>
+      {/* Dashboard Cards */}
+      {dashboard && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, padding: "16px 24px 0" }}>
+          {[
+            { icon: "🐄", val: dashboard.totais.total_geral, label: "Rebanho Ativo" },
+            { icon: "🥩", val: dashboard.totais.total_corte, label: "Corte" },
+            { icon: "🥛", val: dashboard.totais.total_leite, label: "Leite" },
+            { icon: "⚠️", val: dashboard.alertas.reforcos_sanitarios, label: "Reforços Sanitários" },
+          ].map((c, i) => (
+            <div key={i} style={{ background: "white", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <div style={{ fontSize: 28 }}>{c.icon}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: green, lineHeight: 1.2 }}>{c.val}</div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{c.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* ── TAB: REBANHO / DASHBOARD ── */}
-        {tab === "rebanho" && (
-          <div>
-            {loading ? <Skeleton /> : dashboard && (
-              <>
-                {/* Cards de resumo */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-                  <Card cor="#1a5c0f" titulo="Total Rebanho" valor={dashboard.totais.total_geral} sub="animais ativos" emoji="🐄" />
-                  <Card cor="#8B4513" titulo="Corte" valor={dashboard.totais.total_corte} sub="animais" emoji="🥩" />
-                  <Card cor="#2563eb" titulo="Leite" valor={dashboard.totais.total_leite} sub="animais" emoji="🥛" />
-                  <Card cor="#7c3aed" titulo="Fêmeas Prenhas" valor={dashboard.alertas.femeas_prenhas} sub="aguardando parto" emoji="🤰" />
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 4, padding: "16px 24px 0", overflowX: "auto" }}>
+        {TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: tab === t ? 700 : 400, fontSize: 13,
+              background: tab === t ? green : "white", color: tab === t ? "white" : "#444",
+              boxShadow: tab === t ? "0 2px 8px rgba(45,90,39,0.3)" : "0 1px 3px rgba(0,0,0,0.08)", whiteSpace: "nowrap" }}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding: "16px 24px 40px" }}>
+
+        {/* ── CADASTRO FORM ── */}
+        {showCadastro && (
+          <div style={{ background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.1)", border: `2px solid ${accent}` }}>
+            <h3 style={{ margin: "0 0 16px", color: green, fontSize: 16 }}>🐄 Cadastrar Novo Animal</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+              {[
+                { label: "Brinco *", comp: <input value={brinco} onChange={e => setBrinco(e.target.value)} placeholder="Ex: BOV001" style={inputStyle} /> },
+                { label: "Nome", comp: <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Opcional" style={inputStyle} /> },
+                { label: "Sexo *", comp: <select value={sexo} onChange={e => setSexo(e.target.value)} style={inputStyle}><option value="M">Macho</option><option value="F">Fêmea</option></select> },
+                { label: "Aptidão *", comp: <select value={aptidao} onChange={e => { setAptidao(e.target.value); setCategoria("bezerro"); }} style={inputStyle}><option value="corte">Corte</option><option value="leite">Leite</option><option value="misto">Misto</option></select> },
+                { label: "Categoria *", comp: <select value={categoria} onChange={e => setCategoria(e.target.value)} style={inputStyle}>{categorias.map(c => <option key={c} value={c}>{c}</option>)}</select> },
+                { label: "Raça", comp: <select value={racaId} onChange={e => setRacaId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{racas.filter(r => aptidao === "todos" || r.aptidao === aptidao || r.aptidao === "misto" || r.aptidao === "dupla").map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select> },
+                { label: "Lote", comp: <select value={loteId} onChange={e => setLoteId(e.target.value)} style={inputStyle}><option value="">Sem lote</option>{lotes.map(l => <option key={l.id} value={l.id}>{l.nome}</option>)}</select> },
+                { label: "Origem", comp: <select value={origem} onChange={e => setOrigem(e.target.value)} style={inputStyle}><option value="nascimento">Nascimento</option><option value="compra">Compra</option><option value="transferencia">Transferência</option></select> },
+                { label: "Nasc.", comp: <input type="date" value={dataNasc} onChange={e => setDataNasc(e.target.value)} style={inputStyle} /> },
+                { label: "Peso Nasc. (kg)", comp: <input type="number" value={pesoNasc} onChange={e => setPesoNasc(e.target.value)} placeholder="kg" style={inputStyle} /> },
+                { label: "Valor Aquis. (R$)", comp: <input type="number" value={valorAquis} onChange={e => setValorAquis(e.target.value)} placeholder="R$" style={inputStyle} /> },
+              ].map((f, i) => (
+                <div key={i}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>{f.label}</div>
+                  {f.comp}
                 </div>
-
-                {/* Leite 30 dias */}
-                {dashboard.totais.total_leite > 0 && (
-                  <div style={{ background: "#fff", borderRadius: 12, padding: 16, marginBottom: 12, border: "1px solid #e5e7eb" }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "#2563eb" }}>🥛 Produção de Leite — últimos 30 dias</div>
-                    <div style={{ display: "flex", gap: 16 }}>
-                      <div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: "#1e40af" }}>{Number(dashboard.leite_30d.volume_l).toLocaleString("pt-BR", {maximumFractionDigits:0})} L</div>
-                        <div style={{ fontSize: 11, color: "#6b7280" }}>volume produzido</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: "#059669" }}>R$ {Number(dashboard.leite_30d.receita).toLocaleString("pt-BR", {minimumFractionDigits:2})}</div>
-                        <div style={{ fontSize: 11, color: "#6b7280" }}>receita estimada</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Alertas */}
-                {dashboard.alertas.reforcos_sanitarios > 0 && (
-                  <AlertBanner
-                    texto={`${dashboard.alertas.reforcos_sanitarios} vacina(s)/reforço(s) nos próximos 30 dias`}
-                    cor="#f59e0b"
-                    emoji="💉"
-                  />
-                )}
-
-                {/* Tabela rebanho por categoria */}
-                <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #e5e7eb", marginTop: 12 }}>
-                  <div style={{ padding: "12px 16px", fontWeight: 700, fontSize: 13, borderBottom: "1px solid #f3f4f6", background: "#f9fafb" }}>
-                    Composição do Rebanho
-                  </div>
-                  {dashboard.rebanho_por_categoria.length === 0 ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>Nenhum animal cadastrado</div>
-                  ) : (
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ background: "#f9fafb" }}>
-                          <th style={thStyle}>Categoria</th>
-                          <th style={thStyle}>Aptidão</th>
-                          <th style={thStyle}>Qtd</th>
-                          <th style={thStyle}>Peso Médio</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dashboard.rebanho_por_categoria.map((r, i) => (
-                          <tr key={i} style={{ borderTop: "1px solid #f3f4f6" }}>
-                            <td style={tdStyle}>{capitalize(r.categoria)}</td>
-                            <td style={tdStyle}>
-                              <span style={{ background: r.aptidao_manejo === "leite" ? "#dbeafe" : "#fef3c7", color: r.aptidao_manejo === "leite" ? "#1d4ed8" : "#92400e", borderRadius: 6, padding: "2px 6px", fontSize: 11, fontWeight: 600 }}>
-                                {r.aptidao_manejo.toUpperCase()}
-                              </span>
-                            </td>
-                            <td style={{ ...tdStyle, fontWeight: 700 }}>{r.qtd}</td>
-                            <td style={tdStyle}>{r.peso_medio_kg ? `${r.peso_medio_kg} kg` : "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+            {msg && <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 6, background: msg.startsWith("✅") ? "#e8f5e9" : "#fce8e8", color: msg.startsWith("✅") ? "#2d5a27" : "#c00", fontSize: 13 }}>{msg}</div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button onClick={cadastrarAnimal} disabled={saving} style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
+                {saving ? "Salvando..." : "Cadastrar"}
+              </button>
+              <button onClick={() => { setShowCadastro(false); setMsg(""); }} style={{ background: "#eee", color: "#444", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>
+                Cancelar
+              </button>
+            </div>
           </div>
         )}
 
-        {/* ── TAB: CORTE / LEITE / REBANHO (lista animais) ── */}
-        {(tab === "corte" || tab === "leite") && (
+        {/* ── ABA REBANHO ── */}
+        {tab === "Rebanho" && (
           <div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <button onClick={() => { setShowForm(true); setFormTipo("animal"); }}
-                style={{ background: "#1a5c0f", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                + Novo Animal
+              {(["todos", "corte", "leite"] as const).map(f => (
+                <button key={f} onClick={() => setAptidaoFiltro(f)}
+                  style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${aptidaoFiltro === f ? green : "#ddd"}`,
+                    background: aptidaoFiltro === f ? lightGreen : "white", color: aptidaoFiltro === f ? green : "#555",
+                    fontWeight: aptidaoFiltro === f ? 700 : 400, cursor: "pointer", fontSize: 13, textTransform: "capitalize" }}>
+                  {f === "todos" ? "Todos" : f === "corte" ? "🥩 Corte" : "🥛 Leite"}
+                </button>
+              ))}
+              <span style={{ marginLeft: "auto", fontSize: 13, color: "#666", alignSelf: "center" }}>{animaisFiltrados.length} animais</span>
+            </div>
+            <div style={{ background: "white", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: lightGreen }}>
+                    {["Brinco", "Nome", "Sexo", "Raça", "Categoria", "Aptidão", "Lote", "Último Peso", "Data Peso", "Status", "Ações"].map(h => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: green, fontSize: 12, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {animaisFiltrados.length === 0 ? (
+                    <tr><td colSpan={11} style={{ padding: 32, textAlign: "center", color: "#999" }}>Nenhum animal cadastrado</td></tr>
+                  ) : animaisFiltrados.map((a, i) => (
+                    <tr key={a.id} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "white" : "#fafafa" }}>
+                      <td style={{ padding: "10px 12px", fontWeight: 700, color: accent }}>{a.brinco}</td>
+                      <td style={{ padding: "10px 12px", color: "#555" }}>{a.nome || "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>{a.sexo === "M" ? "♂ Macho" : "♀ Fêmea"}</td>
+                      <td style={{ padding: "10px 12px" }}>{a.raca_nome || "—"}</td>
+                      <td style={{ padding: "10px 12px", textTransform: "capitalize" }}>{a.categoria}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600,
+                          background: a.aptidao_manejo === "corte" ? "#fff3e0" : "#e3f2fd",
+                          color: a.aptidao_manejo === "corte" ? "#e65100" : "#1565c0" }}>
+                          {a.aptidao_manejo === "corte" ? "🥩 Corte" : "🥛 Leite"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>{a.lote_nome || "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>{a.ultimo_peso ? `${a.ultimo_peso} kg` : "—"}</td>
+                      <td style={{ padding: "10px 12px", color: "#888" }}>{a.data_ultimo_peso ? a.data_ultimo_peso.slice(0, 10) : "—"}</td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, background: "#e8f5e9", color: "#2e7d32", fontWeight: 600 }}>{a.status}</span>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <button onClick={() => { carregarPesagens(a); setTab("Pesagens"); }}
+                          style={{ background: lightGreen, color: green, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                          ⚖️ Pesar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── ABA LOTES ── */}
+        {tab === "Lotes" && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12 }}>
+              {lotes.length === 0 ? (
+                <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 40, color: "#999" }}>Nenhum lote cadastrado</div>
+              ) : lotes.map(l => (
+                <div key={l.id} style={{ background: "white", borderRadius: 12, padding: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+                  <div style={{ fontWeight: 700, color: green, fontSize: 15 }}>{l.nome}</div>
+                  <div style={{ fontSize: 12, color: "#888", marginTop: 2, textTransform: "capitalize" }}>{l.aptidao}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: accent, marginTop: 8 }}>{l.qtd_animais}</div>
+                  <div style={{ fontSize: 11, color: "#999" }}>animais</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── ABA PESAGENS ── */}
+        {tab === "Pesagens" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <h3 style={{ margin: "0 0 16px", color: green, fontSize: 15 }}>⚖️ Registrar Pesagem</h3>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>Animal</div>
+                <select value={animalPesagem?.id || ""} onChange={e => { const a = animais.find(x => x.id === Number(e.target.value)); if (a) carregarPesagens(a); }} style={inputStyle}>
+                  <option value="">Selecione</option>
+                  {animais.map(a => <option key={a.id} value={a.id}>{a.brinco} {a.nome ? `— ${a.nome}` : ""}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>Data</div>
+                  <input type="date" value={pesagemData} onChange={e => setPesagemData(e.target.value)} style={inputStyle} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>Peso (kg)</div>
+                  <input type="number" value={pesagemPeso} onChange={e => setPesagemPeso(e.target.value)} placeholder="kg" style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>Motivo</div>
+                <select value={pesagemMotivo} onChange={e => setPesagemMotivo(e.target.value)} style={inputStyle}>
+                  <option value="rotina">Rotina</option>
+                  <option value="entrada">Entrada</option>
+                  <option value="saida">Saída</option>
+                  <option value="pre_abate">Pré-abate</option>
+                  <option value="tratamento">Tratamento</option>
+                </select>
+              </div>
+              <button onClick={registrarPesagem} disabled={!animalPesagem || !pesagemPeso}
+                style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", width: "100%", opacity: (!animalPesagem || !pesagemPeso) ? 0.5 : 1 }}>
+                Registrar Pesagem
               </button>
-              {tab === "leite" && (
-                <button onClick={() => { setShowForm(true); setFormTipo("leite"); }}
-                  style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  + Produção
-                </button>
-              )}
-              {tab === "corte" && (
-                <button onClick={() => { setShowForm(true); setFormTipo("pesagem"); }}
-                  style={{ background: "#8B4513", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  + Pesagem
-                </button>
+            </div>
+            <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <h3 style={{ margin: "0 0 16px", color: green, fontSize: 15 }}>
+                Histórico {animalPesagem ? `— ${animalPesagem.brinco}` : ""}
+              </h3>
+              {pesagens.length === 0 ? (
+                <p style={{ color: "#999", fontSize: 13 }}>Selecione um animal para ver o histórico</p>
+              ) : (
+                <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                  <thead><tr style={{ background: lightGreen }}>
+                    {["Data", "Peso (kg)", "Motivo"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: green, fontSize: 12 }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>{pesagens.map((p, i) => (
+                    <tr key={p.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                      <td style={{ padding: "8px 10px" }}>{p.data?.slice(0, 10)}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: accent }}>{p.peso_kg} kg</td>
+                      <td style={{ padding: "8px 10px", color: "#666", textTransform: "capitalize" }}>{p.motivo}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               )}
             </div>
+          </div>
+        )}
 
-            {animais.length === 0 ? (
-              <EmptyState aptidao={tab} />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {animais.map(a => <AnimalCard key={a.id} animal={a} />)}
+        {/* ── ABA LEITE ── */}
+        {tab === "Leite" && (
+          <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+            <h3 style={{ margin: "0 0 8px", color: green }}>🥛 Produção de Leite</h3>
+            <p style={{ color: "#888", fontSize: 13 }}>Registre a produção diária de leite por animal ou lote.</p>
+            {dashboard?.leite_30d && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+                <div style={{ background: lightGreen, borderRadius: 10, padding: 16 }}>
+                  <div style={{ fontSize: 12, color: "#666" }}>Volume últimos 30d</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: green }}>{dashboard.leite_30d.volume_l?.toFixed(1) || 0} L</div>
+                </div>
+                <div style={{ background: lightGreen, borderRadius: 10, padding: 16 }}>
+                  <div style={{ fontSize: 12, color: "#666" }}>Receita últimos 30d</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: green }}>R$ {dashboard.leite_30d.receita?.toFixed(2) || "0,00"}</div>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ── TAB: SANITÁRIO ── */}
-        {tab === "sanitario" && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Controle Sanitário</div>
-              <button onClick={() => { setShowForm(true); setFormTipo("sanitario"); }}
-                style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                + Evento
-              </button>
-            </div>
-            <SanitarioTab imovelId={imovelId} />
-          </div>
-        )}
-
-        {/* ── TAB: REPRODUÇÃO ── */}
-        {tab === "reproducao" && (
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Controle Reprodutivo</div>
-            <ReproducaoTab imovelId={imovelId} />
-          </div>
-        )}
-      </div>
-
-      {/* Modal de Formulário */}
-      {showForm && (
-        <FormModal
-          tipo={formTipo}
-          imovelId={imovelId}
-          onClose={() => setShowForm(false)}
-          onSaved={() => {
-            setShowForm(false);
-            // Recarrega dados relevantes
-            window.location.reload();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── Sub-componentes ─────────────────────────────────────────
-function Card({ cor, titulo, valor, sub, emoji }: { cor:string;titulo:string;valor:number;sub:string;emoji:string }) {
-  return (
-    <div style={{ background: "#fff", borderRadius: 12, padding: "14px", border: `2px solid ${cor}20` }}>
-      <div style={{ fontSize: 22 }}>{emoji}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: cor }}>{valor}</div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{titulo}</div>
-      <div style={{ fontSize: 11, color: "#9ca3af" }}>{sub}</div>
-    </div>
-  );
-}
-
-function AlertBanner({ texto, cor, emoji }: { texto:string;cor:string;emoji:string }) {
-  return (
-    <div style={{ background: `${cor}15`, border: `1px solid ${cor}40`, borderRadius: 10, padding: "10px 14px", display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-      <span style={{ fontSize: 18 }}>{emoji}</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: "#92400e" }}>{texto}</span>
-    </div>
-  );
-}
-
-function AnimalCard({ animal }: { animal: Animal }) {
-  const corAptidao = animal.aptidao_manejo === "leite" ? "#2563eb" : "#8B4513";
-  const bgAptidao  = animal.aptidao_manejo === "leite" ? "#dbeafe"  : "#fef3c7";
-  return (
-    <div style={{ background: "#fff", borderRadius: 12, padding: 14, border: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-          <span style={{ fontWeight: 800, fontSize: 15 }}>{animal.brinco}</span>
-          {animal.nome && <span style={{ fontSize: 12, color: "#6b7280" }}>• {animal.nome}</span>}
-          <span style={{ background: bgAptidao, color: corAptidao, fontSize: 10, fontWeight: 700, borderRadius: 4, padding: "1px 5px" }}>
-            {animal.aptidao_manejo.toUpperCase()}
-          </span>
-        </div>
-        <div style={{ fontSize: 12, color: "#6b7280" }}>
-          {capitalize(animal.categoria)} • {animal.sexo === "M" ? "Macho" : "Fêmea"}
-          {animal.raca_nome ? ` • ${animal.raca_nome}` : ""}
-          {animal.lote_nome ? ` • Lote: ${animal.lote_nome}` : ""}
-        </div>
-      </div>
-      <div style={{ textAlign: "right" }}>
-        {animal.ultimo_peso && (
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#1a5c0f" }}>{animal.ultimo_peso} kg</div>
-        )}
-        {animal.data_ultimo_peso && (
-          <div style={{ fontSize: 11, color: "#9ca3af" }}>{new Date(animal.data_ultimo_peso).toLocaleDateString("pt-BR")}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SanitarioTab({ imovelId }: { imovelId: number }) {
-  const [reforcos, setReforcos] = useState<any[]>([]);
-  useEffect(() => {
-    fetch(`${API}/bovino/sanitario/${imovelId}/proximos?dias=60`)
-      .then(r => r.json()).then(setReforcos).catch(() => setReforcos([]));
-  }, [imovelId]);
-
-  return (
-    <div>
-      <div style={{ fontWeight: 600, fontSize: 13, color: "#6b7280", marginBottom: 8 }}>Reforços nos próximos 60 dias</div>
-      {reforcos.length === 0 ? (
-        <div style={{ background: "#f0fdf4", borderRadius: 10, padding: 20, textAlign: "center", color: "#166534", fontSize: 13 }}>
-          ✅ Nenhum reforço previsto. Rebanho em dia!
-        </div>
-      ) : reforcos.map((r, i) => (
-        <div key={i} style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 8, border: "1px solid #fbbf24" }}>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>{r.produto}</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            {r.animal_nome || r.lote_nome || "Lote"} • {r.tipo}
-          </div>
-          <div style={{ fontSize: 12, color: "#d97706", fontWeight: 600, marginTop: 4 }}>
-            📅 Reforço: {new Date(r.data_reforco).toLocaleDateString("pt-BR")}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ReproducaoTab({ imovelId }: { imovelId: number }) {
-  const [prenhas, setPrenhas] = useState<any[]>([]);
-  useEffect(() => {
-    fetch(`${API}/bovino/reproducao/${imovelId}/prenhas`)
-      .then(r => r.json()).then(setPrenhas).catch(() => setPrenhas([]));
-  }, [imovelId]);
-
-  return (
-    <div>
-      <div style={{ fontWeight: 600, fontSize: 13, color: "#6b7280", marginBottom: 8 }}>Fêmeas Prenhas</div>
-      {prenhas.length === 0 ? (
-        <div style={{ background: "#faf5ff", borderRadius: 10, padding: 20, textAlign: "center", color: "#6d28d9", fontSize: 13 }}>
-          Nenhuma fêmea prenha registrada
-        </div>
-      ) : prenhas.map((p, i) => (
-        <div key={i} style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 8, border: "1px solid #c4b5fd" }}>
-          <div style={{ fontWeight: 700 }}>{p.femea_nome || p.brinco}</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>{p.metodo?.replace("_", " ")}</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#7c3aed", marginTop: 4 }}>
-            🐣 Parto previsto: {new Date(p.data_parto_prev).toLocaleDateString("pt-BR")}
-            {p.dias_para_parto !== null && (
-              <span style={{ marginLeft: 8, fontSize: 11, color: "#9ca3af" }}>({p.dias_para_parto} dias)</span>
+        {/* ── ABA SANITÁRIO ── */}
+        {tab === "Sanitário" && (
+          <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+            <h3 style={{ margin: "0 0 8px", color: green }}>💉 Sanitário</h3>
+            <p style={{ color: "#888", fontSize: 13 }}>Controle de vacinações, vermifugações e tratamentos.</p>
+            {dashboard?.alertas?.reforcos_sanitarios > 0 && (
+              <div style={{ background: "#fff3e0", border: "1px solid #ff9800", borderRadius: 8, padding: 12, marginTop: 12 }}>
+                <strong style={{ color: "#e65100" }}>⚠️ {dashboard.alertas.reforcos_sanitarios} reforço(s) sanitário(s) nos próximos 30 dias</strong>
+              </div>
             )}
           </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+        )}
 
-function EmptyState({ aptidao }: { aptidao: string }) {
-  const emoji = aptidao === "leite" ? "🥛" : "🥩";
-  const label = aptidao === "leite" ? "leite" : "corte";
-  return (
-    <div style={{ background: "#f9fafb", borderRadius: 14, padding: 32, textAlign: "center", border: "2px dashed #d1d5db" }}>
-      <div style={{ fontSize: 40, marginBottom: 8 }}>{emoji}</div>
-      <div style={{ fontWeight: 700, fontSize: 15, color: "#374151", marginBottom: 4 }}>
-        Nenhum animal de {label} cadastrado
-      </div>
-      <div style={{ fontSize: 13, color: "#9ca3af" }}>Toque em "+ Novo Animal" para começar</div>
-    </div>
-  );
-}
-
-function Skeleton() {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-      {[1,2,3,4].map(i => (
-        <div key={i} style={{ height: 90, background: "#e5e7eb", borderRadius: 12, animation: "pulse 1.5s ease-in-out infinite" }} />
-      ))}
-    </div>
-  );
-}
-
-// ─── Modal formulário ────────────────────────────────────────
-function FormModal({ tipo, imovelId, onClose, onSaved }: {
-  tipo: "animal"|"pesagem"|"leite"|"sanitario";
-  imovelId: number;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [form, setForm] = useState<Record<string,any>>({});
-  const [racas, setRacas] = useState<any[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    if (tipo === "animal") {
-      fetch(`${API}/bovino/racas`).then(r => r.json()).then(setRacas).catch(() => {});
-    }
-  }, [tipo]);
-
-  const set = (k: string, v: any) => setForm(prev => ({ ...prev, [k]: v }));
-
-  async function salvar() {
-    setSaving(true); setErro("");
-    try {
-      let url = "", body: any = {};
-      if (tipo === "animal") {
-        url = `${API}/bovino/animais`;
-        body = { imovel_id: imovelId, ...form };
-      } else if (tipo === "pesagem") {
-        url = `${API}/bovino/pesagens`;
-        body = { ...form, data: form.data || new Date().toISOString().slice(0,10) };
-      } else if (tipo === "leite") {
-        url = `${API}/bovino/leite/producao`;
-        body = { imovel_id: imovelId, ...form, data: form.data || new Date().toISOString().slice(0,10) };
-      } else if (tipo === "sanitario") {
-        url = `${API}/bovino/sanitario`;
-        body = { ...form, data_aplicacao: form.data_aplicacao || new Date().toISOString().slice(0,10) };
-      }
-      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Erro ao salvar"); }
-      onSaved();
-    } catch (e: any) {
-      setErro(e.message || "Erro desconhecido");
-    } finally { setSaving(false); }
-  }
-
-  const titulos: Record<string,string> = { animal: "🐄 Novo Animal", pesagem: "⚖️ Registrar Pesagem", leite: "🥛 Produção de Leite", sanitario: "💉 Evento Sanitário" };
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "flex-end" }}>
-      <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", padding: "20px 20px 40px", width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>{titulos[tipo]}</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer" }}>✕</button>
-        </div>
-
-        {tipo === "animal" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <Field label="Brinco / Nº *" value={form.brinco||""} onChange={v => set("brinco",v)} />
-            <Field label="Nome (opcional)" value={form.nome||""} onChange={v => set("nome",v)} />
-            <SelectField label="Aptidão de Manejo *" value={form.aptidao_manejo||""} onChange={v => set("aptidao_manejo",v)}
-              options={[{value:"corte",label:"Corte 🥩"},{value:"leite",label:"Leite 🥛"}]} />
-            <SelectField label="Categoria *" value={form.categoria||""} onChange={v => set("categoria",v)}
-              options={["bezerro","bezerra","novilho","novilha","garrote","garrotas","touro","vaca","boi"].map(c => ({value:c,label:capitalize(c)}))} />
-            <SelectField label="Sexo *" value={form.sexo||""} onChange={v => set("sexo",v)}
-              options={[{value:"M",label:"Macho"},{value:"F",label:"Fêmea"}]} />
-            <SelectField label="Raça" value={form.raca_id||""} onChange={v => set("raca_id", v ? Number(v) : undefined)}
-              options={racas.map(r => ({value:String(r.id),label:`${r.nome} (${r.aptidao})`}))} />
-            <SelectField label="Origem" value={form.origem||"nascimento"} onChange={v => set("origem",v)}
-              options={[{value:"nascimento",label:"Nascimento"},{value:"compra",label:"Compra"},{value:"transferencia",label:"Transferência"}]} />
-            <DateField label="Data de Entrada" value={form.data_entrada||""} onChange={v => set("data_entrada",v)} />
-            {form.origem === "compra" && <NumField label="Valor de Aquisição (R$)" value={form.valor_aquisicao||""} onChange={v => set("valor_aquisicao",v)} />}
+        {/* ── ABA REPRODUÇÃO ── */}
+        {tab === "Reprodução" && (
+          <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+            <h3 style={{ margin: "0 0 8px", color: green }}>🐮 Reprodução</h3>
+            <p style={{ color: "#888", fontSize: 13 }}>Controle de coberturas, IATF e previsão de partos.</p>
+            {dashboard?.alertas?.femeas_prenhas > 0 && (
+              <div style={{ background: "#e8f5e9", border: "1px solid #4caf50", borderRadius: 8, padding: 12, marginTop: 12 }}>
+                <strong style={{ color: green }}>🤰 {dashboard.alertas.femeas_prenhas} fêmea(s) prenha(s) com parto previsto</strong>
+              </div>
+            )}
           </div>
         )}
 
-        {tipo === "pesagem" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <NumField label="ID do Animal *" value={form.animal_id||""} onChange={v => set("animal_id", Number(v))} />
-            <DateField label="Data *" value={form.data||""} onChange={v => set("data",v)} />
-            <NumField label="Peso (kg) *" value={form.peso_kg||""} onChange={v => set("peso_kg",Number(v))} />
-            <SelectField label="Motivo" value={form.motivo||"rotina"} onChange={v => set("motivo",v)}
-              options={["nascimento","entrada","saida","rotina","desmame","outro"].map(m => ({value:m,label:capitalize(m)}))} />
+        {/* ── ABA ABATES ── */}
+        {tab === "Abates" && (
+          <div>
+            <button onClick={() => setShowAbate(!showAbate)}
+              style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
+              + Registrar Abate / Venda
+            </button>
+            {showAbate && (
+              <div style={{ background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+                <h3 style={{ margin: "0 0 16px", color: green, fontSize: 15 }}>🥩 Registrar Abate / Venda</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 12 }}>
+                  {[
+                    { label: "Animal *", comp: <select value={abateAnimalId} onChange={e => setAbateAnimalId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{animais.map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
+                    { label: "Data", comp: <input type="date" value={abateData} onChange={e => setAbateData(e.target.value)} style={inputStyle} /> },
+                    { label: "Tipo", comp: <select value={abateTipo} onChange={e => setAbateTipo(e.target.value)} style={inputStyle}><option value="venda_em_pe">Venda em Pé</option><option value="abate_proprio">Abate Próprio</option><option value="abate_frigorifico">Abate Frigorífico</option></select> },
+                    { label: "Peso Vivo (kg)", comp: <input type="number" value={abatePesoVivo} onChange={e => setAbatePesoVivo(e.target.value)} placeholder="kg" style={inputStyle} /> },
+                    { label: "Peso Carcaça (kg)", comp: <input type="number" value={abatePesoCarcaca} onChange={e => setAbatePesoCarcaca(e.target.value)} placeholder="kg" style={inputStyle} /> },
+                    { label: "Preço/@", comp: <input type="number" value={abatePrecoArroba} onChange={e => setAbatePrecoArroba(e.target.value)} placeholder="R$/@" style={inputStyle} /> },
+                    { label: "Comprador", comp: <input value={abateComprador} onChange={e => setAbateComprador(e.target.value)} placeholder="Nome" style={inputStyle} /> },
+                  ].map((f, i) => (
+                    <div key={i}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>{f.label}</div>
+                      {f.comp}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                  <button onClick={registrarAbate} style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 700, cursor: "pointer" }}>Registrar</button>
+                  <button onClick={() => setShowAbate(false)} style={{ background: "#eee", color: "#444", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+            <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <p style={{ color: "#999", fontSize: 13, margin: 0 }}>Histórico de abates e vendas aparecerá aqui.</p>
+            </div>
           </div>
         )}
 
-        {tipo === "leite" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <DateField label="Data *" value={form.data||""} onChange={v => set("data",v)} />
-            <NumField label="Volume (litros) *" value={form.volume_l||""} onChange={v => set("volume_l",Number(v))} />
-            <SelectField label="Turno" value={form.turno||"total"} onChange={v => set("turno",v)}
-              options={[{value:"total",label:"Total do dia"},{value:"manha",label:"Manhã"},{value:"tarde",label:"Tarde"}]} />
-            <SelectField label="Destinação" value={form.destinacao||"venda"} onChange={v => set("destinacao",v)}
-              options={[{value:"venda",label:"Venda"},{value:"autoconsumo",label:"Autoconsumo"},{value:"bezerros",label:"Bezerros"},{value:"descarte",label:"Descarte"}]} />
-            <NumField label="Preço por Litro (R$)" value={form.preco_litro||""} onChange={v => set("preco_litro",Number(v))} />
-          </div>
-        )}
-
-        {tipo === "sanitario" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <NumField label="ID do Animal (ou deixe em branco para lote)" value={form.animal_id||""} onChange={v => set("animal_id", v ? Number(v) : undefined)} />
-            <SelectField label="Tipo *" value={form.tipo||""} onChange={v => set("tipo",v)}
-              options={["vacina","vermifugacao","carrapaticida","medicamento","exame","outro"].map(m => ({value:m,label:capitalize(m)}))} />
-            <Field label="Produto *" value={form.produto||""} onChange={v => set("produto",v)} />
-            <NumField label="Dose (ml)" value={form.dose_ml||""} onChange={v => set("dose_ml",Number(v))} />
-            <DateField label="Data de Aplicação *" value={form.data_aplicacao||""} onChange={v => set("data_aplicacao",v)} />
-            <DateField label="Data do Reforço" value={form.data_reforco||""} onChange={v => set("data_reforco",v)} />
-            <NumField label="Custo Total (R$)" value={form.custo_total||""} onChange={v => set("custo_total",Number(v))} />
-          </div>
-        )}
-
-        {erro && <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10, padding: "8px 12px", background: "#fef2f2", borderRadius: 8 }}>{erro}</div>}
-
-        <button onClick={salvar} disabled={saving}
-          style={{ marginTop: 20, width: "100%", background: saving ? "#9ca3af" : "#1a5c0f", color: "#fff", border: "none", borderRadius: 12, padding: 14, fontWeight: 800, fontSize: 15, cursor: saving ? "default" : "pointer" }}>
-          {saving ? "Salvando..." : "Salvar"}
-        </button>
       </div>
     </div>
   );
 }
 
-// ─── Field helpers ───────────────────────────────────────────
-const inputStyle: React.CSSProperties = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, boxSizing: "border-box", background: "#f9fafb" };
-const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" };
-
-function Field({ label, value, onChange }: { label:string;value:string;onChange:(v:string)=>void }) {
-  return <div><label style={labelStyle}>{label}</label><input style={inputStyle} value={value} onChange={e => onChange(e.target.value)} /></div>;
-}
-function NumField({ label, value, onChange }: { label:string;value:any;onChange:(v:string)=>void }) {
-  return <div><label style={labelStyle}>{label}</label><input type="number" style={inputStyle} value={value} onChange={e => onChange(e.target.value)} /></div>;
-}
-function DateField({ label, value, onChange }: { label:string;value:string;onChange:(v:string)=>void }) {
-  return <div><label style={labelStyle}>{label}</label><input type="date" style={inputStyle} value={value} onChange={e => onChange(e.target.value)} /></div>;
-}
-function SelectField({ label, value, onChange, options }: { label:string;value:string;onChange:(v:string)=>void;options:{value:string;label:string}[] }) {
-  return (
-    <div><label style={labelStyle}>{label}</label>
-      <select style={inputStyle} value={value} onChange={e => onChange(e.target.value)}>
-        <option value="">Selecione...</option>
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
-const thStyle: React.CSSProperties = { padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 };
-const tdStyle: React.CSSProperties = { padding: "10px 12px", fontSize: 13 };
-function capitalize(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
+const inputStyle: React.CSSProperties = {
+  width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #ddd",
+  fontSize: 13, background: "white", boxSizing: "border-box",
+};
