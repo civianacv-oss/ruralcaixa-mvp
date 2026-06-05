@@ -240,4 +240,11 @@ def buscar_imoveis_por_cpf(cpf: str):
             JOIN produtores p ON p.id = i.produtor_id
             WHERE REPLACE(REPLACE(REPLACE(p.cpf, '.', ''), '-', ''), ' ', '') = :cpf
         """), {"cpf": cpf_limpo}).fetchall()
-        return [dict(r._mapping) for r in result]
+        return [dict(r._mapping) for r in result]import psycopg2
+import psycopg2.extras
+import os
+
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway")
+
+def get_db():
+    return psycopg2.connect(DB_URL, cursor_factory=psycopg2.extras.RealDictCursor)
