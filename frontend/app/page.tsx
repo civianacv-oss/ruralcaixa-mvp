@@ -75,7 +75,8 @@ export default function Dashboard() {
   const navGestao = [
     {id:"dashboard",   label:"Dashboard",        icon:Icons.dashboard,  href:"/"},
     {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
-    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/assinar"},
+    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
+    {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
     {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/ovino"},
     {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/ovino"},
     {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/ovino"},
