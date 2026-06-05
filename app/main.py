@@ -1,9 +1,11 @@
+from routers.bovino import router as bovino_router
 import hmac, hashlib, json, os
 import httpx
 from datetime import date
 from typing import Optional, List
 
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
+from .router_contratos import router as contratos_rurais_router
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -53,6 +55,8 @@ from app.propriedades import router as propriedades_router
 app.include_router(propriedades_router)
 from app.consorcios import router as consorcios_router
 app.include_router(consorcios_router)
+app.include_router(contratos_rurais_router)
+app.include_router(bovino_router)
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
