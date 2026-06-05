@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [animaisAtivos, setAnimaisAtivos] = useState(0);
+  const [showEspecieModal, setShowEspecieModal] = useState(false);
   const [totalAnimaisEspecie, setTotalAnimaisEspecie] = useState({ovino:0,bovino:0,caprino:0,suino:0});
   const [financeiro, setFinanceiro] = useState({receitas:0,despesas:0,saldo:0});
   const [loading, setLoading] = useState(true);
@@ -304,11 +305,11 @@ export default function Dashboard() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
               {[
                 {label:"Nova Propriedade",   icon:"📍", href:"/cadastro"},
-                {label:"Cadastrar Animal",   icon:"🐑", href:"/ovino"},
+                {label:"Cadastrar Animal",   icon:"🐑", href:"#", onClick:()=>setShowEspecieModal(true)},
                 {label:"Novo Contrato",      icon:"📄", href:"/assinar"},
                 {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
               ].map(item => (
-                <a key={item.label} href={item.href}
+                <a key={item.label} href={item.href} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined}
                   style={{
                     display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                     gap:8,padding:"18px 12px",borderRadius:12,border:"1.5px dashed #d0c8b8",
