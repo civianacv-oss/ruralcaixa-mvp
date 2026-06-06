@@ -11,7 +11,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from db import get_db_conn
+from app.db import get_db
 from app.schemas_piscicultura import (
     CicloCreate, CicloUpdate, CicloResponse,
     BiometriaCreate, BiometriaResponse,
@@ -167,7 +167,7 @@ def _criar_lancamento_lcdpr(conn, imovel_id: int, produtor_id: Optional[int],
 @router.post("/ciclos", response_model=CicloResponse, status_code=201)
 def criar_ciclo(data: CicloCreate):
     """Inicia um novo ciclo de produção."""
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Valida imóvel
@@ -233,7 +233,7 @@ def listar_ciclos(
     status: Optional[str] = None,
 ):
     """Lista ciclos com métricas calculadas."""
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             where = ["1=1"]
@@ -294,7 +294,7 @@ def listar_ciclos(
 
 @router.get("/ciclos/{ciclo_id}", response_model=CicloResponse)
 def buscar_ciclo(ciclo_id: int):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM ciclos_piscicultura WHERE id = %s", (ciclo_id,))
@@ -340,7 +340,7 @@ def buscar_ciclo(ciclo_id: int):
 
 @router.patch("/ciclos/{ciclo_id}", response_model=CicloResponse)
 def atualizar_ciclo(ciclo_id: int, data: CicloUpdate):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         campos = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
         if not campos:
@@ -370,7 +370,7 @@ def atualizar_ciclo(ciclo_id: int, data: CicloUpdate):
 
 @router.post("/biometrias", response_model=BiometriaResponse, status_code=201)
 def registrar_biometria(data: BiometriaCreate):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM ciclos_piscicultura WHERE id = %s", (data.ciclo_id,))
@@ -414,7 +414,7 @@ def registrar_biometria(data: BiometriaCreate):
 
 @router.get("/biometrias/{ciclo_id}", response_model=List[BiometriaResponse])
 def listar_biometrias(ciclo_id: int):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -432,7 +432,7 @@ def listar_biometrias(ciclo_id: int):
 
 @router.post("/registros-diarios", response_model=RegistroDiarioResponse, status_code=201)
 def registrar_dia(data: RegistroDiarioCreate):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT id FROM ciclos_piscicultura WHERE id = %s AND status = 'ativo'", (data.ciclo_id,))
@@ -486,7 +486,7 @@ def listar_registros_diarios(
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
 ):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             where = ["ciclo_id = %s"]
@@ -512,7 +512,7 @@ def listar_registros_diarios(
 
 @router.post("/compras-insumos", response_model=CompraInsumoResponse, status_code=201)
 def registrar_compra_insumo(data: CompraInsumoCreate):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -566,7 +566,7 @@ def registrar_compra_insumo(data: CompraInsumoCreate):
 
 @router.get("/compras-insumos/{ciclo_id}", response_model=List[CompraInsumoResponse])
 def listar_compras_insumos(ciclo_id: int):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -584,7 +584,7 @@ def listar_compras_insumos(ciclo_id: int):
 
 @router.post("/despescas", response_model=DespescaResponse, status_code=201)
 def registrar_despesca(data: DespescaCreate):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -652,7 +652,7 @@ def registrar_despesca(data: DespescaCreate):
 
 @router.get("/despescas/{ciclo_id}", response_model=List[DespescaResponse])
 def listar_despescas(ciclo_id: int):
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -672,7 +672,7 @@ def listar_despescas(ciclo_id: int):
 def dashboard_ciclo(ciclo_id: int):
     """Retorna todos os indicadores econômicos e zootécnicos do ciclo."""
     ciclo = buscar_ciclo(ciclo_id)
-    conn = get_db_conn()
+    conn = get_db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Totais de ração e custo
