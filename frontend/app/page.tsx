@@ -309,7 +309,7 @@ export default function Dashboard() {
                 {label:"Novo Contrato",      icon:"📄", href:"/assinar"},
                 {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
               ].map(item => (
-                <a key={item.label} href={item.href} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined}
+                <a key={item.label} href={item.href} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined}
                   style={{
                     display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                     gap:8,padding:"18px 12px",borderRadius:12,border:"1.5px dashed #d0c8b8",

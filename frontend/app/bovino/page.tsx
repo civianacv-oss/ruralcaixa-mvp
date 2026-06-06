@@ -232,7 +232,7 @@ export default function BovinoPage() {
             { icon: "🐄", val: dashboard.totais.total_geral, label: "Rebanho Ativo" },
             { icon: "🥩", val: dashboard.totais.total_corte, label: "Corte" },
             { icon: "🥛", val: dashboard.totais.total_leite, label: "Leite" },
-            { icon: "⚠️", val: dashboard.alertas.reforcos_sanitarios, label: "Reforços Sanitários" },
+            { icon: "⚠️", val: dashboard?.alertas?.reforcos_sanitarios, label: "Reforços Sanitários" },
           ].map((c, i) => (
             <div key={i} style={{ background: "white", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
               <div style={{ fontSize: 28 }}>{c.icon}</div>
@@ -457,9 +457,9 @@ export default function BovinoPage() {
           <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
             <h3 style={{ margin: "0 0 8px", color: green }}>💉 Sanitário</h3>
             <p style={{ color: "#888", fontSize: 13 }}>Controle de vacinações, vermifugações e tratamentos.</p>
-            {dashboard?.alertas?.reforcos_sanitarios > 0 && (
+            {(dashboard?.alertas?.reforcos_sanitarios ?? 0) > 0 && (
               <div style={{ background: "#fff3e0", border: "1px solid #ff9800", borderRadius: 8, padding: 12, marginTop: 12 }}>
-                <strong style={{ color: "#e65100" }}>⚠️ {dashboard.alertas.reforcos_sanitarios} reforço(s) sanitário(s) nos próximos 30 dias</strong>
+                <strong style={{ color: "#e65100" }}>⚠️ {dashboard?.alertas?.reforcos_sanitarios} reforço(s) sanitário(s) nos próximos 30 dias</strong>
               </div>
             )}
           </div>
@@ -470,9 +470,9 @@ export default function BovinoPage() {
           <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
             <h3 style={{ margin: "0 0 8px", color: green }}>🐮 Reprodução</h3>
             <p style={{ color: "#888", fontSize: 13 }}>Controle de coberturas, IATF e previsão de partos.</p>
-            {dashboard?.alertas?.femeas_prenhas > 0 && (
+            {(dashboard?.alertas?.femeas_prenhas ?? 0) > 0 && (
               <div style={{ background: "#e8f5e9", border: "1px solid #4caf50", borderRadius: 8, padding: 12, marginTop: 12 }}>
-                <strong style={{ color: green }}>🤰 {dashboard.alertas.femeas_prenhas} fêmea(s) prenha(s) com parto previsto</strong>
+                <strong style={{ color: green }}>🤰 {dashboard?.alertas?.femeas_prenhas} fêmea(s) prenha(s) com parto previsto</strong>
               </div>
             )}
           </div>
