@@ -5,6 +5,9 @@ import httpx
 from datetime import date
 from typing import Optional, List
 
+# piscicultura module enabled          ← ADICIONAR
+from app.routers.piscicultura import router as piscicultura_router
+
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
 from .router_contratos import router as contratos_rurais_router
 from fastapi.responses import PlainTextResponse
@@ -58,6 +61,7 @@ from app.consorcios import router as consorcios_router
 app.include_router(consorcios_router)
 app.include_router(contratos_rurais_router)
 app.include_router(bovino_router)
+app.include_router(piscicultura_router)   # ← ADICIONAR
 
 # â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
