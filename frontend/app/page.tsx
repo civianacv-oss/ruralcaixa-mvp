@@ -81,7 +81,7 @@ export default function Dashboard() {
     {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
     {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
     {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
-    {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/bovino"},
+    {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/rebanho"},
     {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/bovino"},
     {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/bovino"},
     {id:"financeiro",  label:"Financeiro",        icon:Icons.financial,  href:"/relatorio"},
