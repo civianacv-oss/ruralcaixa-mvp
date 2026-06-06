@@ -191,7 +191,7 @@ export default function PisciculturaPage() {
           sistema: fcSistema,
           area_ha: parseFloat(fcAreaHa),
           data_povoamento: fcDataPov,
-          data_despesca_prevista: fcDataDesp || null,
+          data_despesca_prevista: (fcDataDesp && fcDataDesp > fcDataPov) ? fcDataDesp : null,
           qtd_alevinos: parseInt(fcQtdAlevinos),
           peso_medio_inicial_g: parseFloat(fcPesoInicial),
           preco_alevino_unit: fcPrecoAlevino ? parseFloat(fcPrecoAlevino) : null,
