@@ -8,6 +8,7 @@ const IMOVEL_ID = 1;
 type Animal = {
   id: number;
   brinco: string;
+  nome: string | null;
   sexo: string;
   raca_nome: string | null;
   aptidao_manejo: string;
