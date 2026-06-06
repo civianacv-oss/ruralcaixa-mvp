@@ -64,7 +64,7 @@ class CicloCreate(BaseModel):
 
     @validator("data_despesca_prevista")
     def despesca_apos_povoamento(cls, v, values):
-        if v and "data_povoamento" in values and v <= values["data_povoamento"]:
+        if v and "data_povoamento" in values and v < values["data_povoamento"]:
             raise ValueError("Data de despesca prevista deve ser após o povoamento")
         return v
 
