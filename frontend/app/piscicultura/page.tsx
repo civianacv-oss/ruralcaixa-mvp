@@ -34,13 +34,13 @@ type Dashboard = {
   biomassa_atual_kg: number | null;
   ica_atual: number | null;
   dias_em_producao: number;
-  total_racao_kg: number;
-  custo_racao_total: number;
-  custo_alevinos: number;
-  custo_outros_insumos: number;
-  custo_total: number;
+  total_racao_kg: number | string;
+  custo_racao_total: number | string;
+  custo_alevinos: number | string;
+  custo_outros_insumos: number | string;
+  custo_total: number | string;
   custo_por_kg_estimado: number | null;
-  receita_realizada: number;
+  receita_realizada: number | string;
   receita_projetada: number | null;
   lucro_estimado: number | null;
   margem_estimada_perc: number | null;
@@ -79,10 +79,10 @@ const STATUS_COLORS: Record<string, string> = {
   cancelado: "bg-red-100 text-red-700",
 };
 
-const fmt = (v: number | null | undefined, dec = 2) =>
-  v != null ? v.toFixed(dec) : "—";
-const fmtBRL = (v: number | null | undefined) =>
-  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+const fmt = (v: number | string | null | undefined, dec = 2) =>
+  v != null ? parseFloat(String(v)).toFixed(dec) : "—";
+const fmtBRL = (v: number | string | null | undefined) =>
+  v != null ? parseFloat(String(v)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
 
 export default function PisciculturaPage() {
   const [ciclos, setCiclos] = useState<Ciclo[]>([]);
@@ -846,8 +846,8 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string; s
   );
 }
 
-function CustoLinha({ label, valor, total }: { label: string; valor: number; total: number }) {
-  const perc = total > 0 ? (valor / total) * 100 : 0;
+function CustoLinha({ label, valor, total }: { label: string; valor: number | string; total: number | string }) {
+  const perc = Number(total) > 0 ? (Number(valor) / Number(total)) * 100 : 0;
   return (
     <div className="flex items-center gap-3">
       <span className="text-sm text-gray-600 w-32">{label}</span>
