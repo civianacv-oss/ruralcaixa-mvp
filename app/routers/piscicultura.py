@@ -247,7 +247,7 @@ def listar_ciclos(
             where = ["1=1"]
             params = []
             if imovel_id:
-                where.append("id_imovel = %s"); params.append(imovel_id)
+                where.append("imovel_id = %s"); params.append(imovel_id)
             if produtor_id:
                 where.append("produtor_id = %s"); params.append(produtor_id)
             if status:
