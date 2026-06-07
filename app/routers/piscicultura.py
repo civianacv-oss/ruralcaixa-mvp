@@ -141,15 +141,23 @@ def _criar_lancamento_lcdpr(conn, imovel_id: int, produtor_id: Optional[int],
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Busca subconta_id pelo tipo (receita/despesa)
+            cur.execute("""
+                SELECT id FROM subcontas
+                WHERE LOWER(tipo) = LOWER(%s)
+                LIMIT 1
+            """, (tipo_lancamento,))
+            sub = cur.fetchone()
+            subconta_id = sub["id"] if sub else None
+
             cur.execute("""
                 INSERT INTO lancamentos
-                    (imovel_id, produtor_id, data_lancamento, tipo, valor,
-                     descricao, codigo_lcdpr, origem_modulo, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'confirmado')
+                    (produtor_id, subconta_id, valor, data, origem)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
             """, (
-                imovel_id, produtor_id, data, tipo_lancamento,
-                float(valor), descricao, codigo_lcdpr, origem
+                produtor_id, subconta_id,
+                float(valor), data, origem
             ))
             row = cur.fetchone()
             conn.commit()
@@ -171,7 +179,7 @@ def criar_ciclo(data: CicloCreate):
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Valida imóvel
-            cur.execute("SELECT id FROM imoveis WHERE id = %s", (data.imovel_id,))
+            cur.execute("SELECT id FROM imoveis_rurais WHERE id = %s", (data.imovel_id,))
             if not cur.fetchone():
                 raise HTTPException(404, "Imóvel não encontrado")
 
