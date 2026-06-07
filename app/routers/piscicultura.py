@@ -573,6 +573,7 @@ def registrar_compra_insumo(data: CompraInsumoCreate):
                 data.fornecedor, data.nota_fiscal,
             ))
             row = dict(cur.fetchone())
+        conn.commit()
 
         # Gera lançamento LCDPR automaticamente
         descricao_lcdpr = (
