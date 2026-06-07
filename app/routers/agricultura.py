@@ -9,7 +9,7 @@ from datetime import date
 import psycopg2
 import re
 
-from database import get_db  # padrao ja usado no projeto
+from app.db import get_db  # padrao ja usado no projeto
 
 router = APIRouter(prefix="/agricultura", tags=["Agricultura"])
 
