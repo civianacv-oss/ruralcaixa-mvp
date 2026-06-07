@@ -257,7 +257,7 @@ def listar_ciclos(
                 SELECT * FROM ciclos_piscicultura
                 WHERE {' AND '.join(where)}
                 ORDER BY data_povoamento DESC
-            """, params)
+            """, tuple(params))
             ciclos = cur.fetchall()
 
         result = []
@@ -508,7 +508,7 @@ def listar_registros_diarios(
                 SELECT * FROM registros_diarios_piscicultura
                 WHERE {' AND '.join(where)}
                 ORDER BY data_registro DESC
-            """, params)
+            """, tuple(params))
             return [RegistroDiarioResponse(**dict(r)) for r in cur.fetchall()]
     finally:
         conn.close()
