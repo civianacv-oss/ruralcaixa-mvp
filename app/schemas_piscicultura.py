@@ -148,6 +148,8 @@ class RegistroDiarioCreate(BaseModel):
     racao_kg: Optional[Decimal] = Field(None, ge=0)
     tipo_racao: Optional[str] = Field(None, max_length=80)
     custo_racao_dia: Optional[Decimal] = Field(None, ge=0)
+    preco_kg_racao: Optional[Decimal] = Field(None, ge=0)
+    preco_kg_racao: Optional[Decimal] = None
     mortalidade_qtd: int = Field(0, ge=0)
     mortalidade_causa: Optional[str] = None
     oxigenio_dissolvido: Optional[Decimal] = Field(None, ge=0, le=20)

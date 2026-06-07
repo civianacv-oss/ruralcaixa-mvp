@@ -122,6 +122,8 @@ export default function PisciculturaPage() {
   const [rdPh, setRdPh] = useState("");
   const [rdTemp, setRdTemp] = useState("");
   const [rdSecchi, setRdSecchi] = useState("");
+  const [pmpRacao, setPmpRacao] = useState<number | null>(null);
+  const [rdPrecoKgRacao, setRdPrecoKgRacao] = useState("");
 
   // Form biometria
   const [bioData, setBioData] = useState(new Date().toISOString().split("T")[0]);
@@ -173,6 +175,13 @@ export default function PisciculturaPage() {
     setCicloSelecionado(c);
     setTabDetalhe("dashboard");
     loadDashboard(c.id);
+    fetch(`${API}/piscicultura/preco-medio-racao/${c.id}`)
+      .then(r => r.json())
+      .then(d => {
+        setPmpRacao(d.preco_medio_kg);
+        if (d.preco_medio_kg) setRdPrecoKgRacao(d.preco_medio_kg.toFixed(4));
+      })
+      .catch(() => setPmpRacao(null));
   }
 
   async function criarCiclo() {
@@ -223,6 +232,7 @@ export default function PisciculturaPage() {
           data_registro: rdData,
           racao_kg: rdRacaoKg ? parseFloat(rdRacaoKg) : null,
           custo_racao_dia: rdCustoRacao ? parseFloat(rdCustoRacao) : null,
+          preco_kg_racao: rdPrecoKgRacao ? parseFloat(rdPrecoKgRacao) : null,
           mortalidade_qtd: parseInt(rdMortalidade) || 0,
           oxigenio_dissolvido: rdO2 ? parseFloat(rdO2) : null,
           ph: rdPh ? parseFloat(rdPh) : null,
@@ -633,11 +643,33 @@ export default function PisciculturaPage() {
             </div>
             <div>
               <label className="label">Ração fornecida (kg)</label>
-              <input className="input" type="number" step="0.1" value={rdRacaoKg} onChange={e => setRdRacaoKg(e.target.value)} placeholder="50.0" />
+              <input className="input" type="number" step="0.1" value={rdRacaoKg} onChange={e => {
+                const kg = e.target.value;
+                setRdRacaoKg(kg);
+                if (rdPrecoKgRacao && kg) {
+                  setRdCustoRacao((parseFloat(kg) * parseFloat(rdPrecoKgRacao)).toFixed(2));
+                }
+              }} placeholder="50.0" />
             </div>
             <div>
-              <label className="label">Custo ração hoje (R$)</label>
-              <input className="input" type="number" step="0.01" value={rdCustoRacao} onChange={e => setRdCustoRacao(e.target.value)} />
+              <label className="label">
+                Preço/kg da ração (R$)
+                {pmpRacao ? (
+                  <span className="text-xs text-blue-500 ml-2">PMP calculado</span>
+                ) : (
+                  <span className="text-xs text-gray-400 ml-2">sem compras — informe manualmente</span>
+                )}
+              </label>
+              <input className="input" type="number" step="0.0001" value={rdPrecoKgRacao} onChange={e => {
+                setRdPrecoKgRacao(e.target.value);
+                if (rdRacaoKg && e.target.value) {
+                  setRdCustoRacao((parseFloat(rdRacaoKg) * parseFloat(e.target.value)).toFixed(2));
+                }
+              }} placeholder="ex: 2.8500" />
+            </div>
+            <div>
+              <label className="label">Custo ração hoje (R$) <span className="text-xs text-gray-400">calculado automaticamente</span></label>
+              <input className="input" type="number" step="0.01" value={rdCustoRacao} onChange={e => setRdCustoRacao(e.target.value)} placeholder="automático" />
             </div>
             <div>
               <label className="label">Mortalidade (qtd)</label>

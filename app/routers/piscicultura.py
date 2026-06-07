@@ -438,6 +438,36 @@ def listar_biometrias(ciclo_id: int):
 # REGISTROS DIÁRIOS
 # ─────────────────────────────────────────
 
+
+@router.get("/preco-medio-racao/{ciclo_id}")
+def preco_medio_racao(ciclo_id: int):
+    """PMP da racao = soma(valor_total) / soma(quantidade_kg) das compras do ciclo."""
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(valor_total), 0) as total_valor,
+                    COALESCE(SUM(quantidade), 0)  as total_kg,
+                    COUNT(*) as qtd_compras
+                FROM compras_insumos_piscicultura
+                WHERE ciclo_id = %s AND tipo_insumo = 'racao' AND quantidade > 0
+            """, (ciclo_id,))
+            row = cur.fetchone()
+        total_valor = float(row["total_valor"] or 0)
+        total_kg    = float(row["total_kg"] or 0)
+        pmp = round(total_valor / total_kg, 4) if total_kg > 0 else None
+        return {
+            "ciclo_id": ciclo_id,
+            "preco_medio_kg": pmp,
+            "total_valor": total_valor,
+            "total_kg": total_kg,
+            "qtd_compras": int(row["qtd_compras"] or 0),
+            "tem_dados": pmp is not None,
+        }
+    finally:
+        conn.close()
+
 @router.post("/registros-diarios", response_model=RegistroDiarioResponse, status_code=201)
 def registrar_dia(data: RegistroDiarioCreate):
     conn = get_db()
@@ -454,13 +484,14 @@ def registrar_dia(data: RegistroDiarioCreate):
             cur.execute("""
                 INSERT INTO registros_diarios_piscicultura
                     (ciclo_id, data_registro, racao_kg, tipo_racao, custo_racao_dia,
-                     mortalidade_qtd, mortalidade_causa,
+                     preco_kg_racao, mortalidade_qtd, mortalidade_causa,
                      oxigenio_dissolvido, ph, temperatura_c, transparencia_secchi_cm, alertas)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (ciclo_id, data_registro) DO UPDATE SET
                     racao_kg = EXCLUDED.racao_kg,
                     tipo_racao = EXCLUDED.tipo_racao,
                     custo_racao_dia = EXCLUDED.custo_racao_dia,
+                    preco_kg_racao = EXCLUDED.preco_kg_racao,
                     mortalidade_qtd = EXCLUDED.mortalidade_qtd,
                     mortalidade_causa = EXCLUDED.mortalidade_causa,
                     oxigenio_dissolvido = EXCLUDED.oxigenio_dissolvido,
@@ -474,6 +505,7 @@ def registrar_dia(data: RegistroDiarioCreate):
                 float(data.racao_kg) if data.racao_kg else None,
                 data.tipo_racao,
                 float(data.custo_racao_dia) if data.custo_racao_dia else None,
+                float(data.preco_kg_racao) if data.preco_kg_racao else None,
                 data.mortalidade_qtd, data.mortalidade_causa,
                 float(data.oxigenio_dissolvido) if data.oxigenio_dissolvido else None,
                 float(data.ph) if data.ph else None,
