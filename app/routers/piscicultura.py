@@ -131,17 +131,16 @@ def _criar_lancamento_lcdpr(conn, imovel_id: int, produtor_id: Optional[int],
                              data: date, tipo: str, valor: Decimal,
                              descricao: str, origem: str) -> Optional[int]:
     """
-    Cria lançamento LCDPR automaticamente.
+    Cria lancamento LCDPR automaticamente em conexao separada.
     tipo: 'receita' | 'despesa'
-    Retorna o id do lançamento criado.
+    Retorna o id do lancamento criado.
+    Usa conexao propria para nao interferir com a transacao principal.
     """
-    # Código LCDPR: receita rural = '0200', despesa geral = '0900'
-    codigo_lcdpr = "0200" if tipo == "receita" else "0900"
     tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
-
+    lcdpr_conn = None
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Busca subconta_id pelo tipo (receita/despesa)
+        lcdpr_conn = get_db()
+        with lcdpr_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 SELECT id FROM subcontas
                 WHERE LOWER(tipo) = LOWER(%s)
@@ -149,7 +148,6 @@ def _criar_lancamento_lcdpr(conn, imovel_id: int, produtor_id: Optional[int],
             """, (tipo_lancamento,))
             sub = cur.fetchone()
             subconta_id = sub["id"] if sub else None
-
             cur.execute("""
                 INSERT INTO lancamentos
                     (produtor_id, subconta_id, valor, data, origem)
@@ -160,19 +158,17 @@ def _criar_lancamento_lcdpr(conn, imovel_id: int, produtor_id: Optional[int],
                 float(valor), data, origem
             ))
             row = cur.fetchone()
-            conn.commit()
+            lcdpr_conn.commit()
             return row["id"] if row else None
     except Exception as e:
-        print(f"[PISCICULTURA] Erro ao criar lançamento LCDPR: {e}")
-        conn.rollback()
+        print(f"[PISCICULTURA] Erro ao criar lancamento LCDPR: {e}")
+        if lcdpr_conn:
+            lcdpr_conn.rollback()
         return None
+    finally:
+        if lcdpr_conn:
+            lcdpr_conn.close()
 
-
-# ─────────────────────────────────────────
-# CICLOS
-# ─────────────────────────────────────────
-
-@router.post("/ciclos", response_model=CicloResponse, status_code=201)
 def criar_ciclo(data: CicloCreate):
     """Inicia um novo ciclo de produção."""
     conn = get_db()
