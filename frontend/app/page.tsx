@@ -21,6 +21,7 @@ function fmtDate(s: string) {
 
 // ── icones SVG inline ─────────────────────────────────────────
 const Icons = {
+  crops: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 2a10 10 0 0 0-10 10"/><path d="M12 12v10"/><path d="M12 12c0-4 2-7 5-9"/><path d="M12 12c0-4-2-7-5-9"/></svg>,
   dashboard: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
   property:  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>,
   animals:   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
@@ -72,6 +73,16 @@ export default function Dashboard() {
         setTotalAnimaisEspecie({ovino:anim.length,bovino:bovCount,caprino:0,suino:0});
       });
     } catch(e) { console.error(e); }
+    // Buscar safras ativas
+    try {
+      const resSafras = await fetch(`${API}/agricultura/imoveis/1/safras/resumo`);
+      if (resSafras.ok) {
+        const dataSafras = await resSafras.json();
+        const arr = Array.isArray(dataSafras) ? dataSafras : [];
+        setSafrasResumo(arr);
+        setSafrasAtivas(arr.filter((s: any) => ['em_andamento','colhida','planejada'].includes(s.status)).length);
+      }
+    } catch(e) { console.error('safras', e); }
     setLoading(false);
   }
 
@@ -82,6 +93,7 @@ export default function Dashboard() {
     {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
     {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
     {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/rebanho"},
+    {id:"agricultura", label:"Agricultura",        icon:Icons.crops,      href:"/agricultura"},
     {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/bovino"},
     {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/bovino"},
     {id:"financeiro",  label:"Financeiro",        icon:Icons.financial,  href:"/relatorio"},
@@ -205,12 +217,13 @@ export default function Dashboard() {
         <div style={{padding:"24px 28px",flex:1}}>
 
           {/* ── KPI CARDS ──────────────────────────────────── */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16,marginBottom:24}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:24}}>
             {[
               {label:"Propriedades",    value:"1",          sub:"Imóveis cadastrados",  icon:"📍", color:"#4a6a3a"},
               {label:"Animais Ativos",  value:String(animaisAtivos), sub:"Rebanho total",icon:"🐑", color:"#5a7a4a"},
               {label:"Saldo do Ano",    value:fmtBRL(financeiro.saldo), sub:`Receitas: ${fmtBRL(financeiro.receitas)}`, icon:"💰", color:financeiro.saldo>=0?"#3a6a4a":"#8a3a3a", trend:financeiro.saldo>=0?"up":"down"},
               {label:"Lançamentos",     value:String(lancamentos.length), sub:"Registros financeiros", icon:"📋", color:"#4a5a7a"},
+              {label:"Safras Ativas",    value:String(safrasAtivas), sub:"Ano-safra atual", icon:"🌾", color:"#6a7a2a"},
             ].map(k => (
               <div key={k.label} style={{
                 background:"#fff",borderRadius:14,padding:"20px 22px",
@@ -276,25 +289,41 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Saúde Animal */}
+            {/* Agricultura — Safras Ativas */}
             <div style={{background:"#fff",borderRadius:14,padding:"20px 22px",border:"1px solid #e8e0d0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
-                <span style={{fontSize:16}}>❤️</span>
-                <span style={{fontWeight:600,fontSize:14,color:"#1a2e1a"}}>Saúde Animal</span>
-              </div>
-              {[
-                {label:"Vacinações",    value:0, color:"#4a7a9a", bg:"#eef5fa"},
-                {label:"Tratamentos",   value:0, color:"#7a4a9a", bg:"#f5eefa"},
-                {label:"Em carência",   value:0, color:"#9a6a2a", bg:"#faf3e8"},
-                {label:"Alertas ativos",value:0, color:"#9a3a3a", bg:"#faeaea"},
-              ].map(item => (
-                <div key={item.label} style={{
-                  background:item.bg,borderRadius:10,padding:"10px 14px",
-                  marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",
-                }}>
-                  <span style={{fontSize:13,color:"#3a4a3a"}}>{item.label}</span>
-                  <span style={{fontWeight:700,color:item.color,fontSize:15}}>{item.value}</span>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>🌾</span>
+                  <span style={{fontWeight:600,fontSize:14,color:"#1a2e1a"}}>Agricultura</span>
                 </div>
+                <a href="/agricultura" style={{fontSize:12,color:"#5a8a3a",textDecoration:"none",fontWeight:600}}>Ver todas →</a>
+              </div>
+              {safrasResumo.length === 0 ? (
+                <div style={{textAlign:"center",padding:"20px 0",color:"#8a9a8a",fontSize:13}}>
+                  <div style={{fontSize:28,marginBottom:8}}>🌱</div>
+                  <div>Nenhuma safra ativa</div>
+                  <a href="/agricultura" style={{color:"#5a8a3a",fontSize:12,textDecoration:"none",fontWeight:600}}>Cadastrar safra →</a>
+                </div>
+              ) : safrasResumo.slice(0,3).map((s: any) => (
+                <a key={s.id} href={`/agricultura/safras/${s.id}`} style={{textDecoration:"none"}}>
+                  <div style={{background:"#f4f8ee",borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"pointer"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:13,fontWeight:600,color:"#2a4a1a"}}>{s.cultura}</span>
+                      <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,
+                        background: s.status==="em_andamento"?"#dbeafe": s.status==="colhida"?"#dcfce7":"#f3f4f6",
+                        color: s.status==="em_andamento"?"#1d4ed8": s.status==="colhida"?"#15803d":"#6b7280",
+                        fontWeight:600}}>
+                        {s.status==="em_andamento"?"Em andamento": s.status==="colhida"?"Colhida": s.status==="planejada"?"Planejada":"Encerrada"}
+                      </span>
+                    </div>
+                    <div style={{fontSize:12,color:"#5a6a4a"}}>{s.ano_safra} · {Number(s.area_ha).toFixed(1)} ha</div>
+                    {Number(s.margem_bruta) !== 0 && (
+                      <div style={{fontSize:12,color:Number(s.margem_bruta)>=0?"#2a6a3a":"#8a2a2a",fontWeight:600,marginTop:2}}>
+                        Margem: R$ {Number(s.margem_bruta).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+                      </div>
+                    )}
+                  </div>
+                </a>
               ))}
             </div>
           </div>
@@ -306,7 +335,7 @@ export default function Dashboard() {
               {[
                 {label:"Nova Propriedade",   icon:"📍", href:"/cadastro"},
                 {label:"Cadastrar Animal",   icon:"🐑", href:"#", onClick:()=>setShowEspecieModal(true)},
-                {label:"Novo Contrato",      icon:"📄", href:"/assinar"},
+                {label:"Nova Safra",          icon:"🌾", href:"/agricultura"},
                 {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
               ].map(item => (
                 <a key={item.label} href={item.href} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined}
