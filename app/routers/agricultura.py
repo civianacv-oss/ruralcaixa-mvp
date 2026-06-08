@@ -126,11 +126,20 @@ TRANSICOES_VALIDAS = {
 
 
 def row_to_dict(cursor, row):
+    # RealDictCursor ja retorna dicts; fallback para tuplas
+    if row is None:
+        return None
+    if hasattr(row, 'keys'):
+        return dict(row)
     cols = [d[0] for d in cursor.description]
     return dict(zip(cols, row))
 
 
 def rows_to_list(cursor, rows):
+    if not rows:
+        return []
+    if rows and hasattr(rows[0], 'keys'):
+        return [dict(r) for r in rows]
     cols = [d[0] for d in cursor.description]
     return [dict(zip(cols, r)) for r in rows]
 
