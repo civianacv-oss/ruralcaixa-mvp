@@ -334,7 +334,7 @@ export default function Dashboard() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
               {[
                 {label:"Nova Propriedade",   icon:"📍", href:"/cadastro"},
-                {label:"Cadastrar Animal",   icon:"🐑", href:"#", onClick:()=>setShowEspecieModal(true)},
+                {label:"Cadastrar Animal",   icon:"🐑", href:"/rebanho"},
                 {label:"Nova Safra",          icon:"🌾", href:"/agricultura"},
                 {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
               ].map(item => (
