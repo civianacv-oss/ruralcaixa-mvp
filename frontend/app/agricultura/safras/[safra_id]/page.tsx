@@ -528,15 +528,7 @@ function ModalNovoLancamento({ safraId, imovelId, onClose, onSaved }: {
     setSaving(true);
     setErro('');
     try {
-      // Buscar produtor_id do imovel
-      const resProdutor = await fetch(`${API}/participacoes/${imovelId}`).catch(() => null);
-      let produtor_id = 1; // fallback
-      if (resProdutor && resProdutor.ok) {
-        const participacoes = await resProdutor.json();
-        if (Array.isArray(participacoes) && participacoes.length > 0) {
-          produtor_id = participacoes[0].produtor_id;
-        }
-      }
+      const produtor_id = 1; // produtor principal
 
       const valorAbs = Math.abs(parseFloat(form.valor));
       const valorFinal = form.tipo === 'despesa' ? -valorAbs : valorAbs;
