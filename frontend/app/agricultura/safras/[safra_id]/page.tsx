@@ -127,7 +127,7 @@ function TabDRE({ dre, safra }: { dre: any; safra: any }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: number | string) => Number(v).toFixed(2)} />
+              <Tooltip formatter={(v) => v != null ? Number(v).toFixed(2) : ""} />
               <Bar dataKey="Estimado" fill="#d1fae5" stroke="#6ee7b7" />
               <Bar dataKey="Real" fill="#059669" />
             </BarChart>
