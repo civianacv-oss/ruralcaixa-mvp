@@ -163,6 +163,40 @@ def add_terceiro(imovel_id: int, data: TerceiroCreate):
         conn.commit()
         return {"id": result.fetchone()[0]}
 
+@app.put("/lancamentos/{lancamento_id}")
+def atualizar_lancamento(lancamento_id: str, data: dict):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        fields = []
+        params = {"lid": lancamento_id}
+        if "valor" in data:
+            fields.append("valor = :valor")
+            params["valor"] = data["valor"]
+        if "data" in data:
+            fields.append("data = :data")
+            params["data"] = data["data"]
+        if not fields:
+            raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
+        conn.execute(text(f"""
+            UPDATE lancamentos SET {', '.join(fields)}
+            WHERE id = :lid::uuid
+        """), params)
+        conn.commit()
+        return {"ok": True}
+
+@app.delete("/lancamentos/{lancamento_id}", status_code=204)
+def deletar_lancamento(lancamento_id: str):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text(
+            "DELETE FROM lancamentos WHERE id = :lid::uuid"
+        ), {"lid": lancamento_id})
+        conn.commit()
+
+
+
 @app.delete("/terceiros/{terceiro_id}")
 def del_terceiro(terceiro_id: int):
     from app.db import engine
