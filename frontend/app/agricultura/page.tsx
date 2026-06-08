@@ -90,7 +90,8 @@ export default function AgriculturaPage() {
       } else {
         // Busca safras de todos os imoveis
         const todas: Safra[] = [];
-        for (const im of imoveis) {
+        const listaImoveis = imoveis.length > 0 ? imoveis : [{id:1},{id:5}];
+        for (const im of listaImoveis) {
           const params = new URLSearchParams();
           if (filtroAno)    params.append('ano_safra', filtroAno);
           if (filtroCultura) params.append('cultura', filtroCultura);
@@ -124,6 +125,11 @@ export default function AgriculturaPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <div style={{padding:"16px 24px 0"}}>
+        <a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",textDecoration:"none",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+          ← Dashboard
+        </a>
+      </div>
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
