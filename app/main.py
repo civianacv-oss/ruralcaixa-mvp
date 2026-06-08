@@ -72,16 +72,18 @@ class ClassificarTexto(BaseModel):
 
 class LancamentoCreate(BaseModel):
     produtor_id: int
-    conta_codigo: str = "4.1"
-    tipo: str
-    descricao: str
     valor: float
-    data_lancamento: str
-    origem: str = "manual"
+    data: Optional[str] = None
+    origem: str = "agricultura"
+    safra_id: Optional[int] = None
+    # Campos legados mantidos para compatibilidade (ignorados no INSERT)
+    conta_codigo: str = "4.1"
+    tipo: str = "despesa"
+    descricao: str = ""
+    data_lancamento: Optional[str] = None
     confirmado: bool = True
     atividade: str = "rural"
     perc_participacao: float = 100.0
-    safra_id: Optional[int] = None
 
 class ProdutorCreate(BaseModel):
     nome: str
@@ -253,24 +255,17 @@ def criar_lancamento(data: LancamentoCreate):
     from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
-        valor_bruto = data.valor
-        valor_liquido = round(data.valor * data.perc_participacao / 100, 2)
+        # Usar data real ou data_lancamento legado
+        data_real = data.data or data.data_lancamento or None
         result = conn.execute(text("""
-            INSERT INTO lancamentos (produtor_id, conta_codigo, tipo, descricao, valor, valor_bruto, data_lancamento, origem, confirmado, atividade, perc_participacao, safra_id)
-            VALUES (:pid, :conta, :tipo, :desc, :valor, :valor_bruto, :data, :origem, :confirmado, :atividade, :perc, :safra_id)
+            INSERT INTO lancamentos (produtor_id, valor, data, origem, safra_id)
+            VALUES (:pid, :valor, :data, :origem, :safra_id)
             RETURNING id
         """), {
             "pid": data.produtor_id,
-            "conta": data.conta_codigo,
-            "tipo": data.tipo,
-            "desc": data.descricao,
-            "valor": valor_liquido,
-            "valor_bruto": valor_bruto,
-            "data": data.data_lancamento,
+            "valor": data.valor,
+            "data": data_real,
             "origem": data.origem,
-            "confirmado": data.confirmado,
-            "atividade": data.atividade,
-            "perc": data.perc_participacao,
             "safra_id": data.safra_id,
         })
         conn.commit()
