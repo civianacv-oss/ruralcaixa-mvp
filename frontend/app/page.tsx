@@ -49,6 +49,8 @@ export default function Dashboard() {
   const [totalAnimaisEspecie, setTotalAnimaisEspecie] = useState({ovino:0,bovino:0,caprino:0,suino:0});
   const [financeiro, setFinanceiro] = useState({receitas:0,despesas:0,saldo:0});
   const [loading, setLoading] = useState(true);
+  const [safrasAtivas, setSafrasAtivas] = useState(0);
+  const [safrasResumo, setSafrasResumo] = useState<any[]>([]);
   const [novoLanc, setNovoLanc] = useState({tipo:"despesa",valor:"",descricao:"",conta:"2.1"});
   const [salvando, setSalvando] = useState(false);
 
@@ -338,7 +340,7 @@ export default function Dashboard() {
                 {label:"Nova Safra",          icon:"🌾", href:"/agricultura"},
                 {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
               ].map(item => (
-                <a key={item.label} href={item.href} onClick={item.onClick ? (e)=>{e.preventDefault();item.onClick!();} : undefined}
+                <a key={item.label} href={item.href} 
                   style={{
                     display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                     gap:8,padding:"18px 12px",borderRadius:12,border:"1.5px dashed #d0c8b8",
