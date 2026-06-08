@@ -163,19 +163,23 @@ def add_terceiro(imovel_id: int, data: TerceiroCreate):
         conn.commit()
         return {"id": result.fetchone()[0]}
 
+class LancamentoUpdate(BaseModel):
+    valor: Optional[float] = None
+    data: Optional[str] = None
+
 @app.put("/lancamentos/{lancamento_id}")
-def atualizar_lancamento(lancamento_id: str, data: dict):
+def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
     from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
         fields = []
         params = {"lid": lancamento_id}
-        if "valor" in data:
+        if data.valor is not None:
             fields.append("valor = :valor")
-            params["valor"] = data["valor"]
-        if "data" in data:
+            params["valor"] = data.valor
+        if data.data is not None:
             fields.append("data = :data")
-            params["data"] = data["data"]
+            params["data"] = data.data
         if not fields:
             raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
         conn.execute(text(f"""
