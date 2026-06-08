@@ -157,6 +157,7 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editando, setEditando] = useState<any>(null);
 
   function loadLancamentos() {
     setLoading(true);
@@ -168,8 +169,6 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
   useEffect(() => { loadLancamentos(); }, [safraId]);
 
   if (loading) return <div className="py-8 text-center text-gray-400">Carregando...</div>;
-
-  const [editando, setEditando] = useState<any>(null);
 
   return (
     <div className="space-y-4">
