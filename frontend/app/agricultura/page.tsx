@@ -73,8 +73,8 @@ export default function AgriculturaPage() {
   }, [filtroImovel, filtroAno, filtroCultura, filtroStatus]);
 
   async function fetchImoveis() {
-    const res = await fetch(`${API}/imoveis`);
-    if (res.ok) setImoveis(await res.json());
+    const res = await fetch(`${API}/imoveis/buscar?q=`);
+    if (res.ok) { const d = await res.json(); setImoveis(Array.isArray(d) ? d : (d.imoveis || [])); }
   }
 
   async function fetchSafras() {
