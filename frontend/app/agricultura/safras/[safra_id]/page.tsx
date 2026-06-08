@@ -153,24 +153,45 @@ function TabDRE({ dre, safra }: { dre: any; safra: any }) {
   );
 }
 
-function TabLancamentos({ safraId }: { safraId: number }) {
+function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: number }) {
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
 
-  useEffect(() => {
+  function loadLancamentos() {
+    setLoading(true);
     fetch(`${API}/agricultura/safras/${safraId}/lancamentos`)
       .then(r => r.json())
-      .then(data => { setLancamentos(data); setLoading(false); });
-  }, [safraId]);
+      .then(data => { setLancamentos(Array.isArray(data) ? data : []); setLoading(false); });
+  }
+
+  useEffect(() => { loadLancamentos(); }, [safraId]);
 
   if (loading) return <div className="py-8 text-center text-gray-400">Carregando...</div>;
 
   return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowModal(true)}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2"
+        >
+          + Novo Lançamento
+        </button>
+      </div>
+      {showModal && (
+        <ModalNovoLancamento
+          safraId={safraId}
+          imovelId={imovelId}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); loadLancamentos(); }}
+        />
+      )}
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {lancamentos.length === 0 ? (
         <div className="py-12 text-center text-gray-400">
-          <p>Nenhum lançamento vinculado a esta safra.</p>
-          <p className="text-sm mt-1">Vincule lançamentos existentes pelo campo "Safra" na tela de lançamentos.</p>
+          <p>Nenhum lançamento ainda.</p>
+          <p className="text-sm mt-1">Clique em "+ Novo Lançamento" para registrar despesas ou receitas.</p>
         </div>
       ) : (
         <table className="w-full text-sm">
@@ -204,6 +225,7 @@ function TabLancamentos({ safraId }: { safraId: number }) {
           </tbody>
         </table>
       )}
+    </div>
     </div>
   );
 }
@@ -483,6 +505,169 @@ function ModalColheita({ safraId, onClose, onSaved }: {
 
 // ─── Pagina Principal ────────────────────────────────────────────────────────
 
+
+// ─── Modal Novo Lançamento ───────────────────────────────────────────────────
+
+function ModalNovoLancamento({ safraId, imovelId, onClose, onSaved }: {
+  safraId: number; imovelId: number; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    descricao: '',
+    valor: '',
+    data: new Date().toISOString().slice(0, 10),
+    tipo: 'despesa',
+  });
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState('');
+
+  async function salvar() {
+    if (!form.descricao || !form.valor || !form.data) {
+      setErro('Preencha descrição, valor e data.');
+      return;
+    }
+    setSaving(true);
+    setErro('');
+    try {
+      // Buscar produtor_id do imovel
+      const resProdutor = await fetch(`${API}/participacoes/${imovelId}`).catch(() => null);
+      let produtor_id = 1; // fallback
+      if (resProdutor && resProdutor.ok) {
+        const participacoes = await resProdutor.json();
+        if (Array.isArray(participacoes) && participacoes.length > 0) {
+          produtor_id = participacoes[0].produtor_id;
+        }
+      }
+
+      const valor = form.tipo === 'despesa'
+        ? -Math.abs(parseFloat(form.valor))
+        : Math.abs(parseFloat(form.valor));
+
+      const res = await fetch(`${API}/lancamentos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          produtor_id,
+          safra_id: safraId,
+          valor,
+          data: form.data,
+          origem: 'agricultura',
+          descricao: form.descricao,
+        }),
+      });
+
+      if (!res.ok) {
+        // Tentar endpoint alternativo
+        const res2 = await fetch(`${API}/produtores/${produtor_id}/lancamentos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            safra_id: safraId,
+            valor,
+            data: form.data,
+            origem: 'agricultura',
+            descricao: form.descricao,
+          }),
+        });
+        if (!res2.ok) {
+          const err = await res2.json().catch(() => ({}));
+          setErro(err.detail ?? 'Erro ao salvar lançamento');
+          return;
+        }
+      }
+      onSaved();
+    } catch(e) {
+      setErro('Erro de conexão');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Novo Lançamento</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {erro && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{erro}</div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+            <div className="flex gap-4">
+              {[
+                { v: 'despesa',  l: 'Despesa',  color: 'text-red-600' },
+                { v: 'receita',  l: 'Receita',  color: 'text-green-600' },
+                { v: 'investimento', l: 'Investimento', color: 'text-blue-600' },
+              ].map(opt => (
+                <label key={opt.v} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" value={opt.v} checked={form.tipo === opt.v}
+                    onChange={e => setForm({ ...form, tipo: e.target.value })}
+                    className="accent-green-600"
+                  />
+                  <span className={`text-sm font-medium ${opt.color}`}>{opt.l}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição *</label>
+            <input
+              value={form.descricao}
+              onChange={e => setForm({ ...form, descricao: e.target.value })}
+              placeholder="Ex: Sementes, Fertilizante, Colheita terceirizada..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$) *</label>
+              <input
+                type="number" step="0.01" min="0.01"
+                value={form.valor}
+                onChange={e => setForm({ ...form, valor: e.target.value })}
+                placeholder="0,00"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data *</label>
+              <input
+                type="date"
+                value={form.data}
+                onChange={e => setForm({ ...form, data: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+          </div>
+
+          <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-500">
+            {form.tipo === 'despesa' && <span>💸 Será registrado como <strong className="text-red-600">-R$ {form.valor || '0,00'}</strong> no LCDPR</span>}
+            {form.tipo === 'receita' && <span>💰 Será registrado como <strong className="text-green-600">+R$ {form.valor || '0,00'}</strong> no LCDPR</span>}
+            {form.tipo === 'investimento' && <span>🏗️ Investimento — depreciável, conta separada no LCDPR</span>}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 px-6 py-4 flex gap-3 justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={salvar} disabled={saving}
+            className="px-6 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg disabled:opacity-50">
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SafraDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -569,7 +754,7 @@ export default function SafraDetailPage() {
       {/* Conteudo */}
       <div className="max-w-6xl mx-auto px-6 py-6">
         {tab === 'dre' && dre && <TabDRE dre={dre} safra={safra} />}
-        {tab === 'lancamentos' && <TabLancamentos safraId={safraId} />}
+        {tab === 'lancamentos' && <TabLancamentos safraId={safraId} imovelId={safra?.imovel_id ?? 1} />}
         {tab === 'colheita' && (
           <TabColheita
             safraId={safraId}
