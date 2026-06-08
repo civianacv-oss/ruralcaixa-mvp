@@ -219,9 +219,8 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     Number(l.valor) >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                   }`}>
-                    {Number(l.valor) >= 0 ? 'receita' : 'despesa'}
+                    {Number(l.valor) >= 0 ? 'Receita' : 'Despesa'}
                   </span>
-                  <span className="ml-2 text-xs text-gray-400">{l.origem}</span>
                 </td>
                 <td className={`px-4 py-3 text-right font-semibold ${
                   Number(l.valor) >= 0 ? 'text-green-700' : 'text-red-600'
