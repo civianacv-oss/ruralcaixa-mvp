@@ -169,12 +169,14 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
 
   if (loading) return <div className="py-8 text-center text-gray-400">Carregando...</div>;
 
+  const [editando, setEditando] = useState<any>(null);
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <button
           onClick={() => setShowModal(true)}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium"
         >
           + Novo Lançamento
         </button>
@@ -185,6 +187,13 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
           imovelId={imovelId}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); loadLancamentos(); }}
+        />
+      )}
+      {editando && (
+        <ModalEditarLancamento
+          lancamento={editando}
+          onClose={() => setEditando(null)}
+          onSaved={() => { setEditando(null); loadLancamentos(); }}
         />
       )}
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -198,27 +207,35 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descricao</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Origem</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Valor</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {lancamentos.map(l => (
+            {lancamentos.map((l: any) => (
               <tr key={l.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-600">{fmtDate(l.data_lancamento)}</td>
+                <td className="px-4 py-3 text-gray-600">{fmtDate(l.data)}</td>
                 <td className="px-4 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    l.tipo === 'receita' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    Number(l.valor) >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                   }`}>
-                    {l.tipo}
+                    {Number(l.valor) >= 0 ? 'receita' : 'despesa'}
                   </span>
+                  <span className="ml-2 text-xs text-gray-400">{l.origem}</span>
                 </td>
-                <td className="px-4 py-3 text-gray-700">{l.descricao}</td>
                 <td className={`px-4 py-3 text-right font-semibold ${
-                  l.tipo === 'receita' ? 'text-green-700' : 'text-red-600'
+                  Number(l.valor) >= 0 ? 'text-green-700' : 'text-red-600'
                 }`}>
                   {fmtBRL(l.valor)}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <button
+                    onClick={() => setEditando(l)}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
+                    Editar
+                  </button>
                 </td>
               </tr>
             ))}
@@ -648,6 +665,108 @@ function ModalNovoLancamento({ safraId, imovelId, onClose, onSaved }: {
             className="px-6 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg disabled:opacity-50">
             {saving ? 'Salvando...' : 'Salvar'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Modal Editar Lançamento ─────────────────────────────────────────────────
+
+function ModalEditarLancamento({ lancamento, onClose, onSaved }: {
+  lancamento: any; onClose: () => void; onSaved: () => void;
+}) {
+  const [valor, setValor] = useState(String(Math.abs(Number(lancamento.valor))));
+  const [data, setData] = useState(lancamento.data?.slice(0, 10) ?? '');
+  const [tipo, setTipo] = useState(Number(lancamento.valor) >= 0 ? 'receita' : 'despesa');
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState('');
+
+  async function salvar() {
+    if (!valor || !data) { setErro('Preencha valor e data.'); return; }
+    setSaving(true); setErro('');
+    try {
+      const valorFinal = tipo === 'despesa' ? -Math.abs(parseFloat(valor)) : Math.abs(parseFloat(valor));
+      const res = await fetch(`${API}/lancamentos/${lancamento.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: valorFinal, data }),
+      });
+      if (!res.ok) {
+        // Tentar PATCH
+        const res2 = await fetch(`${API}/lancamentos/${lancamento.id}/classificacao`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor: valorFinal, data }),
+        });
+        if (!res2.ok) { setErro('Erro ao salvar'); return; }
+      }
+      onSaved();
+    } catch { setErro('Erro de conexão'); }
+    finally { setSaving(false); }
+  }
+
+  async function excluir() {
+    if (!confirm('Excluir este lançamento?')) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/lancamentos/${lancamento.id}`, { method: 'DELETE' });
+      if (res.ok || res.status === 204) { onSaved(); return; }
+      setErro('Erro ao excluir');
+    } catch { setErro('Erro de conexão'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Editar Lançamento</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          {erro && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{erro}</div>}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+            <div className="flex gap-4">
+              {[{v:'despesa',l:'Despesa'},{v:'receita',l:'Receita'}].map(opt => (
+                <label key={opt.v} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" value={opt.v} checked={tipo === opt.v}
+                    onChange={e => setTipo(e.target.value)} className="accent-green-600" />
+                  <span className="text-sm">{opt.l}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
+              <input type="number" step="0.01" value={valor}
+                onChange={e => setValor(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+              <input type="date" value={data} onChange={e => setData(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500" />
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between">
+          <button onClick={excluir} disabled={saving}
+            className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
+            Excluir
+          </button>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button onClick={salvar} disabled={saving}
+              className="px-6 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg disabled:opacity-50">
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
