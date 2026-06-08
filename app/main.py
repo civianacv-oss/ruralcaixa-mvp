@@ -72,7 +72,7 @@ class ClassificarTexto(BaseModel):
 
 class LancamentoCreate(BaseModel):
     produtor_id: int
-    conta_codigo: str
+    conta_codigo: str = "4.1"
     tipo: str
     descricao: str
     valor: float
@@ -81,6 +81,7 @@ class LancamentoCreate(BaseModel):
     confirmado: bool = True
     atividade: str = "rural"
     perc_participacao: float = 100.0
+    safra_id: Optional[int] = None
 
 class ProdutorCreate(BaseModel):
     nome: str
@@ -255,8 +256,8 @@ def criar_lancamento(data: LancamentoCreate):
         valor_bruto = data.valor
         valor_liquido = round(data.valor * data.perc_participacao / 100, 2)
         result = conn.execute(text("""
-            INSERT INTO lancamentos (produtor_id, conta_codigo, tipo, descricao, valor, valor_bruto, data_lancamento, origem, confirmado, atividade, perc_participacao)
-            VALUES (:pid, :conta, :tipo, :desc, :valor, :valor_bruto, :data, :origem, :confirmado, :atividade, :perc)
+            INSERT INTO lancamentos (produtor_id, conta_codigo, tipo, descricao, valor, valor_bruto, data_lancamento, origem, confirmado, atividade, perc_participacao, safra_id)
+            VALUES (:pid, :conta, :tipo, :desc, :valor, :valor_bruto, :data, :origem, :confirmado, :atividade, :perc, :safra_id)
             RETURNING id
         """), {
             "pid": data.produtor_id,
@@ -270,6 +271,7 @@ def criar_lancamento(data: LancamentoCreate):
             "confirmado": data.confirmado,
             "atividade": data.atividade,
             "perc": data.perc_participacao,
+            "safra_id": data.safra_id,
         })
         conn.commit()
         return {"id": result.fetchone()[0]}

@@ -538,41 +538,35 @@ function ModalNovoLancamento({ safraId, imovelId, onClose, onSaved }: {
         }
       }
 
-      const valor = form.tipo === 'despesa'
-        ? -Math.abs(parseFloat(form.valor))
-        : Math.abs(parseFloat(form.valor));
+      const valorAbs = Math.abs(parseFloat(form.valor));
+      const valorFinal = form.tipo === 'despesa' ? -valorAbs : valorAbs;
+
+      // Conta LCDPR por tipo
+      const contaCodigo = form.tipo === 'despesa' ? '4.1'
+        : form.tipo === 'receita' ? '1.1'
+        : '5.3'; // investimento
 
       const res = await fetch(`${API}/lancamentos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           produtor_id,
-          safra_id: safraId,
-          valor,
-          data: form.data,
-          origem: 'agricultura',
+          conta_codigo: contaCodigo,
+          tipo: form.tipo,
           descricao: form.descricao,
+          valor: valorFinal,
+          data_lancamento: form.data,
+          origem: 'agricultura',
+          confirmado: true,
+          atividade: 'rural',
+          safra_id: safraId,
         }),
       });
 
       if (!res.ok) {
-        // Tentar endpoint alternativo
-        const res2 = await fetch(`${API}/produtores/${produtor_id}/lancamentos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            safra_id: safraId,
-            valor,
-            data: form.data,
-            origem: 'agricultura',
-            descricao: form.descricao,
-          }),
-        });
-        if (!res2.ok) {
-          const err = await res2.json().catch(() => ({}));
-          setErro(err.detail ?? 'Erro ao salvar lançamento');
-          return;
-        }
+        const err = await res.json().catch(() => ({}));
+        setErro(err.detail ?? `Erro ao salvar: ${res.status}`);
+        return;
       }
       onSaved();
     } catch(e) {
