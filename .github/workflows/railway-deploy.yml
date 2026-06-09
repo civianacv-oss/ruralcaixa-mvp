@@ -13,7 +13,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy to Railway
-        uses: bervProject/railway-deploy@main
+        uses: railwayapp/nixpacks-action@v1
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         with:
-          railway_token: ${{ secrets.RAILWAY_API_TOKEN }}
-          service: ruralcaixa-mvp
+          args: deploy --service ruralcaixa-mvp --environment production
