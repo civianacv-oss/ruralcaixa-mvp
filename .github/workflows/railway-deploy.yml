@@ -9,24 +9,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Railway deploy via GraphQL API
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://backboard.railway.com/graphql/v2 \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "query": "mutation { environmentTriggersDeploy(input: { environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", projectId: \"${{ secrets.RAILWAY_PROJECT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\" } ) }"
-            }')
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -1)
-          echo "HTTP Status: $HTTP_CODE"
-          echo "Response: $BODY"
-          if echo "$BODY" | grep -q '"errors"'; then
-            echo "GraphQL error detected"
-            exit 1
-          fi
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "HTTP error: $HTTP_CODE"
-            exit 1
-          fi
-          echo "Deploy disparado com sucesso na Railway!"
+          railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --detach
+          echo "Deploy enviado para o Railway com sucesso!"
