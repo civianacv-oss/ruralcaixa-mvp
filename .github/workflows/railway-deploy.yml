@@ -9,20 +9,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Railway CLI
+      - name: Trigger Railway Redeploy via API
         run: |
-          curl -fsSL https://railway.com/install.sh | sh || true
-          echo "$HOME/.railway/bin" >> $GITHUB_PATH
-
-      - name: Verify Railway CLI
-        run: ~/.railway/bin/railway --version
-
-      - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-        run: |
-          ~/.railway/bin/railway up --detach
-          echo "Deploy enviado com sucesso!"
+          RESPONSE=$(curl -s -X POST https://backboard.railway.com/graphql/v2 \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "mutation { serviceInstanceRedeploy(environmentId: \"${{ secrets.RAILWAY_ENVIRONMENT_ID }}\", serviceId: \"${{ secrets.RAILWAY_SERVICE_ID }}\" ) }"
+            }')
+          echo "Response: $RESPONSE"
+          if echo "$RESPONSE" | grep -q '"errors"'; then
+            echo "Erro na API do Railway"
+            exit 1
+          fi
+          echo "Redeploy disparado com sucesso!"
