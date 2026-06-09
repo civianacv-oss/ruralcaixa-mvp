@@ -169,35 +169,46 @@ class LancamentoUpdate(BaseModel):
 
 @app.put("/lancamentos/{lancamento_id}")
 def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
-    from app.db import engine
-    from sqlalchemy import text
-    with engine.connect() as conn:
+    import psycopg2
+    import os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
         fields = []
-        params = {"lid": lancamento_id}
+        vals = []
         if data.valor is not None:
-            fields.append("valor = :valor")
-            params["valor"] = data.valor
+            fields.append("valor = %s")
+            vals.append(data.valor)
         if data.data is not None:
-            fields.append("data = :data")
-            params["data"] = data.data
+            fields.append("data = %s")
+            vals.append(data.data)
         if not fields:
             raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
-        conn.execute(text(f"""
-            UPDATE lancamentos SET {', '.join(fields)}
-            WHERE id = :lid::uuid
-        """), params)
+        vals.append(lancamento_id)
+        cur.execute(
+            f"UPDATE lancamentos SET {', '.join(fields)} WHERE id = %s::uuid",
+            tuple(vals)
+        )
         conn.commit()
         return {"ok": True}
+    finally:
+        cur.close()
+        conn.close()
 
 @app.delete("/lancamentos/{lancamento_id}", status_code=204)
 def deletar_lancamento(lancamento_id: str):
-    from app.db import engine
-    from sqlalchemy import text
-    with engine.connect() as conn:
-        conn.execute(text(
-            "DELETE FROM lancamentos WHERE id = :lid::uuid"
-        ), {"lid": lancamento_id})
+    import psycopg2
+    import os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM lancamentos WHERE id = %s::uuid", (lancamento_id,))
         conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 
 
 
