@@ -206,7 +206,7 @@ export default function Dashboard() {
             <p style={{margin:0,fontSize:13,color:"#7a8a6a"}}>Visão geral da sua operação agropecuária</p>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-            <a href="/ovino" style={{
+            <a href="/lancamentos" style={{
               background:"#3a6a2a",color:"#fff",border:"none",
               padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:600,
               textDecoration:"none",display:"flex",alignItems:"center",gap:6,cursor:"pointer",
@@ -338,7 +338,7 @@ export default function Dashboard() {
                 {label:"Nova Propriedade",   icon:"📍", href:"/cadastro"},
                 {label:"Cadastrar Animal",   icon:"🐑", href:"/rebanho"},
                 {label:"Nova Safra",          icon:"🌾", href:"/agricultura"},
-                {label:"Lançamento Financeiro", icon:"💰", href:"#novo"},
+                {label:"Lançamento Financeiro", icon:"💰", href:"/lancamentos"},
               ].map(item => (
                 <a key={item.label} href={item.href} 
                   style={{
