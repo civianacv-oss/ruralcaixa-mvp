@@ -9,15 +9,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
       - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-        run: |
-          railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --detach
-          echo "Deploy enviado para o Railway com sucesso!"
+        uses: bervProject/railway-deploy@main
+        with:
+          railway_token: ${{ secrets.RAILWAY_API_TOKEN }}
+          service: ruralcaixa-mvp
