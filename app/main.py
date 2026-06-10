@@ -303,22 +303,40 @@ def classificar_texto(data: ClassificarTexto):
 def criar_lancamento(data: LancamentoCreate):
     from app.db import engine
     from sqlalchemy import text
+    import uuid as _uuid
     with engine.connect() as conn:
         # Usar data real ou data_lancamento legado
         data_real = data.data or data.data_lancamento or None
-        result = conn.execute(text("""
-            INSERT INTO lancamentos (produtor_id, valor, data, origem, safra_id)
-            VALUES (:pid, :valor, :data, :origem, :safra_id)
-            RETURNING id
+        # Determinar tipo e atividade para subconta
+        tipo_raw = (data.tipo or "despesa").upper()
+        nome_sub = data.descricao or data.origem or "Outros"
+        atividade_sub = "RURAL" if (data.atividade or "rural").upper() == "RURAL" else "INVESTIMENTO"
+        # Buscar ou criar subconta
+        sub = conn.execute(
+            text("SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) AND tipo = :tipo LIMIT 1"),
+            {"nome": f"%{nome_sub[:20]}%", "tipo": tipo_raw}
+        ).fetchone()
+        if not sub:
+            sub_id = str(_uuid.uuid4())
+            conn.execute(
+                text("INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (:id, :nome, :tipo, :atv)"),
+                {"id": sub_id, "nome": nome_sub[:100], "tipo": tipo_raw, "atv": atividade_sub}
+            )
+        else:
+            sub_id = sub[0]
+        lanc_id = str(_uuid.uuid4())
+        conn.execute(text("""
+            INSERT INTO lancamentos (id, produtor_id, subconta_id, valor, data, documento_url)
+            VALUES (:id, :pid, :sub, :valor, :data, NULL)
         """), {
+            "id": lanc_id,
             "pid": data.produtor_id,
-            "valor": data.valor,
+            "sub": sub_id,
+            "valor": abs(float(data.valor)),
             "data": data_real,
-            "origem": data.origem,
-            "safra_id": data.safra_id,
         })
         conn.commit()
-        return {"id": result.fetchone()[0]}
+        return {"id": lanc_id, "subconta_id": sub_id}
 
 @app.get("/wapp/inbound")
 async def verify_webhook(
