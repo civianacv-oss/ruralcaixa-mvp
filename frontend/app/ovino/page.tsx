@@ -338,14 +338,23 @@ export default function OvinoDashboard() {
   );
 
   return (
-    <div style={{ padding: "16px", maxWidth: 900, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
-
+    <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
-      <div style={{ marginBottom: 20, borderBottom: "2px solid #16a34a", paddingBottom: 12 }}>
-        <div style={{display:"flex",gap:8}}><a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"white",fontSize:13,fontWeight:600,textDecoration:"none",borderRadius:8,padding:"6px 14px"}}>🏠 Painel Principal</a><button onClick={() => window.history.back()} style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",borderRadius:8,padding:"6px 14px"}}>← Voltar</button></div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#15803d", margin: 0 }}>🐑 Ovino de Corte</h1>
-        <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 13 }}>Fazenda Boa Esperança — Imóvel #{IMOVEL_ID}</p>
+      <div style={{ background: "#15803d", color: "white", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"white",fontSize:13,fontWeight:600,textDecoration:"none",borderRadius:8,padding:"6px 14px"}}>🏠 Painel Principal</a>
+          <button onClick={() => window.history.back()} style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",borderRadius:8,padding:"6px 14px"}}>← Voltar</button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 28 }}>🐑</span>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>Ovino de Corte</div>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>Fazenda Boa Esperança — Imóvel #{IMOVEL_ID}</div>
+          </div>
+        </div>
+        <div style={{ width: 160 }} />
       </div>
+      <div style={{ padding: "16px", maxWidth: 900, margin: "0 auto" }}>
 
       {/* KPI Cards */}
       {dashboard && (
@@ -1353,6 +1362,7 @@ export default function OvinoDashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

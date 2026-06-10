@@ -57,10 +57,10 @@ const ESPECIES: EspecieCard[] = [
     href: "/caprino",
     color: "#7a5030",
     bgColor: "#fdf0ed",
-    fetchUrl: "",
+    fetchUrl: `/caprino/animais?imovel_id=${IMOVEL_ID}&status=ativo`,
     countLabel: "animais ativos",
-    subLabel: "Em breve",
-    disponivel: false,
+    subLabel: "Corte e Leite",
+    disponivel: true,
   },
   {
     label: "Suínos",
