@@ -126,9 +126,7 @@ export default function AgriculturaPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div style={{padding:"16px 24px 0"}}>
-        <a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",textDecoration:"none",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-          ← Painel Principal
-        </a>
+        <div style={{display:"flex",gap:8}}><a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",textDecoration:"none"}}>🏠 Painel Principal</a><button onClick={() => window.history.back()} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",cursor:"pointer"}}>← Voltar</button></div>
       </div>
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">

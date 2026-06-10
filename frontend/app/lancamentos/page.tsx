@@ -344,9 +344,8 @@ export default function LancamentosPage() {
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e4dc", padding: "14px 28px", display: "flex", alignItems: "center", gap: 12 }}>
-        <a href="/" style={{ color: "#5a8a3a", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
-          <IconBack /> Painel Principal
-        </a>
+        <a href="/" style={{ color: "#5a8a3a", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#fff", borderRadius: 8, border: "1px solid #d0e8c0" }}>🏠 Painel Principal</a>
+        <button onClick={() => window.history.back()} style={{ color:"#5a8a3a", fontSize:13, display:"flex", alignItems:"center", gap:4, background:"#fff", border:"1px solid #d0e8c0", cursor:"pointer", fontWeight:600, borderRadius:8, padding:"4px 10px" }}>← Voltar</button>
         <span style={{ color: "#ddd" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1a2e1a" }}>Lançamentos Financeiros</h1>
         <button

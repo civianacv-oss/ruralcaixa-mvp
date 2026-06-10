@@ -342,7 +342,7 @@ export default function OvinoDashboard() {
 
       {/* Header */}
       <div style={{ marginBottom: 20, borderBottom: "2px solid #16a34a", paddingBottom: 12 }}>
-        <a href="/" style={{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"white", fontSize:13, fontWeight:600, textDecoration:"none", borderRadius:8, padding:"6px 14px" }}>← Painel Principal</a>
+        <div style={{display:"flex",gap:8}}><a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"white",fontSize:13,fontWeight:600,textDecoration:"none",borderRadius:8,padding:"6px 14px"}}>🏠 Painel Principal</a><button onClick={() => window.history.back()} style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"white",fontSize:13,fontWeight:600,cursor:"pointer",borderRadius:8,padding:"6px 14px"}}>← Voltar</button></div>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: "#15803d", margin: 0 }}>🐐 Caprino de Corte</h1>
         <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 13 }}>Fazenda Boa Esperança — Imóvel #{IMOVEL_ID}</p>
       </div>
