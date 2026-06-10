@@ -59,6 +59,19 @@ const IconBack = () => (
     <polyline points="15 18 9 12 15 6"/>
   </svg>
 );
+const IconUpload = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+);
+const IconDoc = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+  </svg>
+);
 
 function ModalLancamento({
   titulo,
@@ -212,6 +225,9 @@ export default function LancamentosPage() {
   const [formEditar, setFormEditar] = useState<FormState>(FORM_VAZIO);
   const [savingEditar, setSavingEditar] = useState(false);
 
+  // Upload documento
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+
   const [msg, setMsg] = useState<{ text: string; tipo: "ok" | "err" } | null>(null);
 
   function showMsg(text: string, tipo: "ok" | "err" = "ok") {
@@ -299,6 +315,29 @@ export default function LancamentosPage() {
         showMsg("Erro ao atualizar.", "err");
       }
     } finally { setSavingEditar(false); }
+  }
+
+  // ── Upload documento ─────────────────────────────────────────
+  async function handleUpload(lancamentoId: string, file: File) {
+    setUploadingId(lancamentoId);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API}/lancamentos/${lancamentoId}/documento`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        showMsg("Documento vinculado com sucesso!");
+        carregarLancamentos(filtroMes || undefined);
+      } else {
+        showMsg("Erro ao enviar documento.", "err");
+      }
+    } catch {
+      showMsg("Erro de conexão ao enviar documento.", "err");
+    } finally {
+      setUploadingId(null);
+    }
   }
 
   return (
@@ -429,12 +468,53 @@ export default function LancamentosPage() {
                     <td style={{ padding: "11px 16px", fontSize: 12, color: "#7a8a6a" }}>
                       {(l.atividade || "rural").toUpperCase()}
                     </td>
-                    <td style={{ padding: "11px 16px" }}>
-                      {l.documento_url ? (
-                        <a href={l.documento_url} target="_blank" rel="noreferrer" style={{ color: "#3a6a2a", fontSize: 12 }}>📎 Ver</a>
-                      ) : (
-                        <span style={{ color: "#ccc", fontSize: 12 }}>—</span>
-                      )}
+                    {/* Coluna Doc: link se existir + botão upload */}
+                    <td style={{ padding: "11px 16px", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {l.documento_url ? (
+                          <a
+                            href={l.documento_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Ver documento"
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              color: "#3a6a2a", fontSize: 12, fontWeight: 600,
+                              textDecoration: "none", background: "#f0faf0",
+                              border: "1.5px solid #c8ddb8", borderRadius: 6, padding: "3px 8px",
+                            }}
+                          >
+                            <IconDoc /> Ver
+                          </a>
+                        ) : (
+                          <span style={{ color: "#ccc", fontSize: 12 }}>—</span>
+                        )}
+                        {/* Botão upload: input file oculto */}
+                        <label
+                          title={uploadingId === String(l.id) ? "Enviando..." : "Anexar documento"}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            color: uploadingId === String(l.id) ? "#aaa" : "#7a8a6a",
+                            fontSize: 12, cursor: uploadingId === String(l.id) ? "not-allowed" : "pointer",
+                            background: "#f8f6f2", border: "1.5px solid #e0dbd0",
+                            borderRadius: 6, padding: "3px 8px",
+                          }}
+                        >
+                          <IconUpload />
+                          {uploadingId === String(l.id) ? "..." : ""}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.webp"
+                            style={{ display: "none" }}
+                            disabled={uploadingId !== null}
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (file) handleUpload(String(l.id), file);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                     </td>
                     {/* Botão Editar */}
                     <td style={{ padding: "11px 12px", textAlign: "right" }}>
