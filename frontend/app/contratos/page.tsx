@@ -246,7 +246,7 @@ export default function ContratosPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "'DM Sans',system-ui,sans-serif" }}>
       <header style={{ background: "#1a2e1a", color: "#e8e0d0", padding: "16px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-        <a href="/" style={{ color: "#7ac05a", textDecoration: "none", fontSize: 13, fontWeight: 600 }}>← Painel Principal</a>
+        <a href="/" style={{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"white", fontSize:13, fontWeight:600, textDecoration:"none", borderRadius:8, padding:"6px 14px" }}>← Painel Principal</a>
         <div style={{ width: 1, height: 20, background: "#2d4a2d" }} />
         <div>
           <div style={{ fontWeight: 700, fontSize: 18 }}>Contratos Rurais</div>

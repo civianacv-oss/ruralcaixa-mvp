@@ -327,7 +327,7 @@ export default function BovinoPage() {
       {/* Header */}
       <div style={{ background: green, color: "white", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <a href="/" style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, textDecoration: "none" }}>← Painel Principal</a>
+          <a href="/" style={{ display:"inline-flex", alignItems:"center", gap:6, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"white", fontSize:13, fontWeight:600, textDecoration:"none", borderRadius:8, padding:"6px 14px", backdropFilter:"blur(4px)" }}>← Painel Principal</a>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 28 }}>🐄</span>
