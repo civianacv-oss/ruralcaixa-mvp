@@ -59,6 +59,47 @@ type AbateIn = {
   comprador: string;
 };
 
+type AbateRecord = {
+  id: number;
+  data: string;
+  tipo: string;
+  peso_vivo_kg: number | null;
+  peso_carcaca_kg: number | null;
+  preco_arroba: number | null;
+  valor_total: number | null;
+  comprador: string | null;
+  brinco: string;
+  animal_nome: string | null;
+  categoria: string;
+};
+
+type SanitarioRecord = {
+  id: number;
+  tipo: string;
+  produto: string;
+  dose_ml: number | null;
+  via_aplicacao: string | null;
+  data_aplicacao: string;
+  data_reforco: string | null;
+  responsavel: string | null;
+  custo_total: number | null;
+  brinco: string | null;
+  animal_nome: string | null;
+  lote_nome: string | null;
+};
+
+type ReproducaoRecord = {
+  id: number;
+  metodo: string;
+  data_cobertura: string;
+  data_parto_prev: string | null;
+  data_parto_real: string | null;
+  resultado: string | null;
+  dias_para_parto: number | null;
+  brinco: string;
+  femea_nome: string | null;
+};
+
 const TABS = ["Rebanho", "Lotes", "Pesagens", "Leite", "Sanitário", "Reprodução", "Abates"] as const;
 type Tab = typeof TABS[number];
 
@@ -94,7 +135,34 @@ export default function BovinoPage() {
   const [pesagemPeso, setPesagemPeso] = useState("");
   const [pesagemMotivo, setPesagemMotivo] = useState("rotina");
 
+  // Sanitário
+  const [sanitarios, setSanitarios] = useState<SanitarioRecord[]>([]);
+  const [proxReforcos, setProxReforcos] = useState<SanitarioRecord[]>([]);
+  const [showSanitario, setShowSanitario] = useState(false);
+  const [sanTipo, setSanTipo] = useState("vacinacao");
+  const [sanProduto, setSanProduto] = useState("");
+  const [sanAnimalId, setSanAnimalId] = useState("");
+  const [sanLoteId, setSanLoteId] = useState("");
+  const [sanDose, setSanDose] = useState("");
+  const [sanVia, setSanVia] = useState("intramuscular");
+  const [sanData, setSanData] = useState(new Date().toISOString().split("T")[0]);
+  const [sanReforco, setSanReforco] = useState("");
+  const [sanResponsavel, setSanResponsavel] = useState("");
+  const [sanCusto, setSanCusto] = useState("");
+  const [msgSan, setMsgSan] = useState("");
+
+  // Reprodução
+  const [prenhas, setPrenhas] = useState<ReproducaoRecord[]>([]);
+  const [showReproducao, setShowReproducao] = useState(false);
+  const [repFemeaId, setRepFemeaId] = useState("");
+  const [repTouroId, setRepTouroId] = useState("");
+  const [repMetodo, setRepMetodo] = useState("monta_natural");
+  const [repData, setRepData] = useState(new Date().toISOString().split("T")[0]);
+  const [repObs, setRepObs] = useState("");
+  const [msgRep, setMsgRep] = useState("");
+
   // Abate
+  const [abates, setAbates] = useState<AbateRecord[]>([]);
   const [showAbate, setShowAbate] = useState(false);
   const [abateAnimalId, setAbateAnimalId] = useState("");
   const [abateData, setAbateData] = useState(new Date().toISOString().split("T")[0]);
@@ -111,16 +179,24 @@ export default function BovinoPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [animRes, lotesRes, racasRes, dashRes] = await Promise.all([
+      const [animRes, lotesRes, racasRes, dashRes, abatesRes, sanRes, reforcoRes, prenhasRes] = await Promise.all([
         fetch(`${API}/bovino/animais/${IMOVEL_ID}?status=ativo`).then(r => r.json()).catch(() => []),
         fetch(`${API}/bovino/lotes/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
         fetch(`${API}/bovino/racas`).then(r => r.json()).catch(() => []),
         fetch(`${API}/bovino/dashboard/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        fetch(`${API}/bovino/abates/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=90`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=30`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/bovino/reproducao/${IMOVEL_ID}/prenhas`).then(r => r.json()).catch(() => []),
       ]);
       setAnimais(Array.isArray(animRes) ? animRes : []);
       setLotes(Array.isArray(lotesRes) ? lotesRes : []);
       setRacas(Array.isArray(racasRes) ? racasRes : []);
       setDashboard(dashRes);
+      setAbates(Array.isArray(abatesRes) ? abatesRes : []);
+      setSanitarios(Array.isArray(sanRes) ? sanRes : []);
+      setProxReforcos(Array.isArray(reforcoRes) ? reforcoRes : []);
+      setPrenhas(Array.isArray(prenhasRes) ? prenhasRes : []);
     } finally {
       setLoading(false);
     }
@@ -184,7 +260,48 @@ export default function BovinoPage() {
       comprador: abateComprador || null,
     };
     const res = await fetch(`${API}/bovino/abates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (res.ok) { setShowAbate(false); loadData(); alert("Abate/venda registrado!"); }
+    if (res.ok) { setShowAbate(false); loadData(); }
+  }
+
+  async function registrarSanitario() {
+    if (!sanProduto || !sanTipo) { setMsgSan("Preencha tipo e produto."); return; }
+    if (!sanAnimalId && !sanLoteId) { setMsgSan("Selecione um animal ou lote."); return; }
+    const body = {
+      animal_id: sanAnimalId ? Number(sanAnimalId) : null,
+      lote_id: sanLoteId ? Number(sanLoteId) : null,
+      tipo: sanTipo, produto: sanProduto,
+      dose_ml: sanDose ? Number(sanDose) : null,
+      via_aplicacao: sanVia || null,
+      data_aplicacao: sanData,
+      data_reforco: sanReforco || null,
+      responsavel: sanResponsavel || null,
+      custo_total: sanCusto ? Number(sanCusto) : null,
+    };
+    const res = await fetch(`${API}/bovino/sanitario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) {
+      setMsgSan("✅ Registro salvo!");
+      setSanProduto(""); setSanDose(""); setSanReforco(""); setSanResponsavel(""); setSanCusto("");
+      setShowSanitario(false);
+      loadData();
+    } else { setMsgSan("Erro ao salvar."); }
+  }
+
+  async function registrarReproducao() {
+    if (!repFemeaId || !repMetodo) { setMsgRep("Selecione a fêmea e o método."); return; }
+    const body = {
+      femea_id: Number(repFemeaId),
+      touro_id: repTouroId ? Number(repTouroId) : null,
+      metodo: repMetodo,
+      data_cobertura: repData,
+      observacoes: repObs || null,
+    };
+    const res = await fetch(`${API}/bovino/reproducao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (res.ok) {
+      setMsgRep("✅ Cobertura registrada!");
+      setRepFemeaId(""); setRepTouroId(""); setRepObs("");
+      setShowReproducao(false);
+      loadData();
+    } else { setMsgRep("Erro ao salvar."); }
   }
 
   const animaisFiltrados = aptidaoFiltro === "todos" ? animais : animais.filter(a => a.aptidao_manejo === aptidaoFiltro);
@@ -454,25 +571,157 @@ export default function BovinoPage() {
 
         {/* ── ABA SANITÁRIO ── */}
         {tab === "Sanitário" && (
-          <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-            <h3 style={{ margin: "0 0 8px", color: green }}>💉 Sanitário</h3>
-            <p style={{ color: "#888", fontSize: 13 }}>Controle de vacinações, vermifugações e tratamentos.</p>
-            {(dashboard?.alertas?.reforcos_sanitarios ?? 0) > 0 && (
-              <div style={{ background: "#fff3e0", border: "1px solid #ff9800", borderRadius: 8, padding: 12, marginTop: 12 }}>
-                <strong style={{ color: "#e65100" }}>⚠️ {dashboard?.alertas?.reforcos_sanitarios} reforço(s) sanitário(s) nos próximos 30 dias</strong>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h3 style={{ margin: 0, color: green }}>💉 Controle Sanitário</h3>
+              <button onClick={() => setShowSanitario(!showSanitario)}
+                style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                + Registrar Vacinação / Tratamento
+              </button>
+            </div>
+
+            {showSanitario && (
+              <div style={{ background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.1)", border: `2px solid ${accent}` }}>
+                <h4 style={{ margin: "0 0 12px", color: green }}>Novo Registro Sanitário</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 12 }}>
+                  {[
+                    { label: "Tipo *", comp: <select value={sanTipo} onChange={e => setSanTipo(e.target.value)} style={inputStyle}><option value="vacinacao">Vacinação</option><option value="vermifugacao">Vermifugação</option><option value="tratamento">Tratamento</option><option value="carrapaticida">Carrapaticida</option><option value="vitamina">Vitamina/Suplemento</option></select> },
+                    { label: "Produto *", comp: <input value={sanProduto} onChange={e => setSanProduto(e.target.value)} placeholder="Nome do produto" style={inputStyle} /> },
+                    { label: "Animal", comp: <select value={sanAnimalId} onChange={e => { setSanAnimalId(e.target.value); if(e.target.value) setSanLoteId(""); }} style={inputStyle}><option value="">Selecione (ou lote)</option>{animais.map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
+                    { label: "Lote (em vez de animal)", comp: <select value={sanLoteId} onChange={e => { setSanLoteId(e.target.value); if(e.target.value) setSanAnimalId(""); }} style={inputStyle}><option value="">Selecione (ou animal)</option>{lotes.map(l => <option key={l.id} value={l.id}>{l.nome}</option>)}</select> },
+                    { label: "Dose (ml)", comp: <input type="number" value={sanDose} onChange={e => setSanDose(e.target.value)} placeholder="ml" style={inputStyle} /> },
+                    { label: "Via", comp: <select value={sanVia} onChange={e => setSanVia(e.target.value)} style={inputStyle}><option value="intramuscular">Intramuscular</option><option value="subcutanea">Subcutânea</option><option value="oral">Oral</option><option value="topica">Tópica</option><option value="intravenosa">Intravenosa</option></select> },
+                    { label: "Data Aplicação *", comp: <input type="date" value={sanData} onChange={e => setSanData(e.target.value)} style={inputStyle} /> },
+                    { label: "Data Reforço", comp: <input type="date" value={sanReforco} onChange={e => setSanReforco(e.target.value)} style={inputStyle} /> },
+                    { label: "Responsável", comp: <input value={sanResponsavel} onChange={e => setSanResponsavel(e.target.value)} placeholder="Nome" style={inputStyle} /> },
+                    { label: "Custo Total (R$)", comp: <input type="number" value={sanCusto} onChange={e => setSanCusto(e.target.value)} placeholder="R$" style={inputStyle} /> },
+                  ].map((f, i) => <div key={i}><div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>{f.label}</div>{f.comp}</div>)}
+                </div>
+                {msgSan && <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 6, background: msgSan.startsWith("✅") ? "#e8f5e9" : "#fce8e8", color: msgSan.startsWith("✅") ? green : "#c00", fontSize: 13 }}>{msgSan}</div>}
+                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                  <button onClick={registrarSanitario} style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 700, cursor: "pointer" }}>Salvar</button>
+                  <button onClick={() => { setShowSanitario(false); setMsgSan(""); }} style={{ background: "#eee", color: "#444", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>Cancelar</button>
+                </div>
               </div>
             )}
+
+            {proxReforcos.length > 0 && (
+              <div style={{ background: "#fff8e1", border: "1px solid #ffc107", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                <strong style={{ color: "#e65100", fontSize: 14 }}>⚠️ Reforços nos próximos 30 dias ({proxReforcos.length})</strong>
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {proxReforcos.map(r => (
+                    <div key={r.id} style={{ fontSize: 13, color: "#555" }}>
+                      <strong>{r.produto}</strong> — {r.brinco || r.lote_nome || "—"} — reforço em {r.data_reforco ? new Date(r.data_reforco).toLocaleDateString("pt-BR") : "—"}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <h4 style={{ margin: "0 0 12px", color: green, fontSize: 14 }}>Histórico (últimos 90 dias)</h4>
+              {sanitarios.length === 0 ? (
+                <p style={{ color: "#999", fontSize: 13, margin: 0 }}>Nenhum registro sanitário nos últimos 90 dias.</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: lightGreen }}>
+                        {["Data", "Tipo", "Produto", "Animal/Lote", "Via", "Dose", "Reforço"].map(h => (
+                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: green, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sanitarios.map((s, i) => (
+                        <tr key={s.id} style={{ background: i % 2 === 0 ? "white" : "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "8px 10px" }}>{new Date(s.data_aplicacao).toLocaleDateString("pt-BR")}</td>
+                          <td style={{ padding: "8px 10px", textTransform: "capitalize" }}>{s.tipo.replace("_", " ")}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{s.produto}</td>
+                          <td style={{ padding: "8px 10px" }}>{s.brinco || s.lote_nome || "—"}</td>
+                          <td style={{ padding: "8px 10px", textTransform: "capitalize" }}>{s.via_aplicacao || "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>{s.dose_ml ? `${s.dose_ml} ml` : "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>{s.data_reforco ? new Date(s.data_reforco).toLocaleDateString("pt-BR") : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* ── ABA REPRODUÇÃO ── */}
         {tab === "Reprodução" && (
-          <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-            <h3 style={{ margin: "0 0 8px", color: green }}>🐮 Reprodução</h3>
-            <p style={{ color: "#888", fontSize: 13 }}>Controle de coberturas, IATF e previsão de partos.</p>
-            {(dashboard?.alertas?.femeas_prenhas ?? 0) > 0 && (
-              <div style={{ background: "#e8f5e9", border: "1px solid #4caf50", borderRadius: 8, padding: 12, marginTop: 12 }}>
-                <strong style={{ color: green }}>🤰 {dashboard?.alertas?.femeas_prenhas} fêmea(s) prenha(s) com parto previsto</strong>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h3 style={{ margin: 0, color: green }}>🐮 Reprodução</h3>
+              <button onClick={() => setShowReproducao(!showReproducao)}
+                style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+                + Registrar Cobertura / IATF
+              </button>
+            </div>
+
+            {showReproducao && (
+              <div style={{ background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.1)", border: `2px solid ${accent}` }}>
+                <h4 style={{ margin: "0 0 12px", color: green }}>Registrar Cobertura / IATF</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 12 }}>
+                  {[
+                    { label: "Fêmea *", comp: <select value={repFemeaId} onChange={e => setRepFemeaId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{animais.filter(a => a.sexo === "F").map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
+                    { label: "Método *", comp: <select value={repMetodo} onChange={e => setRepMetodo(e.target.value)} style={inputStyle}><option value="monta_natural">Monta Natural</option><option value="iatf">IATF</option><option value="ia">IA (Inseminação Artificial)</option><option value="te">TE (Transferência de Embrião)</option></select> },
+                    { label: "Touro / Sêmen", comp: <select value={repTouroId} onChange={e => setRepTouroId(e.target.value)} style={inputStyle}><option value="">Selecione (opcional)</option>{animais.filter(a => a.sexo === "M").map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
+                    { label: "Data Cobertura *", comp: <input type="date" value={repData} onChange={e => setRepData(e.target.value)} style={inputStyle} /> },
+                    { label: "Observações", comp: <input value={repObs} onChange={e => setRepObs(e.target.value)} placeholder="Opcional" style={inputStyle} /> },
+                  ].map((f, i) => <div key={i}><div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>{f.label}</div>{f.comp}</div>)}
+                </div>
+                {msgRep && <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 6, background: msgRep.startsWith("✅") ? "#e8f5e9" : "#fce8e8", color: msgRep.startsWith("✅") ? green : "#c00", fontSize: 13 }}>{msgRep}</div>}
+                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                  <button onClick={registrarReproducao} style={{ background: green, color: "white", border: "none", borderRadius: 8, padding: "10px 24px", fontWeight: 700, cursor: "pointer" }}>Salvar</button>
+                  <button onClick={() => { setShowReproducao(false); setMsgRep(""); }} style={{ background: "#eee", color: "#444", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {prenhas.length > 0 && (
+              <div style={{ background: "white", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+                <h4 style={{ margin: "0 0 12px", color: green, fontSize: 14 }}>🤰 Fêmeas Prenhas ({prenhas.length})</h4>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: lightGreen }}>
+                        {["Brinco", "Nome", "Método", "Cobertura", "Previsão Parto", "Dias Restantes"].map(h => (
+                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: green, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {prenhas.map((r, i) => (
+                        <tr key={r.id} style={{ background: i % 2 === 0 ? "white" : "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{r.brinco}</td>
+                          <td style={{ padding: "8px 10px" }}>{r.femea_nome || "—"}</td>
+                          <td style={{ padding: "8px 10px", textTransform: "uppercase", fontSize: 11 }}>{r.metodo.replace("_", " ")}</td>
+                          <td style={{ padding: "8px 10px" }}>{new Date(r.data_cobertura).toLocaleDateString("pt-BR")}</td>
+                          <td style={{ padding: "8px 10px" }}>{r.data_parto_prev ? new Date(r.data_parto_prev).toLocaleDateString("pt-BR") : "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>
+                            {r.dias_para_parto != null ? (
+                              <span style={{ fontWeight: 700, color: r.dias_para_parto <= 14 ? "#dc2626" : r.dias_para_parto <= 30 ? "#ea580c" : green }}>
+                                {r.dias_para_parto}d
+                              </span>
+                            ) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {prenhas.length === 0 && (
+              <div style={{ background: "white", borderRadius: 12, padding: 24, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", textAlign: "center" }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🐮</div>
+                <p style={{ color: "#999", fontSize: 13, margin: 0 }}>Nenhuma fêmea prenha registrada. Use o botão acima para registrar coberturas.</p>
               </div>
             )}
           </div>
@@ -511,7 +760,36 @@ export default function BovinoPage() {
               </div>
             )}
             <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-              <p style={{ color: "#999", fontSize: 13, margin: 0 }}>Histórico de abates e vendas aparecerá aqui.</p>
+              <h4 style={{ margin: "0 0 12px", color: green, fontSize: 14 }}>Histórico (últimos 90 dias)</h4>
+              {abates.length === 0 ? (
+                <p style={{ color: "#999", fontSize: 13, margin: 0 }}>Nenhum abate ou venda registrado nos últimos 90 dias.</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: lightGreen }}>
+                        {["Data", "Brinco", "Tipo", "Peso Vivo", "Peso Carcaça", "R$/@", "Total", "Comprador"].map(h => (
+                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: green, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {abates.map((ab, i) => (
+                        <tr key={ab.id} style={{ background: i % 2 === 0 ? "white" : "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "8px 10px" }}>{new Date(ab.data).toLocaleDateString("pt-BR")}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{ab.brinco}</td>
+                          <td style={{ padding: "8px 10px", fontSize: 11, textTransform: "uppercase" }}>{ab.tipo.replace(/_/g, " ")}</td>
+                          <td style={{ padding: "8px 10px" }}>{ab.peso_vivo_kg ? `${ab.peso_vivo_kg} kg` : "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>{ab.peso_carcaca_kg ? `${ab.peso_carcaca_kg} kg` : "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>{ab.preco_arroba ? `R$ ${Number(ab.preco_arroba).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: green }}>{ab.valor_total ? `R$ ${Number(ab.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
+                          <td style={{ padding: "8px 10px" }}>{ab.comprador || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
