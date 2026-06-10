@@ -365,6 +365,37 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
 def root():
     return {"status": "Rural Caixa PF online", "version": "2.0"}
 
+@app.get("/regras-classificacao")
+def listar_regras_classificacao():
+    """Lista todas as regras de classificação aprendidas."""
+    import psycopg2, os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT r.palavra_chave, s.nome as subconta, s.tipo, s.atividade_tipo,
+                   r.criado_em, r.atualizado_em
+            FROM regras_classificacao r
+            LEFT JOIN subcontas s ON s.id = r.subconta_id
+            ORDER BY r.atualizado_em DESC
+        """)
+        rows = cur.fetchall()
+        return [
+            {
+                "palavra_chave": row[0],
+                "subconta": row[1],
+                "tipo": row[2],
+                "atividade": row[3],
+                "criado_em": row[4].isoformat() if row[4] else None,
+                "atualizado_em": row[5].isoformat() if row[5] else None,
+            }
+            for row in rows
+        ]
+    finally:
+        cur.close()
+        conn.close()
+
 @app.post("/setup-aprendizado")
 def setup_aprendizado():
     """Cria as tabelas de aprendizado se não existirem. Chamar uma vez após deploy."""
