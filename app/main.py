@@ -1311,28 +1311,43 @@ def get_nota_pdf(nota_id: int):
 from fastapi import UploadFile, File
 
 @app.post("/lancamentos/{lancamento_id}/documento")
-async def upload_documento(lancamento_id: int, file: UploadFile = File(...)):
-    from app.db import engine, vincular_documento
+async def upload_documento(lancamento_id: str, file: UploadFile = File(...)):
+    import psycopg2, os
     from app.services.r2_service import upload_documento as r2_upload
-    from sqlalchemy import text
+    DB_URL = os.getenv("DATABASE_URL")
     conteudo = await file.read()
     mime_type = file.content_type or "application/octet-stream"
-    with engine.connect() as conn:
-        lanc = conn.execute(text("SELECT produtor_id FROM lancamentos WHERE id=:id"), {"id": lancamento_id}).fetchone()
-        if not lanc: raise HTTPException(404, "Lancamento nao encontrado")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT produtor_id FROM lancamentos WHERE id = %s::uuid", (lancamento_id,))
+        lanc = cur.fetchone()
+        if not lanc:
+            raise HTTPException(404, "Lancamento nao encontrado")
         produtor_id = lanc[0]
-    url = r2_upload(conteudo, mime_type, produtor_id, lancamento_id, file.filename)
-    vincular_documento(lancamento_id, url)
-    return {"status": "ok", "documento_url": url, "arquivo": file.filename}
+        url = r2_upload(conteudo, mime_type, produtor_id, lancamento_id, file.filename)
+        cur.execute("UPDATE lancamentos SET documento_url = %s WHERE id = %s::uuid", (url, lancamento_id))
+        conn.commit()
+        return {"status": "ok", "documento_url": url, "arquivo": file.filename}
+    finally:
+        cur.close()
+        conn.close()
 
 @app.get("/lancamentos/{lancamento_id}/documento")
-def get_documento(lancamento_id: int):
-    from app.db import engine
-    from sqlalchemy import text
-    with engine.connect() as conn:
-        row = conn.execute(text("SELECT documento_url, descricao FROM lancamentos WHERE id=:id"), {"id": lancamento_id}).fetchone()
-        if not row: raise HTTPException(404, "Lancamento nao encontrado")
+def get_documento(lancamento_id: str):
+    import psycopg2, os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT documento_url, descricao FROM lancamentos WHERE id = %s::uuid", (lancamento_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Lancamento nao encontrado")
         return {"lancamento_id": lancamento_id, "descricao": row[1], "documento_url": row[0]}
+    finally:
+        cur.close()
+        conn.close()
 # r2-deploy
 # deploy-r2-v2
 
