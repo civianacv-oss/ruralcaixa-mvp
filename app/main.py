@@ -26,6 +26,13 @@ except Exception as e:
     print(f"OVINO ROUTER FAILED: {e}")
     ovino_router = None
 
+try:
+    from app.routers.caprino import router as caprino_router
+    print("CAPRINO ROUTER LOADED OK")
+except Exception as e:
+    print(f"CAPRINO ROUTER FAILED: {e}")
+    caprino_router = None
+
 load_dotenv()
 
 app = FastAPI(title="Rural Caixa PF")
@@ -38,6 +45,7 @@ GRAPH        = "https://graph.facebook.com/v23.0"
 
 sessoes = {}
 if ovino_router: app.include_router(ovino_router)
+if caprino_router: app.include_router(caprino_router)
 
 # Cron alertas ovinos
 try:
@@ -46,6 +54,14 @@ try:
 except Exception as e:
     print(f"OVINO CRON FAILED: {e}")
     processar_alertas_ovinos = None
+
+# Cron alertas caprinos
+try:
+    from app.services.caprino_cron import processar_alertas_caprinos
+    print("CAPRINO CRON LOADED OK")
+except Exception as e:
+    print(f"CAPRINO CRON FAILED: {e}")
+    processar_alertas_caprinos = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -522,7 +538,14 @@ async def processar_alertas_ovinos_endpoint(imovel_id: int = None):
     """Processa e envia alertas ovinos via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_ovinos:
         return processar_alertas_ovinos(imovel_id=imovel_id)
-    return {"erro": "Cron nÃ£o disponÃ­vel"}
+    return {"erro": "Cron não disponível"}
+
+@app.post("/caprino/processar-alertas")
+async def processar_alertas_caprinos_endpoint(imovel_id: int = None):
+    """Processa e envia alertas caprinos via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_caprinos:
+        return processar_alertas_caprinos(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
 
 @app.post("/cadastro")
 async def cadastrar_produtor(data: CadastroRequest):
@@ -751,6 +774,23 @@ async def processar(payload: dict):
                     imovel_id = row[0] if row else 1
                 payload_ovino = WhatsAppMensagem(telefone=numero, tipo_midia="texto", conteudo=texto, imovel_id=imovel_id)
                 resultado = webhook_whatsapp_ovino(payload_ovino)
+                await send_msg(numero, resultado["resumo"])
+                return
+
+            # Deteccao caprino
+            keywords_caprino = ["caprino", "cabra", "cabrito", "bode", "caprinocultura",
+                                "leite de cabra", "queijo", "cabrinha"]
+            if any(k in texto.lower() for k in keywords_caprino):
+                from app.routers.caprino import webhook_whatsapp_caprino, WhatsAppMensagem as CaprinoMensagem
+                from app.db import engine
+                from sqlalchemy import text as sqlt
+                with engine.connect() as conn:
+                    row = conn.execute(sqlt(
+                        "SELECT id FROM imoveis_rurais WHERE produtor_id = (SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+                    ), {"tel": "%{}".format(numero[-8:])}).fetchone()
+                    imovel_id = row[0] if row else 1
+                payload_caprino = CaprinoMensagem(telefone=numero, tipo_midia="texto", conteudo=texto, imovel_id=imovel_id)
+                resultado = webhook_whatsapp_caprino(payload_caprino)
                 await send_msg(numero, resultado["resumo"])
                 return
 
