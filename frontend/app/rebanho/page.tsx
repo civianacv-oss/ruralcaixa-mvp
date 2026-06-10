@@ -109,7 +109,7 @@ export default function RebanhoPage() {
     <div style={{ minHeight: "100vh", background: "#f5f0e8", padding: "32px 24px", fontFamily: "'DM Sans',system-ui,sans-serif" }}>
       <div style={{marginBottom:16}}>
         <a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",textDecoration:"none",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-          ← Dashboard
+          ← Painel Principal
         </a>
       </div>
       {/* Header */}

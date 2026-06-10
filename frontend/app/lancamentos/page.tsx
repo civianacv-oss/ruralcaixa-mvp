@@ -345,7 +345,7 @@ export default function LancamentosPage() {
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e4dc", padding: "14px 28px", display: "flex", alignItems: "center", gap: 12 }}>
         <a href="/" style={{ color: "#5a8a3a", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
-          <IconBack /> Dashboard
+          <IconBack /> Painel Principal
         </a>
         <span style={{ color: "#ddd" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1a2e1a" }}>Lançamentos Financeiros</h1>

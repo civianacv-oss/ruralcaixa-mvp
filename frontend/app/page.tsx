@@ -90,7 +90,7 @@ export default function Dashboard() {
 
   // ── sidebar nav ──────────────────────────────────────────────
   const navGestao = [
-    {id:"dashboard",   label:"Dashboard",        icon:Icons.dashboard,  href:"/"},
+    {id:"dashboard",   label:"Painel Principal",        icon:Icons.dashboard,  href:"/"},
     {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
     {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
     {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
@@ -202,7 +202,7 @@ export default function Dashboard() {
             {Icons.menu}
           </button>
           <div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:"#1a2e1a",letterSpacing:"-0.5px"}}>Dashboard</h1>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:"#1a2e1a",letterSpacing:"-0.5px"}}>Painel Principal</h1>
             <p style={{margin:0,fontSize:13,color:"#7a8a6a"}}>Visão geral da sua operação agropecuária</p>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>

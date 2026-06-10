@@ -332,7 +332,7 @@ export default function PisciculturaPage() {
     <div className="min-h-screen bg-gray-50">
       <div style={{padding:"16px 24px 0"}}>
         <a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",textDecoration:"none",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-          ← Dashboard
+          ← Painel Principal
         </a>
       </div>
       {/* Header */}
@@ -443,7 +443,7 @@ export default function PisciculturaPage() {
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${
                       tabDetalhe === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
                     }`}>
-                    {t === "dashboard" ? "Dashboard" : t === "diario" ? "Registros Diários" : "Biometrias"}
+                    {t === "dashboard" ? "Resumo" : t === "diario" ? "Registros Diários" : "Biometrias"}
                   </button>
                 ))}
               </div>
