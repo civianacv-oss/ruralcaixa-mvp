@@ -172,51 +172,57 @@ class LancamentoUpdate(BaseModel):
 
 @app.put("/lancamentos/{lancamento_id}")
 def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
-    from app.db import engine
-    from sqlalchemy import text
-    import uuid as _uuid
-    with engine.connect() as conn:
+    import psycopg2, uuid as _uuid, os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
         fields = []
-        vals: dict = {"id": lancamento_id}
+        vals = []
         if data.valor is not None:
-            fields.append("valor = :valor")
-            vals["valor"] = abs(float(data.valor))
+            fields.append("valor = %s")
+            vals.append(abs(float(data.valor)))
         if data.data is not None:
-            fields.append("data = :data")
-            vals["data"] = data.data
+            fields.append("data = %s")
+            vals.append(data.data)
         # Se descrição ou tipo mudaram, reclassificar subconta automaticamente
         if data.descricao is not None or data.tipo is not None:
-            # Buscar dados atuais do lançamento
-            row = conn.execute(
-                text("SELECT l.valor, l.data, s.nome as descricao, LOWER(s.tipo) as tipo, s.atividade_tipo FROM lancamentos l LEFT JOIN subcontas s ON s.id = l.subconta_id WHERE l.id = :id::uuid"),
-                {"id": lancamento_id}
-            ).fetchone()
-            nome_sub = data.descricao or (row.descricao if row else "Outros")
-            tipo_raw = (data.tipo or (row.tipo if row else "despesa")).upper()
-            atividade_sub = ("RURAL" if (data.atividade or (row.atividade_tipo if row else "RURAL")).upper() == "RURAL" else "INVESTIMENTO")
+            cur.execute(
+                "SELECT s.nome, LOWER(s.tipo), s.atividade_tipo FROM lancamentos l LEFT JOIN subcontas s ON s.id = l.subconta_id WHERE l.id = %s::uuid",
+                (lancamento_id,)
+            )
+            row = cur.fetchone()
+            nome_sub = data.descricao or (row[0] if row else "Outros")
+            tipo_raw = (data.tipo or (row[1] if row else "despesa")).upper()
+            atividade_sub = "RURAL" if (data.atividade or (row[2] if row else "RURAL")).upper() == "RURAL" else "INVESTIMENTO"
             # Buscar ou criar subconta
-            sub = conn.execute(
-                text("SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) AND tipo = :tipo LIMIT 1"),
-                {"nome": f"%{nome_sub[:20]}%", "tipo": tipo_raw}
-            ).fetchone()
+            cur.execute(
+                "SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(%s) AND tipo = %s LIMIT 1",
+                (f"%{nome_sub[:20]}%", tipo_raw)
+            )
+            sub = cur.fetchone()
             if not sub:
                 sub_id = str(_uuid.uuid4())
-                conn.execute(
-                    text("INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (:id, :nome, :tipo, :atv)"),
-                    {"id": sub_id, "nome": nome_sub[:100], "tipo": tipo_raw, "atv": atividade_sub}
+                cur.execute(
+                    "INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (%s, %s, %s, %s)",
+                    (sub_id, nome_sub[:100], tipo_raw, atividade_sub)
                 )
             else:
                 sub_id = sub[0]
-            fields.append("subconta_id = :sub_id")
-            vals["sub_id"] = sub_id
+            fields.append("subconta_id = %s")
+            vals.append(sub_id)
         if not fields:
             raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
-        conn.execute(
-            text(f"UPDATE lancamentos SET {', '.join(fields)} WHERE id = :id::uuid"),
-            vals
+        vals.append(lancamento_id)
+        cur.execute(
+            f"UPDATE lancamentos SET {', '.join(fields)} WHERE id = %s::uuid",
+            tuple(vals)
         )
         conn.commit()
         return {"ok": True}
+    finally:
+        cur.close()
+        conn.close()
 
 @app.delete("/lancamentos/{lancamento_id}", status_code=204)
 def deletar_lancamento(lancamento_id: str):
