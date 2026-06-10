@@ -1,4 +1,4 @@
-﻿# bovino module enabled
+# bovino module enabled
 from app.routers.bovino import router as bovino_router
 import hmac, hashlib, json, os
 import httpx
