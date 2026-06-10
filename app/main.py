@@ -185,8 +185,10 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
         if data.data is not None:
             fields.append("data = %s")
             vals.append(data.data)
-        # Se descrição ou tipo mudaram, reclassificar subconta automaticamente
+
+        # Se descrição ou tipo mudaram → reclassificar e APRENDER
         if data.descricao is not None or data.tipo is not None:
+            # Buscar dados atuais do lançamento
             cur.execute(
                 "SELECT s.nome, LOWER(s.tipo), s.atividade_tipo FROM lancamentos l LEFT JOIN subcontas s ON s.id = l.subconta_id WHERE l.id = %s::uuid",
                 (lancamento_id,)
@@ -195,7 +197,8 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
             nome_sub = data.descricao or (row[0] if row else "Outros")
             tipo_raw = (data.tipo or (row[1] if row else "despesa")).upper()
             atividade_sub = "RURAL" if (data.atividade or (row[2] if row else "RURAL")).upper() == "RURAL" else "INVESTIMENTO"
-            # Buscar ou criar subconta
+
+            # Buscar ou criar subconta correta
             cur.execute(
                 "SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(%s) AND tipo = %s LIMIT 1",
                 (f"%{nome_sub[:20]}%", tipo_raw)
@@ -209,17 +212,59 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
                 )
             else:
                 sub_id = sub[0]
+
             fields.append("subconta_id = %s")
             vals.append(sub_id)
+
+            # ── APRENDIZADO: salvar regra para esta descrição ──────────────
+            palavra_chave = nome_sub[:50].lower()
+            cur.execute(
+                "SELECT id FROM regras_classificacao WHERE palavra_chave = %s",
+                (palavra_chave,)
+            )
+            regra_existente = cur.fetchone()
+            if regra_existente:
+                cur.execute(
+                    "UPDATE regras_classificacao SET subconta_id = %s, atualizado_em = NOW() WHERE palavra_chave = %s",
+                    (sub_id, palavra_chave)
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO regras_classificacao (id, palavra_chave, subconta_id, criado_em, atualizado_em) VALUES (%s, %s, %s, NOW(), NOW())",
+                    (str(_uuid.uuid4()), palavra_chave, sub_id)
+                )
+
+            # ── PROPAGAR: atualizar lançamentos semelhantes sem correção manual ──
+            # Busca lançamentos com descrição parecida que ainda não foram corrigidos manualmente
+            cur.execute("""
+                UPDATE lancamentos l
+                SET subconta_id = %s
+                FROM subcontas s
+                WHERE l.subconta_id = s.id
+                  AND LOWER(s.nome) LIKE LOWER(%s)
+                  AND l.id != %s::uuid
+                  AND l.id NOT IN (SELECT lancamento_id FROM correcoes_manuais WHERE lancamento_id IS NOT NULL)
+            """, (sub_id, f"%{nome_sub[:20]}%", lancamento_id))
+            propagados = cur.rowcount
+
         if not fields:
             raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
+
         vals.append(lancamento_id)
         cur.execute(
             f"UPDATE lancamentos SET {', '.join(fields)} WHERE id = %s::uuid",
             tuple(vals)
         )
+
+        # Registrar que este lançamento foi corrigido manualmente
+        if data.descricao is not None or data.tipo is not None:
+            cur.execute(
+                "INSERT INTO correcoes_manuais (id, lancamento_id, criado_em) VALUES (%s, %s::uuid, NOW()) ON CONFLICT (lancamento_id) DO NOTHING",
+                (str(_uuid.uuid4()), lancamento_id)
+            )
+
         conn.commit()
-        return {"ok": True}
+        return {"ok": True, "propagados": propagados if (data.descricao is not None or data.tipo is not None) else 0}
     finally:
         cur.close()
         conn.close()
@@ -320,6 +365,34 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
 def root():
     return {"status": "Rural Caixa PF online", "version": "2.0"}
 
+@app.post("/setup-aprendizado")
+def setup_aprendizado():
+    """Cria as tabelas de aprendizado se não existirem. Chamar uma vez após deploy."""
+    import psycopg2, os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS regras_classificacao (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                palavra_chave VARCHAR(100) NOT NULL UNIQUE,
+                subconta_id UUID REFERENCES subcontas(id),
+                criado_em TIMESTAMPTZ DEFAULT NOW(),
+                atualizado_em TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS correcoes_manuais (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                lancamento_id UUID UNIQUE,
+                criado_em TIMESTAMPTZ DEFAULT NOW()
+            );
+        """)
+        conn.commit()
+        return {"ok": True, "msg": "Tabelas de aprendizado criadas/verificadas"}
+    finally:
+        cur.close()
+        conn.close()
+
 @app.post("/classificar-texto")
 def classificar_texto(data: ClassificarTexto):
     resultado = classificar(data.texto)
@@ -329,42 +402,65 @@ def classificar_texto(data: ClassificarTexto):
 
 @app.post("/lancamentos")
 def criar_lancamento(data: LancamentoCreate):
-    from app.db import engine
-    from sqlalchemy import text
-    import uuid as _uuid
-    with engine.connect() as conn:
-        # Usar data real ou data_lancamento legado
+    import psycopg2, uuid as _uuid, os
+    DB_URL = os.getenv("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    try:
         data_real = data.data or data.data_lancamento or None
-        # Determinar tipo e atividade para subconta
-        tipo_raw = (data.tipo or "despesa").upper()
-        nome_sub = data.descricao or data.origem or "Outros"
-        atividade_sub = "RURAL" if (data.atividade or "rural").upper() == "RURAL" else "INVESTIMENTO"
-        # Buscar ou criar subconta
-        sub = conn.execute(
-            text("SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) AND tipo = :tipo LIMIT 1"),
-            {"nome": f"%{nome_sub[:20]}%", "tipo": tipo_raw}
-        ).fetchone()
-        if not sub:
-            sub_id = str(_uuid.uuid4())
-            conn.execute(
-                text("INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (:id, :nome, :tipo, :atv)"),
-                {"id": sub_id, "nome": nome_sub[:100], "tipo": tipo_raw, "atv": atividade_sub}
-            )
+        descricao = data.descricao or data.origem or "Outros"
+
+        # 1. Tentar classificar automaticamente via regras aprendidas no banco
+        cur.execute(
+            "SELECT subconta_id FROM regras_classificacao WHERE palavra_chave = LOWER(%s) LIMIT 1",
+            (descricao[:50].lower(),)
+        )
+        regra = cur.fetchone()
+
+        if regra:
+            # Regra aprendida encontrada
+            sub_id = regra[0]
+            cur.execute("SELECT tipo, atividade_tipo FROM subcontas WHERE id = %s", (sub_id,))
+            sub_info = cur.fetchone()
+            tipo_raw = sub_info[0] if sub_info else (data.tipo or "despesa").upper()
+            atividade_sub = sub_info[1] if sub_info else "RURAL"
         else:
-            sub_id = sub[0]
+            # 2. Fallback: usar o classificador de regras por palavras-chave
+            resultado_classif = classificar(descricao)
+            if resultado_classif:
+                tipo_raw = resultado_classif["tipo"].upper()
+                atividade_sub = resultado_classif.get("atividade", "rural").upper()
+                if atividade_sub not in ("RURAL", "INVESTIMENTO"):
+                    atividade_sub = "RURAL"
+            else:
+                tipo_raw = (data.tipo or "despesa").upper()
+                atividade_sub = "RURAL" if (data.atividade or "rural").upper() == "RURAL" else "INVESTIMENTO"
+
+            # Buscar ou criar subconta pelo nome + tipo
+            cur.execute(
+                "SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(%s) AND tipo = %s LIMIT 1",
+                (f"%{descricao[:20]}%", tipo_raw)
+            )
+            sub = cur.fetchone()
+            if not sub:
+                sub_id = str(_uuid.uuid4())
+                cur.execute(
+                    "INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (%s, %s, %s, %s)",
+                    (sub_id, descricao[:100], tipo_raw, atividade_sub)
+                )
+            else:
+                sub_id = sub[0]
+
         lanc_id = str(_uuid.uuid4())
-        conn.execute(text("""
-            INSERT INTO lancamentos (id, produtor_id, subconta_id, valor, data, documento_url)
-            VALUES (:id, :pid, :sub, :valor, :data, NULL)
-        """), {
-            "id": lanc_id,
-            "pid": data.produtor_id,
-            "sub": sub_id,
-            "valor": abs(float(data.valor)),
-            "data": data_real,
-        })
+        cur.execute(
+            "INSERT INTO lancamentos (id, produtor_id, subconta_id, valor, data, documento_url) VALUES (%s, %s, %s, %s, %s, NULL)",
+            (lanc_id, data.produtor_id, sub_id, abs(float(data.valor)), data_real)
+        )
         conn.commit()
-        return {"id": lanc_id, "subconta_id": sub_id}
+        return {"id": lanc_id, "subconta_id": sub_id, "tipo_classificado": tipo_raw.lower()}
+    finally:
+        cur.close()
+        conn.close()
 
 @app.get("/wapp/inbound")
 async def verify_webhook(
