@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 from app.services.classifier import classificar
 from app.services.groq_stt import transcrever_audio
 

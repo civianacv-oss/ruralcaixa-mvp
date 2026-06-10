@@ -1,4 +1,4 @@
-﻿from lxml import etree
+from lxml import etree
 from datetime import datetime
 
 def gerar_xml_nfe(dados_nota, emitente, destinatario):

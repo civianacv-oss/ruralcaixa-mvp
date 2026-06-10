@@ -1,4 +1,4 @@
-﻿import psycopg2
+import psycopg2
 
 def setup_database():
     try:

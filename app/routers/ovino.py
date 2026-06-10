@@ -1,4 +1,4 @@
-﻿"""
+"""
 RuralCaixa ÔÇö routers/ovino.py  (v2 ÔÇö psycopg2 s├¡ncrono)
 Compat├¡vel com o padr├úo do main_api.py existente.
 

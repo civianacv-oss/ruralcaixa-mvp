@@ -1,4 +1,4 @@
-﻿from lxml import etree
+from lxml import etree
 import io
 from test_xml import gerar_xml_nfe
 
