@@ -68,10 +68,10 @@ const ESPECIES: EspecieCard[] = [
     href: "/suino",
     color: "#8a3a6a",
     bgColor: "#fdedf7",
-    fetchUrl: "",
+    fetchUrl: `/suino/animais?imovel_id=${IMOVEL_ID}&status=ativo`,
     countLabel: "animais ativos",
-    subLabel: "Em breve",
-    disponivel: false,
+    subLabel: "Corte e Ciclo",
+    disponivel: true,
   },
   {
     label: "Aves",
