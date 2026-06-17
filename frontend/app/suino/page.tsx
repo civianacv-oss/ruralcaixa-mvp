@@ -25,6 +25,8 @@ type Lote = {
   nome: string;
   fase: string;
   total_animais: number;
+  data_inicio: string | null;
+  ativo: boolean;
 };
 
 type Dashboard = {
@@ -119,7 +121,7 @@ export default function SuinoDashboard() {
   const [salvandoEdit, setSalvandoEdit] = useState(false);
   const [msgEdit, setMsgEdit] = useState("");
   const [msg, setMsg] = useState("");
-  const [novoLote, setNovoLote] = useState({ nome: "", fase: "leitao" });
+  const [novoLote, setNovoLote] = useState({ nome: "", fase: "leitao", data_inicio: new Date().toISOString().slice(0, 10) });
   const [salvandoLote, setSalvandoLote] = useState(false);
   const [msgLote, setMsgLote] = useState("");
   const [novaSaude, setNovaSaude] = useState({ tipo: "vacinacao", produto: "", lote_id: "", animal_id: "", proximo_em: "", observacoes: "" });
@@ -226,7 +228,7 @@ export default function SuinoDashboard() {
       });
       if (r.ok) {
         setMsgLote("Lote criado com sucesso!");
-        setNovoLote({ nome: "", fase: "leitao" });
+        setNovoLote({ nome: "", fase: "leitao", data_inicio: new Date().toISOString().slice(0, 10) });
         carregarTudo();
       } else {
         const e = await r.json();
@@ -470,44 +472,82 @@ export default function SuinoDashboard() {
         {/* ── ABA LOTES ── */}
         {aba === "lotes" && (
           <div>
+            {/* Formulário de criação */}
             <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, marginBottom: 16 }}>
-              <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "#374151" }}>+ Criar Lote</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input placeholder="Nome do lote *" value={novoLote.nome} onChange={e => setNovoLote(p => ({ ...p, nome: e.target.value }))}
-                  style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14, width: 180 }} />
-                <select value={novoLote.fase} onChange={e => setNovoLote(p => ({ ...p, fase: e.target.value }))}
-                  style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14 }}>
-                  <option value="leitao">Leitão</option>
-                  <option value="creche">Creche</option>
-                  <option value="recria">Recria</option>
-                  <option value="terminacao">Terminação</option>
-                  <option value="gestacao">Gestação</option>
-                  <option value="maternidade">Maternidade</option>
-                  <option value="reproducao">Reprodução</option>
-                  <option value="descarte">Descarte</option>
-                </select>
+              <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "#374151" }}>+ Criar Novo Lote</h3>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Nome do Lote *</label>
+                  <input placeholder="Ex: Lote A — Terminação" value={novoLote.nome} onChange={e => setNovoLote(p => ({ ...p, nome: e.target.value }))}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14, width: 220 }} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Fase</label>
+                  <select value={novoLote.fase} onChange={e => setNovoLote(p => ({ ...p, fase: e.target.value }))}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14 }}>
+                    <option value="leitao">🐷 Leitão</option>
+                    <option value="creche">🏠 Creche</option>
+                    <option value="recria">📈 Recria</option>
+                    <option value="terminacao">💪 Terminação</option>
+                    <option value="gestacao">🤰 Gestação</option>
+                    <option value="maternidade">🍼 Maternidade</option>
+                    <option value="reproducao">❤️ Reprodução</option>
+                    <option value="descarte">⚠️ Descarte</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Data de Início</label>
+                  <input type="date" value={novoLote.data_inicio} onChange={e => setNovoLote(p => ({ ...p, data_inicio: e.target.value }))}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14 }} />
+                </div>
                 <button onClick={criarLote} disabled={salvandoLote || !novoLote.nome}
-                  style={{ padding: "8px 18px", background: "#8a3a6a", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14, opacity: salvandoLote || !novoLote.nome ? 0.6 : 1 }}>
-                  {salvandoLote ? "..." : "Criar Lote"}
+                  style={{ padding: "8px 18px", background: "#8a3a6a", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14, opacity: salvandoLote || !novoLote.nome ? 0.6 : 1, alignSelf: "flex-end" }}>
+                  {salvandoLote ? "Salvando..." : "✚ Criar Lote"}
                 </button>
-                {msgLote && <span style={{ alignSelf: "center", fontSize: 13, color: msgLote.includes("sucesso") ? "#16a34a" : "#dc2626" }}>{msgLote}</span>}
+                {msgLote && <span style={{ alignSelf: "center", fontSize: 13, color: msgLote.includes("sucesso") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{msgLote}</span>}
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-              {lotes.length === 0 ? (
-                <div style={{ gridColumn: "1/-1", padding: 24, textAlign: "center", color: "#9ca3af", background: "#fff", borderRadius: 10, border: "1px solid #e5e7eb" }}>
-                  Nenhum lote cadastrado.
-                </div>
-              ) : lotes.map(l => (
-                <div key={l.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{l.nome}</div>
-                  <div style={{ fontSize: 12, color: "#8a3a6a", fontWeight: 600, marginBottom: 8 }}>{faseLabel[l.fase] || l.fase}</div>
-                  <div style={{ fontSize: 13, color: "#6b7280" }}>
-                    <span style={{ fontWeight: 600, color: "#374151" }}>{l.total_animais}</span> animais
-                  </div>
-                </div>
-              ))}
+            {/* Tabela de lotes */}
+            <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                    {["Nome", "Fase", "Data Início", "Animais Ativos", "Status"].map(h => (
+                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "#374151", fontSize: 12 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lotes.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#9ca3af" }}>
+                        Nenhum lote cadastrado. Use o formulário acima para criar o primeiro lote.
+                      </td>
+                    </tr>
+                  ) : lotes.map((l, i) => (
+                    <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                      <td style={{ padding: "12px 14px", fontWeight: 700, color: "#111827" }}>{l.nome}</td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <span style={{ background: "#fdf4ff", color: "#8a3a6a", borderRadius: 4, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>
+                          {faseLabel[l.fase] || l.fase}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 14px", color: "#6b7280" }}>
+                        {l.data_inicio ? new Date(l.data_inicio + "T00:00:00").toLocaleDateString("pt-BR") : "—"}
+                      </td>
+                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                        <span style={{ fontWeight: 700, color: l.total_animais > 0 ? "#111827" : "#9ca3af", fontSize: 15 }}>{l.total_animais}</span>
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <span style={{ background: l.ativo ? "#f0fdf4" : "#f3f4f6", color: l.ativo ? "#16a34a" : "#6b7280", borderRadius: 4, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>
+                          {l.ativo ? "✓ Ativo" : "Encerrado"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
