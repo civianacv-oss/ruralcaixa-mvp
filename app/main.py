@@ -33,6 +33,13 @@ except Exception as e:
     print(f"CAPRINO ROUTER FAILED: {e}")
     caprino_router = None
 
+try:
+    from app.routers.suino import router as suino_router
+    print("SUINO ROUTER LOADED OK")
+except Exception as e:
+    print(f"SUINO ROUTER FAILED: {e}")
+    suino_router = None
+
 load_dotenv()
 
 app = FastAPI(title="Rural Caixa PF")
@@ -46,6 +53,7 @@ GRAPH        = "https://graph.facebook.com/v23.0"
 sessoes = {}
 if ovino_router: app.include_router(ovino_router)
 if caprino_router: app.include_router(caprino_router)
+if suino_router: app.include_router(suino_router)
 
 # Cron alertas ovinos
 try:
