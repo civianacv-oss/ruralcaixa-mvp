@@ -9,7 +9,7 @@ Adicione em app/main.py:
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import date, datetime
 import psycopg2
 import psycopg2.extras
@@ -52,7 +52,7 @@ class CompraCreate(BaseModel):
     fornecedor: Optional[str] = None
     nota_fiscal: Optional[str] = None
     observacoes: Optional[str] = None
-    regime: str = "pasto"  # 'pasto' | 'confinamento'
+    regime: Literal["pasto", "confinamento"] = "pasto"
 
 class VendaCreate(BaseModel):
     imovel_id: int
