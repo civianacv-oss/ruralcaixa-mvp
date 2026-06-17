@@ -37,6 +37,7 @@ const Icons = {
   trend_dn:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>,
   sheep:     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="11" rx="6" ry="5"/><circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="8" r="2.5"/><circle cx="12" cy="6" r="2"/><line x1="9" y1="16" x2="8" y2="20"/><line x1="15" y1="16" x2="16" y2="20"/></svg>,
   menu:      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+  plant:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22V12"/><path d="M12 12C12 7 7 4 3 6"/><path d="M12 12c0-5 5-8 9-6"/><path d="M5 20c2-2 4-3 7-3s5 1 7 3"/></svg>,
 };
 
 // ── componente principal ──────────────────────────────────────
@@ -103,6 +104,7 @@ export default function Dashboard() {
     {id:"nfe",         label:"NF-e Produtor",      icon:Icons.financial,  href:"/nfe"},
     {id:"esocial",     label:"eSocial Rural",      icon:Icons.users,      href:"/esocial"},
     {id:"compravenda", label:"Compra e Venda",       icon:Icons.financial,  href:"/compravenda"},
+    {id:"acai",         label:"Cultivo de Açaí",       icon:Icons.plant,      href:"/acai"},
   ];
   const navAdmin = [
     {id:"usuarios",     label:"Usuários",        icon:Icons.users,     href:"/terceiros"},
