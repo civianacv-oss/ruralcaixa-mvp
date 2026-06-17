@@ -583,3 +583,106 @@ def dre(
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+# ─────────────────────────────────────────────────────────────
+# ALERTAS FISCAIS — animais próximos da transição para produção rural
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/alertas-fiscais/{imovel_id}")
+def alertas_fiscais(
+    imovel_id: int,
+    dias_aviso: int = Query(default=10, ge=1, le=52,
+        description="Quantos dias antes do prazo emitir alerta (default: 10)"),
+):
+    """
+    Retorna compras cujos animais estão prestes a ultrapassar o prazo fiscal
+    do RIR/2018 (Decreto 9.580/2018):
+      - Confinamento: 52 dias
+      - Pasto / outros: 138 dias
+
+    Inclui três níveis de urgência:
+      - 'critico'  : prazo já atingido ou ultrapassado (≥ prazo)
+      - 'urgente'  : faltam ≤ dias_aviso dias para o prazo
+      - 'atencao'  : entre dias_aviso+1 e 75% do prazo (zona amarela)
+    """
+    PRAZO = {"confinamento": 52, "pasto": 138}
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                c.id,
+                c.produto_id,
+                p.nome          AS produto_nome,
+                p.especie,
+                p.unidade,
+                c.data_compra,
+                c.quantidade,
+                c.valor_total,
+                c.regime,
+                c.fornecedor,
+                (CURRENT_DATE - c.data_compra)::int AS dias_em_estoque
+            FROM cv_compras c
+            JOIN cv_produtos p ON p.id = c.produto_id
+            WHERE c.imovel_id = %s
+            ORDER BY c.data_compra ASC
+        """, (imovel_id,))
+        rows = cur.fetchall()
+
+        alertas = []
+        for r in rows:
+            r = dict(r)
+            prazo_max = PRAZO.get(r["regime"], 138)
+            dias = r["dias_em_estoque"]
+            dias_restantes = prazo_max - dias
+            pct_prazo = round(dias / prazo_max * 100, 1)
+
+            if dias >= prazo_max:
+                nivel = "critico"
+            elif dias_restantes <= dias_aviso:
+                nivel = "urgente"
+            elif dias >= prazo_max * 0.75:
+                nivel = "atencao"
+            else:
+                continue  # dentro do prazo seguro — não inclui no alerta
+
+            alertas.append({
+                "id":             r["id"],
+                "produto_id":     r["produto_id"],
+                "produto_nome":   r["produto_nome"],
+                "especie":        r["especie"],
+                "unidade":        r["unidade"],
+                "data_compra":    r["data_compra"].isoformat() if hasattr(r["data_compra"], "isoformat") else str(r["data_compra"]),
+                "quantidade":     float(r["quantidade"]),
+                "valor_total":    float(r["valor_total"]),
+                "regime":         r["regime"],
+                "fornecedor":     r["fornecedor"],
+                "dias_em_estoque": dias,
+                "prazo_max":      prazo_max,
+                "dias_restantes": dias_restantes,
+                "pct_prazo":      pct_prazo,
+                "nivel":          nivel,  # 'critico' | 'urgente' | 'atencao'
+                "mensagem": (
+                    f"RECLASSIFICADO — {dias} dias em estoque (prazo: {prazo_max} dias)"
+                    if nivel == "critico" else
+                    f"Faltam {dias_restantes} dia(s) para reclassificação como Atividade Rural"
+                ),
+            })
+
+        # Ordenar: crítico primeiro, depois urgente, depois atenção
+        ordem = {"critico": 0, "urgente": 1, "atencao": 2}
+        alertas.sort(key=lambda x: (ordem[x["nivel"]], x["dias_restantes"]))
+
+        return {
+            "total_alertas": len(alertas),
+            "criticos":  sum(1 for a in alertas if a["nivel"] == "critico"),
+            "urgentes":  sum(1 for a in alertas if a["nivel"] == "urgente"),
+            "atencao":   sum(1 for a in alertas if a["nivel"] == "atencao"),
+            "dias_aviso": dias_aviso,
+            "alertas":   alertas,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()

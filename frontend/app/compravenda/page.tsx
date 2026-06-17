@@ -67,6 +67,20 @@ type Despesa = {
   id: number; descricao: string; categoria: string;
   data_lancamento: string; valor: number;
 };
+type AlertaFiscal = {
+  id: number; produto_id: number; produto_nome: string;
+  especie: string | null; unidade: string;
+  data_compra: string; quantidade: number; valor_total: number;
+  regime: "pasto" | "confinamento"; fornecedor: string | null;
+  dias_em_estoque: number; prazo_max: number;
+  dias_restantes: number; pct_prazo: number;
+  nivel: "critico" | "urgente" | "atencao";
+  mensagem: string;
+};
+type AlertasResponse = {
+  total_alertas: number; criticos: number; urgentes: number; atencao: number;
+  dias_aviso: number; alertas: AlertaFiscal[];
+};
 
 const especieLabel: Record<string, string> = {
   bovino: "🐄 Bovino", suino: "🐖 Suíno", ovino: "🐑 Ovino",
@@ -101,7 +115,7 @@ function calcularStatusFiscal(
 }
 
 export default function CompraVendaPage() {
-  const [aba, setAba] = useState<"estoque" | "compras" | "vendas" | "fluxo" | "dre">("estoque");
+  const [aba, setAba] = useState<"estoque" | "compras" | "vendas" | "fluxo" | "dre" | "alertas">("estoque");
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
@@ -110,6 +124,7 @@ export default function CompraVendaPage() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dre, setDre] = useState<DRE | null>(null);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
+  const [alertasFiscais, setAlertasFiscais] = useState<AlertasResponse | null>(null);
 
   // forms
   const [novoProduto, setNovoProduto] = useState({ nome: "", especie: "bovino", unidade: "cab", descricao: "", custo_medio: "" });
@@ -134,6 +149,7 @@ export default function CompraVendaPage() {
         fetch(`${API}/compravenda/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/compravenda/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/compravenda/despesas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        fetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`).then(r => r.ok ? r.json() : null),
       ]);
       if (prodRes.status === "fulfilled") setProdutos(prodRes.value || []);
       if (compRes.status === "fulfilled") setCompras(compRes.value || []);
@@ -142,6 +158,12 @@ export default function CompraVendaPage() {
       if (dashRes.status === "fulfilled") setDashboard(dashRes.value);
       if (dreRes.status === "fulfilled") setDre(dreRes.value);
       if (despRes.status === "fulfilled") setDespesas(despRes.value || []);
+      const alertRes = [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes][7] as PromiseSettledResult<AlertasResponse | null> | undefined;
+      // fetch alertas separately since it's the 8th item
+      try {
+        const ar = await fetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`);
+        if (ar.ok) setAlertasFiscais(await ar.json());
+      } catch {}
     } catch (e) { console.error(e); }
     setLoading(false);
   }
@@ -239,12 +261,14 @@ export default function CompraVendaPage() {
     setSalvando(false);
   }
 
+  const totalAlertas = alertasFiscais ? alertasFiscais.total_alertas : 0;
   const abas = [
     { id: "estoque", label: "📦 Estoque" },
     { id: "compras", label: "🛒 Compras" },
     { id: "vendas",  label: "💰 Vendas" },
     { id: "fluxo",   label: "📈 Fluxo de Caixa" },
     { id: "dre",     label: "📊 DRE" },
+    { id: "alertas", label: totalAlertas > 0 ? `🔔 Alertas (${totalAlertas})` : "🔔 Alertas" },
   ] as const;
 
   if (loading) return (
@@ -763,6 +787,97 @@ export default function CompraVendaPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ABA ALERTAS FISCAIS ── */}
+        {aba === "alertas" && (
+          <div>
+            {!alertasFiscais || alertasFiscais.total_alertas === 0 ? (
+              <div style={{ padding: 48, textAlign: "center", background: "#f0fdf4", borderRadius: 12, border: "1px solid #bbf7d0" }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+                <div style={{ fontWeight: 700, color: "#16a34a", fontSize: 16 }}>Nenhum alerta fiscal no momento</div>
+                <div style={{ color: "#4b7c59", fontSize: 13, marginTop: 6 }}>Todos os animais estão dentro do prazo comercial permitido pelo RIR/2018.</div>
+              </div>
+            ) : (
+              <div>
+                {/* Resumo de contadores */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+                  {[
+                    { label: "🔴 Críticos", desc: "Prazo atingido — já é Atividade Rural", count: alertasFiscais.criticos, bg: "#fef2f2", border: "#fecaca", color: "#dc2626" },
+                    { label: "🟠 Urgentes", desc: `Faltam ≤ ${alertasFiscais.dias_aviso} dias para reclassificação`, count: alertasFiscais.urgentes, bg: "#fff7ed", border: "#fed7aa", color: "#ea580c" },
+                    { label: "🟡 Atenção", desc: "Entre 75% e 90% do prazo consumido", count: alertasFiscais.atencao, bg: "#fefce8", border: "#fde68a", color: "#ca8a04" },
+                  ].map(c => (
+                    <div key={c.label} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 10, padding: "16px 14px", textAlign: "center" }}>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: c.color }}>{c.count}</div>
+                      <div style={{ fontWeight: 700, color: c.color, fontSize: 13, marginTop: 2 }}>{c.label}</div>
+                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{c.desc}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Tabela de alertas */}
+                <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px", borderBottom: "1px solid #e5e7eb", fontWeight: 700, fontSize: 14, color: "#374151", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>Animais com Alerta Fiscal</span>
+                    <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 400 }}>Atualizado automaticamente a cada carregamento da página</span>
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                        {["Nível", "Animal / Produto", "Espécie", "Regime", "Data Compra", "Dias em Estoque", "Prazo Máx.", "Dias Restantes", "% do Prazo", "Situação"].map(h => (
+                          <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#374151", fontSize: 11, whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {alertasFiscais.alertas.map((a, i) => {
+                        const nivelCor = a.nivel === "critico" ? { bg: "#fef2f2", text: "#dc2626", badge: "#fee2e2", badgeText: "#991b1b" }
+                          : a.nivel === "urgente" ? { bg: "#fff7ed", text: "#ea580c", badge: "#ffedd5", badgeText: "#9a3412" }
+                          : { bg: "#fefce8", text: "#ca8a04", badge: "#fef9c3", badgeText: "#854d0e" };
+                        const nivelLabel = a.nivel === "critico" ? "🔴 Crítico" : a.nivel === "urgente" ? "🟠 Urgente" : "🟡 Atenção";
+                        const barWidth = Math.min(a.pct_prazo, 100);
+                        const barColor = a.nivel === "critico" ? "#dc2626" : a.nivel === "urgente" ? "#ea580c" : "#ca8a04";
+                        return (
+                          <tr key={a.id} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? nivelCor.bg : nivelCor.bg }}>
+                            <td style={{ padding: "10px 12px" }}>
+                              <span style={{ background: nivelCor.badge, color: nivelCor.badgeText, borderRadius: 5, padding: "3px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{nivelLabel}</span>
+                            </td>
+                            <td style={{ padding: "10px 12px", fontWeight: 600, color: "#111827" }}>{a.produto_nome}</td>
+                            <td style={{ padding: "10px 12px", color: "#6b7280" }}>{especieLabel[a.especie || ""] || a.especie || "—"}</td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <span style={{ background: a.regime === "confinamento" ? "#ede9fe" : "#dcfce7", color: a.regime === "confinamento" ? "#6d28d9" : "#15803d", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
+                                {a.regime === "confinamento" ? "🏠 Confinamento" : "🌿 Pasto"}
+                              </span>
+                            </td>
+                            <td style={{ padding: "10px 12px", color: "#6b7280" }}>{fmtDate(a.data_compra)}</td>
+                            <td style={{ padding: "10px 12px", fontWeight: 700, color: nivelCor.text }}>{a.dias_em_estoque} dias</td>
+                            <td style={{ padding: "10px 12px", color: "#6b7280" }}>{a.prazo_max} dias</td>
+                            <td style={{ padding: "10px 12px", fontWeight: 700, color: a.dias_restantes <= 0 ? "#dc2626" : nivelCor.text }}>
+                              {a.dias_restantes <= 0 ? `+${Math.abs(a.dias_restantes)} dias excedido` : `${a.dias_restantes} dias`}
+                            </td>
+                            <td style={{ padding: "10px 12px", minWidth: 100 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <div style={{ flex: 1, background: "#e5e7eb", borderRadius: 4, height: 6, overflow: "hidden" }}>
+                                  <div style={{ width: `${barWidth}%`, background: barColor, height: "100%", borderRadius: 4, transition: "width 0.3s" }} />
+                                </div>
+                                <span style={{ fontSize: 11, fontWeight: 600, color: nivelCor.text, whiteSpace: "nowrap" }}>{a.pct_prazo}%</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: "10px 12px", fontSize: 12, color: nivelCor.text, maxWidth: 240 }}>{a.mensagem}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Nota de rodapé */}
+                <div style={{ marginTop: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#64748b" }}>
+                  ⚖️ <strong>Base legal:</strong> Decreto nº 9.580/2018 (RIR/2018) — animais adquiridos de terceiros que permanecerem em poder do produtor por prazo igual ou superior ao limite definido passam a ser tratados como <strong>atividade rural</strong> e devem ser registrados no Livro Caixa / LCDPR.
+                </div>
               </div>
             )}
           </div>
