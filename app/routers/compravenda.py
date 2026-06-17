@@ -52,6 +52,7 @@ class CompraCreate(BaseModel):
     fornecedor: Optional[str] = None
     nota_fiscal: Optional[str] = None
     observacoes: Optional[str] = None
+    regime: str = "pasto"  # 'pasto' | 'confinamento'
 
 class VendaCreate(BaseModel):
     imovel_id: int
@@ -159,11 +160,12 @@ def registrar_compra(dados: CompraCreate):
         cur.execute("""
             INSERT INTO cv_compras
                 (imovel_id, produto_id, data_compra, quantidade, valor_unitario,
-                 valor_total, fornecedor, nota_fiscal, observacoes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+                 valor_total, fornecedor, nota_fiscal, observacoes, regime)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         """, (dados.imovel_id, dados.produto_id, dados.data_compra,
               dados.quantidade, dados.valor_unitario, valor_total,
-              dados.fornecedor, dados.nota_fiscal, dados.observacoes))
+              dados.fornecedor, dados.nota_fiscal, dados.observacoes,
+              dados.regime))
         cid = cur.fetchone()["id"]
         conn.commit()
         return {"id": cid, "valor_total": valor_total}

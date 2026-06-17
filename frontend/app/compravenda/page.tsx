@@ -30,6 +30,7 @@ type Compra = {
   especie: string | null; data_compra: string; quantidade: number;
   valor_unitario: number; valor_total: number; fornecedor: string | null;
   nota_fiscal: string | null; observacoes: string | null;
+  regime: "pasto" | "confinamento";
 };
 type Venda = {
   id: number; produto_id: number; produto_nome: string; unidade: string;
@@ -181,7 +182,7 @@ export default function CompraVendaPage() {
           imovel_id: IMOVEL_ID, produto_id: Number(novaCompra.produto_id),
           quantidade: Number(novaCompra.quantidade), valor_unitario: Number(novaCompra.valor_unitario),
           fornecedor: novaCompra.fornecedor || null, nota_fiscal: novaCompra.nota_fiscal || null,
-          data_compra: novaCompra.data_compra,
+          data_compra: novaCompra.data_compra, regime: novaCompraRegime,
         }),
       });
       if (r.ok) {
@@ -458,17 +459,15 @@ export default function CompraVendaPage() {
             {/* Alerta de itens próximos/acima do prazo fiscal */}
             {compras.length > 0 && (() => {
               const alertas = compras.filter(c => {
-                const regime = (c as any).regime || "pasto";
-                const { status } = calcularStatusFiscal(c.data_compra, regime);
-                return status === "rural" || status === "alerta";
-              });
-              if (alertas.length === 0) return null;
-              return (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
-                  <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 13, marginBottom: 6 }}>🔴 {alertas.length} compra(s) atingiram ou estão próximas do prazo de reclassificação fiscal</div>
-                  {alertas.map(c => {
-                    const regime = (c as any).regime || "pasto";
-                    const { diasDecorridos, prazoMax, status } = calcularStatusFiscal(c.data_compra, regime);
+                    const { status } = calcularStatusFiscal(c.data_compra, c.regime || "pasto");
+                    return status === "rural" || status === "alerta";
+                  });
+                  if (alertas.length === 0) return null;
+                  return (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+                      <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 13, marginBottom: 6 }}>🔴 {alertas.length} compra(s) atingiram ou estão próximas do prazo de reclassificação fiscal</div>
+                      {alertas.map(c => {
+                        const { diasDecorridos, prazoMax, status } = calcularStatusFiscal(c.data_compra, c.regime || "pasto");
                     return (
                       <div key={c.id} style={{ fontSize: 12, color: status === "rural" ? "#991b1b" : "#92400e", marginBottom: 3 }}>
                         {status === "rural" ? "🔴" : "🟡"} <strong>{c.produto_nome}</strong> — {diasDecorridos} dias em estoque
@@ -548,8 +547,7 @@ export default function CompraVendaPage() {
                   {compras.length === 0 ? (
                     <tr><td colSpan={8} style={{ padding: 32, textAlign: "center", color: "#9ca3af" }}>Nenhuma compra registrada.</td></tr>
                   ) : compras.map((c, i) => {
-                    const regime = (c as any).regime || "pasto";
-                    const fiscal = calcularStatusFiscal(c.data_compra, regime);
+                    const fiscal = calcularStatusFiscal(c.data_compra, c.regime || "pasto");
                     const rowBg = fiscal.status === "rural" ? "#fef2f2" : fiscal.status === "alerta" ? "#fffbeb" : i % 2 === 0 ? "#fff" : "#fafafa";
                     return (
                     <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6", background: rowBg }}>
