@@ -1288,6 +1288,20 @@ export default function OvinoDashboard() {
         </div>
       )}
 
+      {/* Card — Pipeline IA */}
+      <div style={{ marginTop: 24, background: "linear-gradient(135deg, #1a2e1a 0%, #15803d 100%)", borderRadius: 14, padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 10, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>🤖</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: "#fff", marginBottom: 4 }}>Pipeline IA — Detecção por Visão Computacional</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>YOLOv8 / YOLOv11 · Bounding boxes · Recorte automático · Diagnóstico Famacha e Pododermatite</div>
+          </div>
+        </div>
+        <a href="/ovino/pipeline-ia" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.35)", color: "#fff", fontSize: 14, fontWeight: 700, textDecoration: "none", borderRadius: 10, padding: "10px 22px", whiteSpace: "nowrap", flexShrink: 0 }}>
+          Acessar Documentação →
+        </a>
+      </div>
+
       {/* Modal de edição */}
       {editando && (
         <div style={{
