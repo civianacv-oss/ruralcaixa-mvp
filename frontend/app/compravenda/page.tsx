@@ -80,6 +80,25 @@ const COR = "#1a5c2e";
 const COR_LIGHT = "#f0f7f2";
 const COR_BORDER = "#c8e6d0";
 
+// ── Regra Receita Federal — RIR/2018, art. 2º, §2º ──────────────
+// Animais adquiridos de terceiros que permanecerem em poder do produtor por
+// tempo IGUAL OU SUPERIOR aos prazos abaixo passam a ser tratados como
+// atividade rural (não mais comercial).
+const PRAZO_CONFINAMENTO_DIAS = 52;   // regime de confinamento
+const PRAZO_PASTO_DIAS        = 138;  // demais regimes (pasto, semi-confinamento)
+
+function calcularStatusFiscal(
+  dataCompra: string,
+  regime: "confinamento" | "pasto"
+): { diasDecorridos: number; prazoMax: number; status: "comercial" | "rural" | "alerta" } {
+  const hoje = new Date();
+  const compra = new Date(dataCompra + "T00:00:00");
+  const dias = Math.floor((hoje.getTime() - compra.getTime()) / 86_400_000);
+  const prazo = regime === "confinamento" ? PRAZO_CONFINAMENTO_DIAS : PRAZO_PASTO_DIAS;
+  const status = dias >= prazo ? "rural" : dias >= prazo * 0.75 ? "alerta" : "comercial";
+  return { diasDecorridos: dias, prazoMax: prazo, status };
+}
+
 export default function CompraVendaPage() {
   const [aba, setAba] = useState<"estoque" | "compras" | "vendas" | "fluxo" | "dre">("estoque");
   const [loading, setLoading] = useState(true);
@@ -93,6 +112,7 @@ export default function CompraVendaPage() {
 
   // forms
   const [novoProduto, setNovoProduto] = useState({ nome: "", especie: "bovino", unidade: "cab", descricao: "", custo_medio: "" });
+  const [novaCompraRegime, setNovaCompraRegime] = useState<"confinamento" | "pasto">("pasto");
   const [novaCompra, setNovaCompra] = useState({ produto_id: "", quantidade: "", valor_unitario: "", fornecedor: "", nota_fiscal: "", data_compra: new Date().toISOString().slice(0, 10) });
   const [novaVenda, setNovaVenda] = useState({ produto_id: "", quantidade: "", valor_unitario: "", comprador: "", nota_fiscal: "", data_venda: new Date().toISOString().slice(0, 10) });
   const [novaDespesa, setNovaDespesa] = useState({ descricao: "", categoria: "operacional", valor: "", data_lancamento: new Date().toISOString().slice(0, 10) });
@@ -253,6 +273,30 @@ export default function CompraVendaPage() {
 
       <div style={{ padding: "16px", maxWidth: 1000, margin: "0 auto" }}>
 
+        {/* ── ALERTA FISCAL PERMANENTE ── */}
+        <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "14px 18px", marginBottom: 16, display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>⚠️</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#92400e", marginBottom: 4 }}>
+              Atividade Comercial — Não compõe a Produção Rural
+            </div>
+            <div style={{ fontSize: 13, color: "#78350f", lineHeight: 1.6 }}>
+              As operações registradas aqui são de <strong>compra e revenda de animais</strong> e, por isso, são tributadas como <strong>atividade comercial</strong> (não rural).
+              Contudo, conforme o <strong>RIR/2018 (Decreto nº 9.580/2018)</strong>, se o animal permanecer em poder do produtor por tempo igual ou superior ao prazo mínimo da Receita Federal, ele <strong>passa a ser enquadrado como atividade rural</strong>:
+            </div>
+            <div style={{ display: "flex", gap: 20, marginTop: 10 }}>
+              <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 14px", fontSize: 13 }}>
+                <div style={{ fontWeight: 700, color: "#92400e" }}>🏠 Confinamento</div>
+                <div style={{ color: "#78350f", marginTop: 2 }}>≥ <strong>{PRAZO_CONFINAMENTO_DIAS} dias</strong> → vira atividade rural</div>
+              </div>
+              <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 14px", fontSize: 13 }}>
+                <div style={{ fontWeight: 700, color: "#92400e" }}>🌿 Pasto / Outros</div>
+                <div style={{ color: "#78350f", marginTop: 2 }}>≥ <strong>{PRAZO_PASTO_DIAS} dias</strong> → vira atividade rural</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* KPI Cards */}
         {dashboard && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
@@ -411,6 +455,30 @@ export default function CompraVendaPage() {
         {/* ── ABA COMPRAS ── */}
         {aba === "compras" && (
           <div>
+            {/* Alerta de itens próximos/acima do prazo fiscal */}
+            {compras.length > 0 && (() => {
+              const alertas = compras.filter(c => {
+                const regime = (c as any).regime || "pasto";
+                const { status } = calcularStatusFiscal(c.data_compra, regime);
+                return status === "rural" || status === "alerta";
+              });
+              if (alertas.length === 0) return null;
+              return (
+                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, color: "#991b1b", fontSize: 13, marginBottom: 6 }}>🔴 {alertas.length} compra(s) atingiram ou estão próximas do prazo de reclassificação fiscal</div>
+                  {alertas.map(c => {
+                    const regime = (c as any).regime || "pasto";
+                    const { diasDecorridos, prazoMax, status } = calcularStatusFiscal(c.data_compra, regime);
+                    return (
+                      <div key={c.id} style={{ fontSize: 12, color: status === "rural" ? "#991b1b" : "#92400e", marginBottom: 3 }}>
+                        {status === "rural" ? "🔴" : "🟡"} <strong>{c.produto_nome}</strong> — {diasDecorridos} dias em estoque
+                        {status === "rural" ? " → RECLASSIFICADO como Atividade Rural" : ` → faltam ${prazoMax - diasDecorridos} dias para reclassificação`}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: 16, marginBottom: 16 }}>
               <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "#374151" }}>🛒 Registrar Compra</h3>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -447,6 +515,14 @@ export default function CompraVendaPage() {
                   <input placeholder="NF-e / número" value={novaCompra.nota_fiscal} onChange={e => setNovaCompra(p => ({ ...p, nota_fiscal: e.target.value }))}
                     style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14, width: 120 }} />
                 </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Regime de Criação</label>
+                  <select value={novaCompraRegime} onChange={e => setNovaCompraRegime(e.target.value as "confinamento" | "pasto")}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #fcd34d", fontSize: 14, background: "#fffbeb" }}>
+                    <option value="pasto">🌿 Pasto / Outros (138 dias)</option>
+                    <option value="confinamento">🏠 Confinamento (52 dias)</option>
+                  </select>
+                </div>
                 <button onClick={registrarCompra} disabled={salvando || !novaCompra.produto_id || !novaCompra.quantidade || !novaCompra.valor_unitario}
                   style={{ padding: "8px 18px", background: COR, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14, opacity: salvando ? 0.6 : 1, alignSelf: "flex-end" }}>
                   {salvando ? "..." : "✚ Registrar"}
@@ -463,7 +539,7 @@ export default function CompraVendaPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                    {["Data", "Produto", "Espécie", "Qtd", "Valor Unit.", "Total", "Fornecedor", "NF"].map(h => (
+                    {["Data", "Produto", "Espécie", "Qtd", "Valor Unit.", "Total", "Fornecedor", "NF", "Dias em Estoque", "Status Fiscal"].map(h => (
                       <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, color: "#374151", fontSize: 12 }}>{h}</th>
                     ))}
                   </tr>
@@ -471,8 +547,12 @@ export default function CompraVendaPage() {
                 <tbody>
                   {compras.length === 0 ? (
                     <tr><td colSpan={8} style={{ padding: 32, textAlign: "center", color: "#9ca3af" }}>Nenhuma compra registrada.</td></tr>
-                  ) : compras.map((c, i) => (
-                    <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                  ) : compras.map((c, i) => {
+                    const regime = (c as any).regime || "pasto";
+                    const fiscal = calcularStatusFiscal(c.data_compra, regime);
+                    const rowBg = fiscal.status === "rural" ? "#fef2f2" : fiscal.status === "alerta" ? "#fffbeb" : i % 2 === 0 ? "#fff" : "#fafafa";
+                    return (
+                    <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6", background: rowBg }}>
                       <td style={{ padding: "10px 12px", color: "#6b7280" }}>{fmtDate(c.data_compra)}</td>
                       <td style={{ padding: "10px 12px", fontWeight: 600, color: "#111827" }}>{c.produto_nome}</td>
                       <td style={{ padding: "10px 12px" }}><span style={{ background: COR_LIGHT, color: COR, borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>{especieLabel[c.especie || ""] || c.especie || "—"}</span></td>
@@ -481,8 +561,22 @@ export default function CompraVendaPage() {
                       <td style={{ padding: "10px 12px", fontWeight: 600, color: COR }}>{fmtBRL(c.valor_total)}</td>
                       <td style={{ padding: "10px 12px", color: "#6b7280" }}>{c.fornecedor || "—"}</td>
                       <td style={{ padding: "10px 12px", color: "#6b7280", fontSize: 12 }}>{c.nota_fiscal || "—"}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 600, color: fiscal.status === "rural" ? "#991b1b" : fiscal.status === "alerta" ? "#92400e" : "#6b7280" }}>
+                        {fiscal.diasDecorridos}d / {fiscal.prazoMax}d
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        {fiscal.status === "rural" && (
+                          <span style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>🔴 Atividade Rural</span>
+                        )}
+                        {fiscal.status === "alerta" && (
+                          <span style={{ background: "#fffbeb", color: "#92400e", border: "1px solid #fcd34d", borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>🟡 Atenção</span>
+                        )}
+                        {fiscal.status === "comercial" && (
+                          <span style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>🟢 Comercial</span>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
