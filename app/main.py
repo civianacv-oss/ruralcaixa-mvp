@@ -40,6 +40,13 @@ except Exception as e:
     print(f"SUINO ROUTER FAILED: {e}")
     suino_router = None
 
+try:
+    from app.routers.compravenda import router as compravenda_router
+    print("COMPRAVENDA ROUTER LOADED OK")
+except Exception as e:
+    print(f"COMPRAVENDA ROUTER FAILED: {e}")
+    compravenda_router = None
+
 load_dotenv()
 
 app = FastAPI(title="Rural Caixa PF")
@@ -54,6 +61,7 @@ sessoes = {}
 if ovino_router: app.include_router(ovino_router)
 if caprino_router: app.include_router(caprino_router)
 if suino_router: app.include_router(suino_router)
+if compravenda_router: app.include_router(compravenda_router)
 
 # Cron alertas ovinos
 try:

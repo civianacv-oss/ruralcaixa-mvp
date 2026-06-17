@@ -102,6 +102,7 @@ export default function Dashboard() {
     {id:"relatorios",  label:"Relatórios",        icon:Icons.reports,    href:"/relatorio"},
     {id:"nfe",         label:"NF-e Produtor",      icon:Icons.financial,  href:"/nfe"},
     {id:"esocial",     label:"eSocial Rural",      icon:Icons.users,      href:"/esocial"},
+    {id:"compravenda", label:"Compra e Venda",       icon:Icons.financial,  href:"/compravenda"},
   ];
   const navAdmin = [
     {id:"usuarios",     label:"Usuários",        icon:Icons.users,     href:"/terceiros"},
