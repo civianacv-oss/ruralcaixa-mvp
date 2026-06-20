@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 const IMOVEL_ID = 1;
@@ -273,6 +274,18 @@ export default function AcaiPage() {
           </div>
         </div>
 
+        <BannerOrientacao
+          modulo="acai"
+          titulo="Como usar o módulo de Cultivo de Açaí"
+          descricao="Registre seus talhões (parcelas de cultivo), as colheitas por talhão e os custos de manejo. O sistema calcula automaticamente a produtividade (kg/ha), o lucro e gera o DRE da atividade para o seu contador."
+          passos={[
+            { icone: "🌴", texto: "1. Talhões: cadastre cada área de cultivo" },
+            { icone: "🍇", texto: "2. Safra: registre cada colheita com kg e preço" },
+            { icone: "🧪", texto: "3. Insumos: registre adubos, defensivos e mão de obra" },
+            { icone: "📊", texto: "4. DRE: veja o resultado final da atividade" },
+          ]}
+          baseLegal="Decreto nº 9.580/2018 (RIR/2018), art. 2º — Cultivo de açaí é Atividade Rural por natureza"
+        />
         {/* KPI Cards */}
         {dashboard && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>

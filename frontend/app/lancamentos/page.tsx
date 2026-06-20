@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 const PRODUTOR_ID = 1;
@@ -361,6 +362,17 @@ export default function LancamentosPage() {
       </div>
 
       <div style={{ padding: "24px 28px" }}>
+        <BannerOrientacao
+          modulo="lancamentos"
+          titulo="Como usar os Lançamentos Financeiros"
+          descricao="Aqui você registra toda entrada e saída de dinheiro da sua propriedade rural. Esses lançamentos formam a base do seu Livro Caixa Rural (LCDPR), exigido pela Receita Federal para produtores com receita acima de R$ 142.798,50/ano."
+          passos={[
+            { icone: "📈", texto: "Receita: venda de animais, leite, grãos, etc." },
+            { icone: "📉", texto: "Despesa: insumos, veterinário, combustível, etc." },
+            { icone: "🏗️", texto: "Investimento: máquinas, benfeitorias, animais reprodutores" },
+          ]}
+          baseLegal="Base legal: Instrução Normativa RFB nº 1.848/2018 — Livro Caixa Digital do Produtor Rural (LCDPR)"
+        />
         {/* Toast */}
         {msg && (
           <div style={{
@@ -420,17 +432,20 @@ export default function LancamentosPage() {
             <div style={{ padding: 40, textAlign: "center", color: "#7a8a6a", fontSize: 14 }}>Carregando lançamentos...</div>
           ) : filtrados.length === 0 ? (
             <div style={{ padding: 48, textAlign: "center" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2e1a", marginBottom: 6 }}>Nenhum lançamento encontrado</div>
-              <div style={{ fontSize: 13, color: "#7a8a6a", marginBottom: 20 }}>
-                Envie uma mensagem pelo WhatsApp ou clique em "Novo Lançamento".
+              <div style={{ fontSize: 44, marginBottom: 12 }}>💰</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2e1a", marginBottom: 8 }}>Nenhum lançamento registrado ainda</div>
+              <div style={{ fontSize: 13, color: "#5a6a5a", lineHeight: 1.65, maxWidth: 420, margin: "0 auto", marginBottom: 20 }}>
+                Comece registrando as receitas e despesas da sua propriedade. Exemplos: venda de animais (receita), compra de ração (despesa), aquisição de trator (investimento).
               </div>
               <button onClick={() => { setFormCriar(FORM_VAZIO); setShowCriar(true); }} style={{
                 background: "#3a6a2a", color: "#fff", border: "none",
-                padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 16,
               }}>
-                + Novo Lançamento
+                + Registrar Primeiro Lançamento
               </button>
+              <div style={{ display: "inline-block", background: "#FFF8E1", border: "1px solid #FFE082", borderRadius: 8, padding: "8px 16px", fontSize: 12.5, color: "#5a4a10", maxWidth: 420 }}>
+                💡 Guarde todas as notas fiscais de compra de insumos — elas são dedutíveis no cálculo do imposto rural.
+              </div>
             </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

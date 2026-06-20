@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 const IMOVEL_ID = 1;
@@ -327,6 +328,21 @@ export default function SuinoDashboard() {
       </div>
 
       <div style={{ padding: "16px", maxWidth: 900, margin: "0 auto" }}>
+        <BannerOrientacao
+          modulo="suino"
+          titulo="Como usar o módulo de Suínos"
+          descricao="Gerencie seu plantel de suínos por lotes. Cadastre os animais, organize-os em lotes por fase (leitão, crescimento, terminador, matriz), registre eventos sanitários e acompanhe o desempenho do rebanho."
+          passos={[
+            { icone: "🐖", texto: "Animais: cadastre cada suíno com brinco e peso" },
+            { icone: "📦", texto: "Lotes: agrupe por fase de criação" },
+            { icone: "💉", texto: "Saúde: registre vacinas e tratamentos" },
+            { icone: "❤️", texto: "Reprodução: controle cobertura e partos" },
+          ]}
+          corFundo="#fdf4ff"
+          corBorda="#d8b4fe"
+          corTexto="#6b21a8"
+          baseLegal="Decreto nº 9.580/2018 (RIR/2018), art. 2º — Criação de suínos é Atividade Rural"
+        />
 
         {/* KPI Cards */}
         {dashboard && (

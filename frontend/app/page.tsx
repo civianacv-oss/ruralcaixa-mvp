@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import GuiaInicio from "@/components/GuiaInicio";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 const IMOVEL_ID = 1;
@@ -121,6 +122,7 @@ export default function Dashboard() {
 
   return (
     <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#f5f0e8",overflow:"hidden"}}>
+      <GuiaInicio />
 
       {/* ── SIDEBAR ──────────────────────────────────────────── */}
       <aside style={{

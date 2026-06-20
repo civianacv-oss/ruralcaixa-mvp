@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 const IMOVEL_ID = 1;
@@ -118,6 +119,18 @@ export default function RebanhoPage() {
         </p>
       </div>
 
+      <BannerOrientacao
+        modulo="rebanho"
+        titulo="Como gerenciar seus rebanhos"
+        descricao="Cada espécie tem seu próprio módulo com controle de animais, lotes, saúde e reprodução. Clique na espécie desejada para começar. Todos os animais registrados aqui são considerados Atividade Rural pela Receita Federal."
+        passos={[
+          { icone: "🐄", texto: "Bovinos: corte, leite e reprodução" },
+          { icone: "🐑", texto: "Ovinos: corte, lã e reprodução" },
+          { icone: "🐐", texto: "Caprinos: leite e corte" },
+          { icone: "🐖", texto: "Suínos: ciclo completo ou terminador" },
+        ]}
+        baseLegal="Decreto nº 9.580/2018 (RIR/2018), art. 2º — Criação de animais é Atividade Rural"
+      />
       {/* Grid de espécies */}
       <div style={{
         display: "grid",

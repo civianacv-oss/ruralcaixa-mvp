@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 const IMOVEL_ID = 1;
@@ -322,6 +323,20 @@ export default function CompraVendaPage() {
           </div>
         </div>
 
+        <BannerOrientacao
+          modulo="compravenda"
+          titulo="Como usar o módulo de Compra e Venda"
+          descricao="Este módulo é para quem compra animais para revender sem criar. O fluxo é simples: cadastre o animal no Estoque, registre a Compra com o valor pago, e quando vender registre a Venda. O sistema calcula o lucro e a margem automaticamente."
+          passos={[
+            { icone: "📦", texto: "1. Estoque: cadastre o tipo de animal" },
+            { icone: "🛒", texto: "2. Compras: registre o que comprou e quanto pagou" },
+            { icone: "💰", texto: "3. Vendas: registre a venda e veja o lucro" },
+            { icone: "🚨", texto: "4. Alertas: acompanhe os prazos fiscais" },
+          ]}
+          corFundo="#fffbf0"
+          corBorda="#fcd34d"
+          corTexto="#92400e"
+        />
         {/* KPI Cards */}
         {dashboard && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
