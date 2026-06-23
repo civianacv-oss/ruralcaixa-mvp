@@ -252,7 +252,8 @@ export default function ContratosPage() {
           <div style={{ fontWeight: 700, fontSize: 18 }}>Contratos Rurais</div>
           <div style={{ fontSize: 12, color: "#7a9a6a" }}>Parceria agrícola, pecuária e condomínio rural</div>
         </div>
-        <div style={{ marginLeft: "auto" }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <a href="/contratos/acerto" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#3a5a9a", color: "#fff", textDecoration: "none", padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600 }}>🌾 Acerto de Contrato</a>
           <button onClick={() => { reset(); setShowModal(true); }} style={{ background: "#4a7a3a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
             + Novo Contrato
           </button>

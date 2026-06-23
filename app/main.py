@@ -90,6 +90,16 @@ except Exception as e:
 
 if simulador_regime_router: app.include_router(simulador_regime_router)
 
+acertos_contrato_router = None
+try:
+    from app.routers.acertos_contrato import router as acertos_contrato_router
+    print("ACERTOS_CONTRATO ROUTER LOADED OK")
+except Exception as e:
+    print(f"ACERTOS_CONTRATO ROUTER FAILED: {e}")
+    acertos_contrato_router = None
+
+if acertos_contrato_router: app.include_router(acertos_contrato_router)
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos

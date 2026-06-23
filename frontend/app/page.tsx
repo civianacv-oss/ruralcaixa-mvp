@@ -97,6 +97,7 @@ export default function Dashboard() {
     {id:"dashboard",   label:"Painel Principal",        icon:Icons.dashboard,  href:"/"},
     {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
     {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
+    {id:"acerto-contrato",label:"Acerto de Contrato",icon:Icons.financial,  href:"/contratos/acerto"},
     {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
     {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/rebanho"},
     {id:"agricultura", label:"Agricultura",        icon:Icons.crops,      href:"/agricultura"},
