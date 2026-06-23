@@ -1,0 +1,10 @@
+[build]
+dockerfilePath = "monitor-service/Dockerfile"
+buildCommand = ""
+
+[deploy]
+startCommand = "python3 monitor-service/scheduler.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
