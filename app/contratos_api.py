@@ -133,8 +133,15 @@ def listar_contratos(
 # GET /contratos/{id}
 # Detalhe + assinaturas
 # -------------------------------------------------------------
+# Rotas estáticas que devem ser tratadas ANTES do parâmetro dinâmico {contrato_id}
+# (ex: /contratos/acerto — rota do frontend Next.js)
+_STATIC_PATHS = {"acerto", "novo", "resumo", "relatorio"}
+
 @router.get("/{contrato_id}")
 def detalhe_contrato(contrato_id: str):
+    # Evitar que caminhos estáticos do frontend sejam interpretados como UUID
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -254,6 +261,8 @@ def criar_contrato(body: ContratoCreate, request: Request):
 # -------------------------------------------------------------
 @router.post("/{contrato_id}/enviar")
 def enviar_para_assinatura(contrato_id: str, request: Request):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -341,6 +350,8 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
 # -------------------------------------------------------------
 @router.post("/{contrato_id}/assinar")
 def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -431,6 +442,8 @@ def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
 # -------------------------------------------------------------
 @router.get("/{contrato_id}/auditoria")
 def auditoria_contrato(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -453,6 +466,8 @@ def auditoria_contrato(contrato_id: str):
 # -------------------------------------------------------------
 @router.delete("/{contrato_id}")
 def deletar_contrato(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -489,6 +504,8 @@ class CondomininoAdd(BaseModel):
 
 @router.post("/{contrato_id}/condominos", status_code=201)
 def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -539,6 +556,8 @@ def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request
 # -------------------------------------------------------------
 @router.get("/{contrato_id}/condominos")
 def listar_condominos(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
