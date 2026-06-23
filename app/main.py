@@ -165,6 +165,41 @@ try:
 except Exception as e:
     print(f"CAPRINO CRON FAILED: {e}")
     processar_alertas_caprinos = None
+# Cron alertas suínos
+try:
+    from app.services.suino_cron import processar_alertas_suinos
+    print("SUINO CRON LOADED OK")
+except Exception as e:
+    print(f"SUINO CRON FAILED: {e}")
+    processar_alertas_suinos = None
+# Cron alertas bovinos
+try:
+    from app.services.bovino_cron import processar_alertas_bovinos
+    print("BOVINO CRON LOADED OK")
+except Exception as e:
+    print(f"BOVINO CRON FAILED: {e}")
+    processar_alertas_bovinos = None
+# Cron alertas agricultura
+try:
+    from app.services.agricultura_cron import processar_alertas_agricultura
+    print("AGRICULTURA CRON LOADED OK")
+except Exception as e:
+    print(f"AGRICULTURA CRON FAILED: {e}")
+    processar_alertas_agricultura = None
+# Cron alertas açaí
+try:
+    from app.services.acai_cron import processar_alertas_acai
+    print("ACAI CRON LOADED OK")
+except Exception as e:
+    print(f"ACAI CRON FAILED: {e}")
+    processar_alertas_acai = None
+# Cron alertas piscicultura
+try:
+    from app.services.piscicultura_cron import processar_alertas_piscicultura
+    print("PISCICULTURA CRON LOADED OK")
+except Exception as e:
+    print(f"PISCICULTURA CRON FAILED: {e}")
+    processar_alertas_piscicultura = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -649,7 +684,36 @@ async def processar_alertas_caprinos_endpoint(imovel_id: int = None):
     if processar_alertas_caprinos:
         return processar_alertas_caprinos(imovel_id=imovel_id)
     return {"erro": "Cron não disponível"}
-
+@app.post("/suino/processar-alertas")
+async def processar_alertas_suinos_endpoint(imovel_id: int = None):
+    """Processa e envia alertas suínos via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_suinos:
+        return processar_alertas_suinos(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
+@app.post("/bovino/processar-alertas")
+async def processar_alertas_bovinos_endpoint(imovel_id: int = None):
+    """Processa e envia alertas bovinos via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_bovinos:
+        return processar_alertas_bovinos(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
+@app.post("/agricultura/processar-alertas")
+async def processar_alertas_agricultura_endpoint(imovel_id: int = None):
+    """Processa e envia alertas de agricultura via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_agricultura:
+        return processar_alertas_agricultura(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
+@app.post("/acai/processar-alertas")
+async def processar_alertas_acai_endpoint(imovel_id: int = None):
+    """Processa e envia alertas de açaí via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_acai:
+        return processar_alertas_acai(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
+@app.post("/piscicultura/processar-alertas")
+async def processar_alertas_piscicultura_endpoint(imovel_id: int = None):
+    """Processa e envia alertas de piscicultura via WhatsApp. Chamado pelo cron Railway."""
+    if processar_alertas_piscicultura:
+        return processar_alertas_piscicultura(imovel_id=imovel_id)
+    return {"erro": "Cron não disponível"}
 @app.post("/cadastro")
 async def cadastrar_produtor(data: CadastroRequest):
     from app.db import cadastrar
