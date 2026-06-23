@@ -450,4 +450,523 @@ def dashboard(imovel_id: int):
     finally:
         conn.close()
 
+# ══════════════════════════════════════════════════════════════
+# SCHEMAS — Gado Leiteiro
+# ══════════════════════════════════════════════════════════════
+class OrdenhaIn(BaseModel):
+    imovel_id: int
+    animal_id: Optional[int] = None
+    lote_id: Optional[int] = None
+    data: date
+    turno: str = "total"
+    volume_l: float
+    gordura_pct: Optional[float] = None
+    proteina_pct: Optional[float] = None
+    ccs: Optional[int] = None
+    ufc: Optional[int] = None
+    destinacao: str = "venda"
+    preco_litro: Optional[float] = None
+    observacoes: Optional[str] = None
+
+class IatfIn(BaseModel):
+    imovel_id: int
+    femea_id: int
+    lote_id: Optional[int] = None
+    protocolo: str
+    data_inicio: date
+    data_iatf: Optional[date] = None
+    touro_id: Optional[int] = None
+    semen_touro: Optional[str] = None
+    tecnico: Optional[str] = None
+    resultado: str = "aguardando"
+    data_diagnostico: Optional[date] = None
+    observacoes: Optional[str] = None
+
+class DietaTransicaoIn(BaseModel):
+    imovel_id: int
+    animal_id: int
+    fase: str
+    data_inicio: date
+    data_fim: Optional[date] = None
+    dieta_descricao: str
+    volumoso_kg_dia: Optional[float] = None
+    concentrado_kg_dia: Optional[float] = None
+    suplemento: Optional[str] = None
+    responsavel: Optional[str] = None
+    observacoes: Optional[str] = None
+
+# ══════════════════════════════════════════════════════════════
+# SCHEMAS — Gado de Corte
+# ══════════════════════════════════════════════════════════════
+class ConfinamentoIn(BaseModel):
+    imovel_id: int
+    lote_id: int
+    data_entrada: date
+    data_saida_prev: Optional[date] = None
+    peso_entrada_kg: Optional[float] = None
+    dieta: Optional[str] = None
+    custo_diario_cab: Optional[float] = None
+    objetivo: str = "terminacao"
+    observacoes: Optional[str] = None
+
+class ConfinamentoFechamentoIn(BaseModel):
+    data_saida_real: date
+    peso_saida_kg: Optional[float] = None
+    status: str = "encerrado"
+
+class ClassificacaoCarcacaIn(BaseModel):
+    imovel_id: int
+    animal_id: int
+    abate_id: Optional[int] = None
+    data: date
+    frigorifico: Optional[str] = None
+    maturidade: Optional[str] = None
+    acabamento: Optional[str] = None
+    conformacao: Optional[str] = None
+    peso_carcaca_kg: Optional[float] = None
+    rendimento_pct: Optional[float] = None
+    preco_arroba: Optional[float] = None
+    valor_total: Optional[float] = None
+    nota_fiscal: Optional[str] = None
+    observacoes: Optional[str] = None
+
+class CustoProducaoIn(BaseModel):
+    imovel_id: int
+    lote_id: Optional[int] = None
+    confinamento_id: Optional[int] = None
+    periodo_inicio: date
+    periodo_fim: Optional[date] = None
+    categoria: str
+    descricao: Optional[str] = None
+    valor: float
+
+# ══════════════════════════════════════════════════════════════
+# ENDPOINTS — tipo_bovino do imóvel
+# ══════════════════════════════════════════════════════════════
+@router.get("/tipo/{imovel_id}")
+def tipo_bovino(imovel_id: int):
+    """Retorna o tipo de exploração bovina do imóvel: leite | corte | misto."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COALESCE(tipo_bovino,'corte') AS tipo FROM imoveis_rurais WHERE id=%s", (imovel_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Imóvel não encontrado")
+        return {"tipo_bovino": row["tipo"]}
+    finally:
+        conn.close()
+
+@router.patch("/tipo/{imovel_id}")
+def atualizar_tipo_bovino(imovel_id: int, tipo_bovino: str):
+    """Atualiza o tipo de exploração bovina do imóvel."""
+    if tipo_bovino not in ("leite", "corte", "misto"):
+        raise HTTPException(400, "tipo_bovino deve ser leite, corte ou misto")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE imoveis_rurais SET tipo_bovino=%s WHERE id=%s RETURNING id",
+            (tipo_bovino, imovel_id)
+        )
+        if not cur.fetchone():
+            raise HTTPException(404, "Imóvel não encontrado")
+        conn.commit()
+        return {"ok": True, "tipo_bovino": tipo_bovino}
+    finally:
+        conn.close()
+
+# ══════════════════════════════════════════════════════════════
+# ENDPOINTS — Gado Leiteiro: Ordenha
+# ══════════════════════════════════════════════════════════════
+@router.post("/leiteiro/ordenha")
+def registrar_ordenha(data: OrdenhaIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bovino_ordenha
+              (imovel_id, animal_id, lote_id, data, turno, volume_l,
+               gordura_pct, proteina_pct, ccs, ufc, destinacao, preco_litro, observacoes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id, valor_total
+        """, (
+            data.imovel_id, data.animal_id, data.lote_id, data.data,
+            data.turno, data.volume_l, data.gordura_pct, data.proteina_pct,
+            data.ccs, data.ufc, data.destinacao, data.preco_litro, data.observacoes
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return {"ok": True, **row}
+    finally:
+        conn.close()
+
+@router.get("/leiteiro/ordenha/{imovel_id}")
+def listar_ordenha(imovel_id: int, dias: int = Query(30, ge=1, le=365)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT o.*, a.brinco, a.nome AS nome_animal, bl.nome AS nome_lote
+            FROM bovino_ordenha o
+            LEFT JOIN bovino_animais a ON a.id = o.animal_id
+            LEFT JOIN bovino_lotes bl ON bl.id = o.lote_id
+            WHERE o.imovel_id=%s AND o.data >= CURRENT_DATE - %s
+            ORDER BY o.data DESC, o.turno
+        """, (imovel_id, dias))
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+@router.get("/leiteiro/ordenha/resumo/{imovel_id}")
+def resumo_ordenha(imovel_id: int, meses: int = Query(6, ge=1, le=24)):
+    """Resumo mensal de produção de leite por ordenha."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+              DATE_TRUNC('month', data)::date AS mes,
+              SUM(volume_l) AS total_l,
+              AVG(volume_l) AS media_dia_l,
+              SUM(valor_total) AS receita,
+              AVG(gordura_pct) AS gordura_media,
+              AVG(proteina_pct) AS proteina_media,
+              COUNT(*) AS registros
+            FROM bovino_ordenha
+            WHERE imovel_id=%s AND data >= CURRENT_DATE - (%s * 30)
+            GROUP BY 1 ORDER BY 1 DESC
+        """, (imovel_id, meses))
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+# ── IATF ─────────────────────────────────────────────────────
+@router.post("/leiteiro/iatf")
+def registrar_iatf(data: IatfIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bovino_protocolo_iatf
+              (imovel_id, femea_id, lote_id, protocolo, data_inicio, data_iatf,
+               touro_id, semen_touro, tecnico, resultado, data_diagnostico, observacoes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (
+            data.imovel_id, data.femea_id, data.lote_id, data.protocolo,
+            data.data_inicio, data.data_iatf, data.touro_id, data.semen_touro,
+            data.tecnico, data.resultado, data.data_diagnostico, data.observacoes
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return {"ok": True, **row}
+    finally:
+        conn.close()
+
+@router.get("/leiteiro/iatf/{imovel_id}")
+def listar_iatf(imovel_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT i.*, a.brinco, a.nome AS nome_femea
+            FROM bovino_protocolo_iatf i
+            JOIN bovino_animais a ON a.id = i.femea_id
+            WHERE i.imovel_id=%s
+            ORDER BY i.data_inicio DESC
+        """, (imovel_id,))
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+@router.patch("/leiteiro/iatf/{iatf_id}/resultado")
+def atualizar_resultado_iatf(iatf_id: int, resultado: str, data_diagnostico: Optional[date] = None):
+    if resultado not in ("aguardando", "positivo", "negativo", "aborto"):
+        raise HTTPException(400, "resultado inválido")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE bovino_protocolo_iatf
+            SET resultado=%s, data_diagnostico=COALESCE(%s, data_diagnostico)
+            WHERE id=%s RETURNING id
+        """, (resultado, data_diagnostico, iatf_id))
+        if not cur.fetchone():
+            raise HTTPException(404, "Registro não encontrado")
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+# ── Dieta de Transição ────────────────────────────────────────
+@router.post("/leiteiro/dieta-transicao")
+def registrar_dieta(data: DietaTransicaoIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bovino_dieta_transicao
+              (imovel_id, animal_id, fase, data_inicio, data_fim,
+               dieta_descricao, volumoso_kg_dia, concentrado_kg_dia,
+               suplemento, responsavel, observacoes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (
+            data.imovel_id, data.animal_id, data.fase, data.data_inicio,
+            data.data_fim, data.dieta_descricao, data.volumoso_kg_dia,
+            data.concentrado_kg_dia, data.suplemento, data.responsavel, data.observacoes
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return {"ok": True, **row}
+    finally:
+        conn.close()
+
+@router.get("/leiteiro/dieta-transicao/{imovel_id}")
+def listar_dietas(imovel_id: int):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT d.*, a.brinco, a.nome AS nome_animal
+            FROM bovino_dieta_transicao d
+            JOIN bovino_animais a ON a.id = d.animal_id
+            WHERE d.imovel_id=%s
+            ORDER BY d.data_inicio DESC
+        """, (imovel_id,))
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+# ══════════════════════════════════════════════════════════════
+# ENDPOINTS — Gado de Corte: Confinamento
+# ══════════════════════════════════════════════════════════════
+@router.post("/corte/confinamento")
+def iniciar_confinamento(data: ConfinamentoIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bovino_confinamento
+              (imovel_id, lote_id, data_entrada, data_saida_prev,
+               peso_entrada_kg, dieta, custo_diario_cab, objetivo)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (
+            data.imovel_id, data.lote_id, data.data_entrada, data.data_saida_prev,
+            data.peso_entrada_kg, data.dieta, data.custo_diario_cab, data.objetivo
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return {"ok": True, **row}
+    finally:
+        conn.close()
+
+@router.get("/corte/confinamento/{imovel_id}")
+def listar_confinamentos(imovel_id: int, status: Optional[str] = None):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        filtro = "AND cf.status=%s" if status else ""
+        params = (imovel_id, status) if status else (imovel_id,)
+        cur.execute(f"""
+            SELECT cf.*, bl.nome AS nome_lote,
+                   (SELECT COUNT(*) FROM bovino_animais a WHERE a.lote_id = cf.lote_id AND a.status='ativo') AS qtd_animais
+            FROM bovino_confinamento cf
+            JOIN bovino_lotes bl ON bl.id = cf.lote_id
+            WHERE cf.imovel_id=%s {filtro}
+            ORDER BY cf.data_entrada DESC
+        """, params)
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+@router.patch("/corte/confinamento/{confinamento_id}/fechar")
+def fechar_confinamento(confinamento_id: int, data: ConfinamentoFechamentoIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE bovino_confinamento
+            SET data_saida_real=%s, peso_saida_kg=%s, status=%s
+            WHERE id=%s RETURNING id, gmd_kg
+        """, (data.data_saida_real, data.peso_saida_kg, data.status, confinamento_id))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Confinamento não encontrado")
+        conn.commit()
+        return {"ok": True, "id": row["id"], "gmd_kg": row["gmd_kg"]}
+    finally:
+        conn.close()
+
+# ── Classificação de Carcaça ──────────────────────────────────
+@router.post("/corte/classificacao-carcaca")
+def registrar_classificacao(data: ClassificacaoCarcacaIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bovino_classificacao_carcaca
+              (imovel_id, animal_id, abate_id, data, frigorifico,
+               maturidade, acabamento, conformacao, peso_carcaca_kg,
+               rendimento_pct, preco_arroba, valor_total, nota_fiscal, observacoes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (
+            data.imovel_id, data.animal_id, data.abate_id, data.data,
+            data.frigorifico, data.maturidade, data.acabamento, data.conformacao,
+            data.peso_carcaca_kg, data.rendimento_pct, data.preco_arroba,
+            data.valor_total, data.nota_fiscal, data.observacoes
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return {"ok": True, **row}
+    finally:
+        conn.close()
+
+@router.get("/corte/classificacao-carcaca/{imovel_id}")
+def listar_classificacoes(imovel_id: int, dias: int = Query(90, ge=1, le=730)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cc.*, a.brinco, a.nome AS nome_animal
+            FROM bovino_classificacao_carcaca cc
+            JOIN bovino_animais a ON a.id = cc.animal_id
+            WHERE cc.imovel_id=%s AND cc.data >= CURRENT_DATE - %s
+            ORDER BY cc.data DESC
+        """, (imovel_id, dias))
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+# ── Custo de Produção ─────────────────────────────────────────
+@router.post("/corte/custo-producao")
+def registrar_custo(data: CustoProducaoIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO bovino_custo_producao
+              (imovel_id, lote_id, confinamento_id, periodo_inicio, periodo_fim,
+               categoria, descricao, valor)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (
+            data.imovel_id, data.lote_id, data.confinamento_id,
+            data.periodo_inicio, data.periodo_fim,
+            data.categoria, data.descricao, data.valor
+        ))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return {"ok": True, **row}
+    finally:
+        conn.close()
+
+@router.get("/corte/custo-producao/{imovel_id}")
+def listar_custos(imovel_id: int, lote_id: Optional[int] = None):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        filtro = "AND lote_id=%s" if lote_id else ""
+        params = (imovel_id, lote_id) if lote_id else (imovel_id,)
+        cur.execute(f"""
+            SELECT cp.*, bl.nome AS nome_lote
+            FROM bovino_custo_producao cp
+            LEFT JOIN bovino_lotes bl ON bl.id = cp.lote_id
+            WHERE cp.imovel_id=%s {filtro}
+            ORDER BY cp.periodo_inicio DESC
+        """, params)
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+@router.get("/corte/custo-producao/resumo/{imovel_id}")
+def resumo_custos(imovel_id: int, lote_id: Optional[int] = None):
+    """Resumo de custos por categoria para o imóvel/lote."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        filtro = "AND lote_id=%s" if lote_id else ""
+        params = (imovel_id, lote_id) if lote_id else (imovel_id,)
+        cur.execute(f"""
+            SELECT categoria, SUM(valor) AS total, COUNT(*) AS registros
+            FROM bovino_custo_producao
+            WHERE imovel_id=%s {filtro}
+            GROUP BY categoria ORDER BY total DESC
+        """, params)
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+# ══════════════════════════════════════════════════════════════
+# DASHBOARD UNIFICADO (leiteiro + corte)
+# ══════════════════════════════════════════════════════════════
+@router.get("/dashboard-v2/{imovel_id}")
+def dashboard_v2(imovel_id: int):
+    """Dashboard unificado com dados condicionais por tipo_bovino."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        # tipo do imóvel
+        cur.execute("SELECT COALESCE(tipo_bovino,'corte') AS tipo FROM imoveis_rurais WHERE id=%s", (imovel_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Imóvel não encontrado")
+        tipo = row["tipo"]
+
+        # plantel
+        cur.execute("""
+            SELECT
+              COUNT(*) FILTER (WHERE status='ativo') AS total,
+              COUNT(*) FILTER (WHERE aptidao_manejo='leite' AND status='ativo') AS leite,
+              COUNT(*) FILTER (WHERE aptidao_manejo='corte' AND status='ativo') AS corte
+            FROM bovino_animais WHERE imovel_id=%s
+        """, (imovel_id,))
+        plantel = dict(cur.fetchone())
+
+        result = {"tipo_bovino": tipo, "plantel": plantel}
+
+        # dados leiteiro
+        if tipo in ("leite", "misto"):
+            cur.execute("""
+                SELECT
+                  COALESCE(SUM(volume_l),0) AS total_l_30d,
+                  COALESCE(AVG(volume_l),0) AS media_dia_l,
+                  COALESCE(SUM(valor_total),0) AS receita_30d
+                FROM bovino_ordenha
+                WHERE imovel_id=%s AND data >= CURRENT_DATE - 30
+            """, (imovel_id,))
+            result["leiteiro"] = dict(cur.fetchone())
+
+            cur.execute("""
+                SELECT COUNT(*) AS iatf_aguardando
+                FROM bovino_protocolo_iatf
+                WHERE imovel_id=%s AND resultado='aguardando'
+            """, (imovel_id,))
+            result["leiteiro"]["iatf_aguardando"] = cur.fetchone()["iatf_aguardando"]
+
+        # dados corte
+        if tipo in ("corte", "misto"):
+            cur.execute("""
+                SELECT
+                  COUNT(*) FILTER (WHERE status='ativo') AS confinamentos_ativos,
+                  COALESCE(SUM(custo_diario_cab) FILTER (WHERE status='ativo'), 0) AS custo_diario_total
+                FROM bovino_confinamento WHERE imovel_id=%s
+            """, (imovel_id,))
+            result["corte"] = dict(cur.fetchone())
+
+            cur.execute("""
+                SELECT COALESCE(SUM(valor_total),0) AS receita_abates_90d
+                FROM bovino_abates ab
+                JOIN bovino_animais a ON a.id=ab.animal_id
+                WHERE a.imovel_id=%s AND ab.data >= CURRENT_DATE - 90
+            """, (imovel_id,))
+            result["corte"]["receita_abates_90d"] = cur.fetchone()["receita_abates_90d"]
+
+        return result
+    finally:
+        conn.close()
+
 print("BOVINO ROUTER LOADED OK")
