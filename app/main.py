@@ -100,6 +100,36 @@ except Exception as e:
 
 if acertos_contrato_router: app.include_router(acertos_contrato_router)
 
+# DCTFWeb
+dctfweb_router = None
+try:
+    from app.routers.dctfweb import router as dctfweb_router
+    print("DCTFWEB ROUTER LOADED OK")
+except Exception as e:
+    print(f"DCTFWEB ROUTER FAILED: {e}")
+    dctfweb_router = None
+if dctfweb_router: app.include_router(dctfweb_router)
+
+# Livro Caixa
+livro_caixa_router = None
+try:
+    from app.routers.livro_caixa import router as livro_caixa_router
+    print("LIVRO_CAIXA ROUTER LOADED OK")
+except Exception as e:
+    print(f"LIVRO_CAIXA ROUTER FAILED: {e}")
+    livro_caixa_router = None
+if livro_caixa_router: app.include_router(livro_caixa_router)
+
+# DIRPF
+dirpf_router = None
+try:
+    from app.routers.dirpf import router as dirpf_router
+    print("DIRPF ROUTER LOADED OK")
+except Exception as e:
+    print(f"DIRPF ROUTER FAILED: {e}")
+    dirpf_router = None
+if dirpf_router: app.include_router(dirpf_router)
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos
