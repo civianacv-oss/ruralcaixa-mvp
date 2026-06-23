@@ -130,6 +130,16 @@ except Exception as e:
     dirpf_router = None
 if dirpf_router: app.include_router(dirpf_router)
 
+# NF-e Produtor (novo router com tabela nfe_produtor)
+nfe_produtor_router = None
+try:
+    from app.routers.nfe_produtor import router as nfe_produtor_router
+    print("NFE_PRODUTOR ROUTER LOADED OK")
+except Exception as e:
+    print(f"NFE_PRODUTOR ROUTER FAILED: {e}")
+    nfe_produtor_router = None
+if nfe_produtor_router: app.include_router(nfe_produtor_router)
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos
