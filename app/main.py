@@ -80,6 +80,16 @@ if compravenda_router: app.include_router(compravenda_router)
 if acai_router: app.include_router(acai_router)
 if efdreinf_router: app.include_router(efdreinf_router)
 
+simulador_regime_router = None
+try:
+    from app.routers.simulador_regime import router as simulador_regime_router
+    print("SIMULADOR_REGIME ROUTER LOADED OK")
+except Exception as e:
+    print(f"SIMULADOR_REGIME ROUTER FAILED: {e}")
+    simulador_regime_router = None
+
+if simulador_regime_router: app.include_router(simulador_regime_router)
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos
