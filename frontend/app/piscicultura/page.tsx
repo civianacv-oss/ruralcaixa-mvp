@@ -55,6 +55,8 @@ type RegistroDiario = {
   oxigenio_dissolvido: number | null;
   ph: number | null;
   temperatura_c: number | null;
+  amonia_mg_l: number | null;
+  nitrito_mg_l: number | null;
   alertas: string | null;
 };
 
@@ -122,6 +124,8 @@ export default function PisciculturaPage() {
   const [rdPh, setRdPh] = useState("");
   const [rdTemp, setRdTemp] = useState("");
   const [rdSecchi, setRdSecchi] = useState("");
+  const [rdAmonia, setRdAmonia] = useState("");
+  const [rdNitrito, setRdNitrito] = useState("");
   const [pmpRacao, setPmpRacao] = useState<number | null>(null);
   const [rdPrecoKgRacao, setRdPrecoKgRacao] = useState("");
 
@@ -238,6 +242,8 @@ export default function PisciculturaPage() {
           ph: rdPh ? parseFloat(rdPh) : null,
           temperatura_c: rdTemp ? parseFloat(rdTemp) : null,
           transparencia_secchi_cm: rdSecchi ? parseInt(rdSecchi) : null,
+          amonia_mg_l: rdAmonia ? parseFloat(rdAmonia) : null,
+          nitrito_mg_l: rdNitrito ? parseFloat(rdNitrito) : null,
         }),
       });
       if (r.ok) {
@@ -512,14 +518,14 @@ export default function PisciculturaPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        {["Data", "Ração (kg)", "Mortalidade", "O₂ (mg/L)", "pH", "Temp (°C)", "Alertas"].map(h => (
+                        {["Data", "Ração (kg)", "Mortalidade", "O₂ (mg/L)", "pH", "Temp (°C)", "NH₃ (mg/L)", "NO₂ (mg/L)", "Alertas"].map(h => (
                           <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {registros.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-8 text-gray-400">Nenhum registro ainda</td></tr>
+                        <tr><td colSpan={9} className="text-center py-8 text-gray-400">Nenhum registro ainda</td></tr>
                       ) : registros.map(r => (
                         <tr key={r.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 font-medium">{r.data_registro}</td>
@@ -532,6 +538,12 @@ export default function PisciculturaPage() {
                           <td className="px-4 py-3">{r.oxigenio_dissolvido ?? "—"}</td>
                           <td className="px-4 py-3">{r.ph ?? "—"}</td>
                           <td className="px-4 py-3">{r.temperatura_c ?? "—"}</td>
+                          <td className={`px-4 py-3 text-sm font-medium ${
+                            r.amonia_mg_l != null && r.amonia_mg_l > 0.5 ? "text-red-600" : "text-gray-700"
+                          }`}>{r.amonia_mg_l != null ? r.amonia_mg_l : "—"}</td>
+                          <td className={`px-4 py-3 text-sm font-medium ${
+                            r.nitrito_mg_l != null && r.nitrito_mg_l > 0.2 ? "text-red-600" : "text-gray-700"
+                          }`}>{r.nitrito_mg_l != null ? r.nitrito_mg_l : "—"}</td>
                           <td className="px-4 py-3 text-xs text-orange-600">{r.alertas ?? ""}</td>
                         </tr>
                       ))}
@@ -697,6 +709,36 @@ export default function PisciculturaPage() {
                 <div>
                   <label className="label">Disco de Secchi (cm)</label>
                   <input className="input" type="number" value={rdSecchi} onChange={e => setRdSecchi(e.target.value)} placeholder="45" />
+                </div>
+                <div>
+                  <label className="label">
+                    Amônia NH₃ (mg/L)
+                    <span className="ml-1 text-xs text-gray-400">crítico &gt; 0.5</span>
+                  </label>
+                  <input
+                    className={`input ${rdAmonia && parseFloat(rdAmonia) > 0.5 ? "border-red-400 bg-red-50" : ""}`}
+                    type="number" step="0.01" min="0" value={rdAmonia}
+                    onChange={e => setRdAmonia(e.target.value)}
+                    placeholder="0.10"
+                  />
+                  {rdAmonia && parseFloat(rdAmonia) > 0.5 && (
+                    <p className="text-xs text-red-600 mt-1">☠️ Acima do limite crítico</p>
+                  )}
+                </div>
+                <div>
+                  <label className="label">
+                    Nitrito NO₂ (mg/L)
+                    <span className="ml-1 text-xs text-gray-400">crítico &gt; 0.2</span>
+                  </label>
+                  <input
+                    className={`input ${rdNitrito && parseFloat(rdNitrito) > 0.2 ? "border-red-400 bg-red-50" : ""}`}
+                    type="number" step="0.01" min="0" value={rdNitrito}
+                    onChange={e => setRdNitrito(e.target.value)}
+                    placeholder="0.05"
+                  />
+                  {rdNitrito && parseFloat(rdNitrito) > 0.2 && (
+                    <p className="text-xs text-red-600 mt-1">☠️ Acima do limite crítico</p>
+                  )}
                 </div>
               </div>
             </div>
