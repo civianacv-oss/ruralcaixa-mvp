@@ -110,6 +110,11 @@ export default function Dashboard() {
     {id:"compravenda", label:"Compra e Venda",       icon:Icons.financial,  href:"/compravenda"},
     {id:"acai",         label:"Cultivo de Açaí",       icon:Icons.plant,      href:"/acai"},
     {id:"efdreinf",       label:"EFD-Reinf / DARF",         icon:Icons.document,   href:"/efdreinf"},
+    {id:"dctfweb",         label:"DCTFWeb",                   icon:Icons.document,   href:"/dctfweb"},
+    {id:"livro-caixa",     label:"Livro Caixa Rural",         icon:Icons.financial,  href:"/livro-caixa"},
+    {id:"dirpf",           label:"DIRPF Atividade Rural",     icon:Icons.document,   href:"/dirpf"},
+    {id:"apuracao-pj",    label:"Apuração PJ",                icon:Icons.calculator, href:"/apuracao-pj"},
+    {id:"acertos-lista",   label:"Acertos (Histórico)",       icon:Icons.financial,  href:"/contratos/acertos"},
     {id:"simulador-regime",label:"Simulador Tributário",      icon:Icons.calculator, href:"/simulador-regime"},
   ];
   const navAdmin = [

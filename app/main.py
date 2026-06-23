@@ -140,6 +140,16 @@ except Exception as e:
     nfe_produtor_router = None
 if nfe_produtor_router: app.include_router(nfe_produtor_router)
 
+# Apuração PJ
+apuracao_pj_router = None
+try:
+    from app.routers.apuracao_pj import router as apuracao_pj_router
+    print("APURACAO_PJ ROUTER LOADED OK")
+except Exception as e:
+    print(f"APURACAO_PJ ROUTER FAILED: {e}")
+    apuracao_pj_router = None
+if apuracao_pj_router: app.include_router(apuracao_pj_router)
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos
