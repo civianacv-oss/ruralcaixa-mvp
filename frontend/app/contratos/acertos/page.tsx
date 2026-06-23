@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
@@ -82,10 +82,10 @@ export default function AcertosListaPage() {
     table: { width:"100%", borderCollapse:"collapse" as const, fontSize:13 },
     th: { textAlign:"left" as const, padding:"10px 12px", background:"#f8fafc", color:"#64748b", fontSize:11, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:.4 },
     td: { padding:"12px 12px", borderBottom:"1px solid #f1f5f9", color:"#334155" },
-    badge: (cor: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background:cor+"22", color:cor }),
-    btn: (color: string, outline?: boolean) => ({ padding:"7px 14px", borderRadius:7, border: outline ? `1.5px solid ${color}` : "none", background: outline ? "transparent" : color, color: outline ? color : "#fff", cursor:"pointer", fontSize:12, fontWeight:600, textDecoration:"none", display:"inline-block" }),
     emptyState: { textAlign:"center" as const, padding:"48px 20px", color:"#94a3b8" },
   };
+  const badge = (cor: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background:cor+"22", color:cor });
+  const btn = (color: string, outline?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border: outline ? `1.5px solid ${color}` : "none", background: outline ? "transparent" : color, color: outline ? color : "#fff", cursor:"pointer", fontSize:12, fontWeight:600, textDecoration:"none", display:"inline-block" });
 
   return (
     <div style={s.page}>
@@ -94,7 +94,7 @@ export default function AcertosListaPage() {
           <h1 style={s.title}>🌾 Acertos de Contrato</h1>
           <p style={s.subtitle}>Histórico de acertos de arrendamento rural por safra e produto</p>
         </div>
-        <Link href="/contratos/acerto" style={s.btn("#1e40af")}>+ Novo Acerto</Link>
+        <Link href="/contratos/acerto" style={btn("#1e40af")}>+ Novo Acerto</Link>
       </div>
 
       {/* KPIs */}
@@ -130,7 +130,7 @@ export default function AcertosListaPage() {
           <option value="">Todos os produtos</option>
           {produtosDisponiveis.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
         </select>
-        <button style={s.btn("#64748b", true)} onClick={load}>🔄 Atualizar</button>
+        <button style={btn("#64748b", true)} onClick={load}>🔄 Atualizar</button>
       </div>
 
       {/* Tabela */}
@@ -142,7 +142,7 @@ export default function AcertosListaPage() {
             <div style={{ fontSize:40, marginBottom:12 }}>🌾</div>
             <div style={{ fontWeight:600, marginBottom:4 }}>Nenhum acerto encontrado</div>
             <div style={{ fontSize:12, marginBottom:16 }}>Registre o primeiro acerto de contrato da safra.</div>
-            <Link href="/contratos/acerto" style={s.btn("#1e40af")}>+ Registrar Acerto</Link>
+            <Link href="/contratos/acerto" style={btn("#1e40af")}>+ Registrar Acerto</Link>
           </div>
         ) : (
           <table style={s.table}>
@@ -173,12 +173,12 @@ export default function AcertosListaPage() {
                     )}
                   </td>
                   <td style={s.td}>
-                    <span style={s.badge(STATUS_COLORS[a.status]||"#6b7280")}>
+                    <span style={badge(STATUS_COLORS[a.status]||"#6b7280")}>
                       {STATUS_LABELS[a.status]||a.status}
                     </span>
                   </td>
                   <td style={s.td}>
-                    <Link href={`/contratos/acerto?id=${a.id}`} style={s.btn("#1e40af", true)}>
+                    <Link href={`/contratos/acerto?id=${a.id}`} style={btn("#1e40af", true)}>
                       Ver
                     </Link>
                   </td>

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
 
@@ -193,12 +193,7 @@ export default function DCTFWebPage() {
     card: { background:"#fff", borderRadius:12, boxShadow:"0 1px 4px rgba(0,0,0,.06)", marginBottom:12, overflow:"hidden" },
     cardHeader: { padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", userSelect:"none" as const },
     cardBody: { padding:"0 18px 16px" },
-    badge: (cor: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background: cor+"22", color: cor }),
-    btn: (color: string, outline?: boolean) => ({
-      padding:"7px 14px", borderRadius:7, border: outline ? `1.5px solid ${color}` : "none",
-      background: outline ? "transparent" : color, color: outline ? color : "#fff",
-      cursor:"pointer", fontSize:12, fontWeight:600, transition:"all .15s"
-    }),
+
     input: { width:"100%", padding:"8px 12px", border:"1.5px solid #e2e8f0", borderRadius:8, fontSize:13, outline:"none", boxSizing:"border-box" as const },
     label: { fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, display:"block" },
     grid2: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 },
@@ -215,6 +210,8 @@ export default function DCTFWebPage() {
     previewTotal: { display:"flex", justifyContent:"space-between", padding:"8px 0 0", marginTop:4, borderTop:"2px solid #e2e8f0", fontWeight:700, fontSize:14 },
     previewSaldo: (v: number) => ({ display:"flex", justifyContent:"space-between", padding:"6px 0 0", fontWeight:700, fontSize:15, color: v > 0 ? "#ef4444" : "#10b981" }),
   };
+  const badge = (cor: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background: cor+"22", color: cor });
+  const btn = (color: string, outline?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border: outline ? `1.5px solid ${color}` : "none", background: outline ? "transparent" : color, color: outline ? color : "#fff", cursor:"pointer", fontSize:12, fontWeight:600, transition:"all .15s" });
 
   return (
     <div style={s.page}>
@@ -230,7 +227,7 @@ export default function DCTFWebPage() {
             style={{ ...s.input, width:90 }}>
             {[2021,2022,2023,2024,2025,2026].map(y => <option key={y}>{y}</option>)}
           </select>
-          <button style={s.btn("#1e40af")} onClick={() => setAba("nova")}>+ Nova Declaração</button>
+          <button style={btn("#1e40af")} onClick={() => setAba("nova")}>+ Nova Declaração</button>
         </div>
       </div>
 
@@ -292,16 +289,16 @@ export default function DCTFWebPage() {
                   <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                     <span style={{ fontSize:15, fontWeight:700, color:"#1e293b" }}>{fmtComp(item.competencia)}</span>
                     {item.declaracao_ativa && (
-                      <span style={s.badge(STATUS_COLORS[item.declaracao_ativa.status] || "#6b7280")}>
+                      <span style={badge(STATUS_COLORS[item.declaracao_ativa.status] || "#6b7280")}>
                         {item.declaracao_ativa.status}
                       </span>
                     )}
                     {item.declaracao_ativa?.tipo === "retificadora" && (
-                      <span style={s.badge("#8b5cf6")}>retificadora</span>
+                      <span style={badge("#8b5cf6")}>retificadora</span>
                     )}
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <span style={{ ...s.badge(ACAO_COLORS[item.acao_sugerida.cor] || "#6b7280"), fontSize:12 }}>
+                    <span style={{ ...badge(ACAO_COLORS[item.acao_sugerida.cor] || "#6b7280"), fontSize:12 }}>
                       {item.acao_sugerida.label}
                     </span>
                     {item.declaracao_ativa && (
@@ -352,12 +349,12 @@ export default function DCTFWebPage() {
                         )}
                         <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap" as const }}>
                           {item.declaracao_ativa?.status === "rascunho" && (
-                            <button style={s.btn("#1e40af")} onClick={() => marcarTransmitida(item.declaracao_ativa!.id)}>
+                            <button style={btn("#1e40af")} onClick={() => marcarTransmitida(item.declaracao_ativa!.id)}>
                               ✓ Marcar Transmitida
                             </button>
                           )}
                           {item.acao_sugerida.codigo === "criar_dctfweb" && (
-                            <button style={s.btn("#f59e0b")} onClick={() => {
+                            <button style={btn("#f59e0b")} onClick={() => {
                               setForm(f => ({ ...f, competencia: item.competencia,
                                 funrural_valor: item.apuracao_reinf?.total_funrural?.toString() || "",
                                 senar_valor: item.apuracao_reinf?.total_senar?.toString() || "" }));
@@ -367,7 +364,7 @@ export default function DCTFWebPage() {
                             </button>
                           )}
                           {item.declaracao_ativa?.status === "transmitida" && (
-                            <button style={s.btn("#8b5cf6", true)} onClick={() => {
+                            <button style={btn("#8b5cf6", true)} onClick={() => {
                               setForm(f => ({ ...f, competencia: item.competencia, tipo:"retificadora" }));
                               setAba("nova");
                             }}>
@@ -404,7 +401,7 @@ export default function DCTFWebPage() {
                               <div key={p.id} style={{ background:"#f8fafc", borderRadius:8, padding:"8px 12px", marginBottom:6, fontSize:12 }}>
                                 <div style={{ fontWeight:600 }}>{p.numero} — {p.tipo}</div>
                                 <div style={{ color:"#64748b" }}>Solicitado: {fmt(p.valor_solicitado)} | Deferido: {fmt(p.valor_deferido)}</div>
-                                <span style={s.badge(p.status === "deferido" ? "#10b981" : p.status === "indeferido" ? "#ef4444" : "#f59e0b")}>
+                                <span style={badge(p.status === "deferido" ? "#10b981" : p.status === "indeferido" ? "#ef4444" : "#f59e0b")}>
                                   {p.status}
                                 </span>
                               </div>
@@ -425,8 +422,8 @@ export default function DCTFWebPage() {
                             {item.historico_declaracoes.map(d => (
                               <tr key={d.id}>
                                 <td style={s.td}>{d.id}</td>
-                                <td style={s.td}><span style={s.badge(d.tipo === "retificadora" ? "#8b5cf6" : "#3b82f6")}>{d.tipo}</span></td>
-                                <td style={s.td}><span style={s.badge(STATUS_COLORS[d.status]||"#6b7280")}>{d.status}</span></td>
+                                <td style={s.td}><span style={badge(d.tipo === "retificadora" ? "#8b5cf6" : "#3b82f6")}>{d.tipo}</span></td>
+                                <td style={s.td}><span style={badge(STATUS_COLORS[d.status]||"#6b7280")}>{d.status}</span></td>
                                 <td style={s.td}>{fmt(d.total_devido)}</td>
                                 <td style={s.td}>{fmt(d.saldo_a_pagar)}</td>
                                 <td style={s.td}>{d.numero_declaracao || "—"}</td>
@@ -450,7 +447,7 @@ export default function DCTFWebPage() {
         <div style={s.card}>
           <div style={{ padding:"14px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <strong style={{ fontSize:14 }}>Declarações {filtroAno}</strong>
-            <button style={s.btn("#1e40af")} onClick={() => setAba("nova")}>+ Nova</button>
+            <button style={btn("#1e40af")} onClick={() => setAba("nova")}>+ Nova</button>
           </div>
           {declaracoes.length === 0 ? (
             <div style={s.emptyState}>Nenhuma declaração encontrada</div>
@@ -463,8 +460,8 @@ export default function DCTFWebPage() {
                 {declaracoes.map(d => (
                   <tr key={d.id}>
                     <td style={s.td}>{fmtComp(d.competencia)}</td>
-                    <td style={s.td}><span style={s.badge(d.tipo==="retificadora"?"#8b5cf6":"#3b82f6")}>{d.tipo}</span></td>
-                    <td style={s.td}><span style={s.badge(STATUS_COLORS[d.status]||"#6b7280")}>{d.status}</span></td>
+                    <td style={s.td}><span style={badge(d.tipo==="retificadora"?"#8b5cf6":"#3b82f6")}>{d.tipo}</span></td>
+                    <td style={s.td}><span style={badge(STATUS_COLORS[d.status]||"#6b7280")}>{d.status}</span></td>
                     <td style={s.td}>{fmt(d.total_devido)}</td>
                     <td style={s.td}>{fmt(d.valor_pago)}</td>
                     <td style={s.td}>{fmt(d.valor_compensado)}</td>
@@ -472,7 +469,7 @@ export default function DCTFWebPage() {
                     <td style={s.td}>{d.numero_declaracao || "—"}</td>
                     <td style={s.td}>
                       {d.status === "rascunho" && (
-                        <button style={s.btn("#1e40af", true)} onClick={() => marcarTransmitida(d.id)}>Transmitir</button>
+                        <button style={btn("#1e40af", true)} onClick={() => marcarTransmitida(d.id)}>Transmitir</button>
                       )}
                     </td>
                   </tr>
@@ -523,7 +520,7 @@ export default function DCTFWebPage() {
                     placeholder="Ex: Pagamento duplicado competência 2024-03" />
                 </div>
               </div>
-              <button style={{ ...s.btn("#10b981"), marginTop:12 }} onClick={salvarCredito}>Registrar Crédito</button>
+              <button style={{ ...btn("#10b981"), marginTop:12 }} onClick={salvarCredito}>Registrar Crédito</button>
             </div>
           </div>
 
@@ -542,7 +539,7 @@ export default function DCTFWebPage() {
                   {creditos.map(c => (
                     <tr key={c.id}>
                       <td style={s.td}>{fmtComp(c.competencia_origem)}</td>
-                      <td style={s.td}><span style={s.badge("#3b82f6")}>{c.tipo.replace(/_/g," ")}</span></td>
+                      <td style={s.td}><span style={badge("#3b82f6")}>{c.tipo.replace(/_/g," ")}</span></td>
                       <td style={s.td}>{fmt(c.valor_original)}</td>
                       <td style={s.td}>{fmt(c.total_utilizado)}</td>
                       <td style={{ ...s.td, fontWeight:700, color: c.saldo_disponivel > 0 ? "#10b981" : "#94a3b8" }}>
@@ -579,13 +576,13 @@ export default function DCTFWebPage() {
                 {perdcomps.map(p => (
                   <tr key={p.id}>
                     <td style={{ ...s.td, fontWeight:600 }}>{p.numero}</td>
-                    <td style={s.td}><span style={s.badge("#8b5cf6")}>{p.tipo}</span></td>
+                    <td style={s.td}><span style={badge("#8b5cf6")}>{p.tipo}</span></td>
                     <td style={s.td}>{fmtComp(p.competencia_debito)}</td>
                     <td style={s.td}>{p.credito_descricao || "—"}</td>
                     <td style={s.td}>{fmt(p.valor_solicitado)}</td>
                     <td style={s.td}>{fmt(p.valor_deferido)}</td>
                     <td style={s.td}>
-                      <span style={s.badge(p.status==="deferido"?"#10b981":p.status==="indeferido"?"#ef4444":"#f59e0b")}>
+                      <span style={badge(p.status==="deferido"?"#10b981":p.status==="indeferido"?"#ef4444":"#f59e0b")}>
                         {p.status}
                       </span>
                     </td>
@@ -711,8 +708,8 @@ export default function DCTFWebPage() {
             )}
 
             <div style={{ display:"flex", gap:8, marginTop:16 }}>
-              <button style={s.btn("#1e40af")} onClick={salvarDeclaracao}>Salvar Declaração</button>
-              <button style={s.btn("#6b7280", true)} onClick={() => setAba("painel")}>Cancelar</button>
+              <button style={btn("#1e40af")} onClick={salvarDeclaracao}>Salvar Declaração</button>
+              <button style={btn("#6b7280", true)} onClick={() => setAba("painel")}>Cancelar</button>
             </div>
           </div>
         </div>

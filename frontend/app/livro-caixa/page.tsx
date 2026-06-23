@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
@@ -111,8 +111,6 @@ export default function LivroCaixaPage() {
     table: { width:"100%", borderCollapse:"collapse" as const, fontSize:13 },
     th: { textAlign:"left" as const, padding:"10px 12px", background:"#f8fafc", color:"#64748b", fontSize:11, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:.4 },
     td: { padding:"11px 12px", borderBottom:"1px solid #f1f5f9", color:"#334155" },
-    badge: (c:string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background:c+"22", color:c }),
-    btn: (c:string,o?:boolean) => ({ padding:"7px 14px", borderRadius:7, border:o?`1.5px solid ${c}`:"none", background:o?"transparent":c, color:o?c:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 }),
     input: { width:"100%", padding:"8px 12px", border:"1.5px solid #e2e8f0", borderRadius:8, fontSize:13, outline:"none", boxSizing:"border-box" as const },
     label: { fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, display:"block" },
     grid2: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 },
@@ -120,6 +118,8 @@ export default function LivroCaixaPage() {
     alert: (t:"ok"|"err") => ({ padding:"12px 16px", borderRadius:8, marginBottom:16, fontSize:13, background:t==="ok"?"#dcfce7":"#fee2e2", color:t==="ok"?"#166534":"#991b1b", fontWeight:500 }),
     emptyState: { textAlign:"center" as const, padding:"40px 20px", color:"#94a3b8" },
   };
+  const badge = (c: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background:c+"22", color:c });
+  const btn = (c: string, o?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border:o?`1.5px solid ${c}`:"none", background:o?"transparent":c, color:o?c:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 });
 
   return (
     <div style={s.page}>
@@ -135,7 +135,7 @@ export default function LivroCaixaPage() {
             style={{ ...s.input, width:90 }}>
             {[2022,2023,2024,2025,2026].map(y=><option key={y}>{y}</option>)}
           </select>
-          <button style={s.btn("#1e40af")} onClick={()=>setAba("novo")}>+ Lançamento</button>
+          <button style={btn("#1e40af")} onClick={()=>setAba("novo")}>+ Lançamento</button>
         </div>
       </div>
 
@@ -170,7 +170,7 @@ export default function LivroCaixaPage() {
               <option value="receita">Receitas</option>
               <option value="despesa">Despesas</option>
             </select>
-            <button style={s.btn("#64748b",true)} onClick={loadLancamentos}>🔄</button>
+            <button style={btn("#64748b",true)} onClick={loadLancamentos}>🔄</button>
           </div>
           <div style={s.card}>
             {loading ? (
@@ -180,7 +180,7 @@ export default function LivroCaixaPage() {
                 <div style={{fontSize:40,marginBottom:12}}>📒</div>
                 <div style={{fontWeight:600,marginBottom:4}}>Livro Caixa vazio para {anoBase}</div>
                 <div style={{fontSize:12,marginBottom:16}}>Registre lançamentos manualmente ou importe de acertos de contrato.</div>
-                <button style={s.btn("#1e40af")} onClick={()=>setAba("novo")}>+ Primeiro Lançamento</button>
+                <button style={btn("#1e40af")} onClick={()=>setAba("novo")}>+ Primeiro Lançamento</button>
               </div>
             ) : (
               <table style={s.table}>
@@ -192,7 +192,7 @@ export default function LivroCaixaPage() {
                     <tr key={l.id}>
                       <td style={s.td}>{new Date(l.data_lancamento).toLocaleDateString("pt-BR")}</td>
                       <td style={s.td}>
-                        <span style={s.badge(l.tipo==="receita"?"#10b981":"#ef4444")}>
+                        <span style={badge(l.tipo==="receita"?"#10b981":"#ef4444")}>
                           {l.tipo==="receita"?"+ Receita":"− Despesa"}
                         </span>
                       </td>
@@ -204,14 +204,14 @@ export default function LivroCaixaPage() {
                       <td style={s.td}>{l.documento||"—"}</td>
                       <td style={s.td}>
                         {l.origem==="manual"?(
-                          <span style={s.badge("#94a3b8")}>manual</span>
+                          <span style={badge("#94a3b8")}>manual</span>
                         ):(
-                          <span style={s.badge("#3b82f6")}>{l.origem.replace(/_/g," ")}</span>
+                          <span style={badge("#3b82f6")}>{l.origem.replace(/_/g," ")}</span>
                         )}
                       </td>
                       <td style={s.td}>
                         {l.origem==="manual" && (
-                          <button style={{...s.btn("#ef4444",true),padding:"4px 10px"}} onClick={()=>excluir(l.id)}>🗑</button>
+                          <button style={{...btn("#ef4444",true),padding:"4px 10px"}} onClick={()=>excluir(l.id)}>🗑</button>
                         )}
                       </td>
                     </tr>
@@ -311,7 +311,7 @@ export default function LivroCaixaPage() {
                   <tbody>
                     {apuracao.por_categoria.map((c,i)=>(
                       <tr key={i}>
-                        <td style={s.td}><span style={s.badge(c.tipo==="receita"?"#10b981":"#ef4444")}>{c.tipo}</span></td>
+                        <td style={s.td}><span style={badge(c.tipo==="receita"?"#10b981":"#ef4444")}>{c.tipo}</span></td>
                         <td style={s.td}>{c.categoria.replace(/_/g," ")}</td>
                         <td style={{...s.td,fontWeight:700,color:c.tipo==="receita"?"#10b981":"#ef4444"}}>{fmt(c.total)}</td>
                       </tr>
@@ -377,8 +377,8 @@ export default function LivroCaixaPage() {
                 onChange={e=>setForm(f=>({...f,observacoes:e.target.value}))} />
             </div>
             <div style={{ display:"flex", gap:8, marginTop:16 }}>
-              <button style={s.btn("#1e40af")} onClick={salvar}>Salvar Lançamento</button>
-              <button style={s.btn("#6b7280",true)} onClick={()=>setAba("lancamentos")}>Cancelar</button>
+              <button style={btn("#1e40af")} onClick={salvar}>Salvar Lançamento</button>
+              <button style={btn("#6b7280",true)} onClick={()=>setAba("lancamentos")}>Cancelar</button>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
 const IMOVEL_ID = 1;
@@ -212,13 +212,13 @@ export default function DirpfPage() {
     label: { fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4, display: "block" },
     grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
     grid3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 },
-    btn: (c: string, o?: boolean) => ({ padding: "7px 14px", borderRadius: 7, border: o ? `1.5px solid ${c}` : "none", background: o ? "transparent" : c, color: o ? c : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }),
     alert: (t: "ok" | "err") => ({ padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontSize: 13, background: t === "ok" ? "#dcfce7" : "#fee2e2", color: t === "ok" ? "#166534" : "#991b1b", fontWeight: 500 }),
     row: { display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 },
     sectionTitle: { fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 10, paddingBottom: 6, borderBottom: "1.5px solid #f1f5f9" },
     highlight: (c: string) => ({ background: c + "15", border: `1.5px solid ${c}40`, borderRadius: 10, padding: "14px 18px", marginBottom: 12 }),
     emptyState: { textAlign: "center" as const, padding: "32px 20px", color: "#94a3b8" },
   };
+  const btn = (c: string, o?: boolean): React.CSSProperties => ({ padding: "7px 14px", borderRadius: 7, border: o ? `1.5px solid ${c}` : "none", background: o ? "transparent" : c, color: o ? c : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 });
 
   const a = apuracao;
 
@@ -239,7 +239,7 @@ export default function DirpfPage() {
             <option value="presumido_20pct">Presumido 20% (art. 59 RIR)</option>
             <option value="resultado_real">Resultado Real (Lucro Real)</option>
           </select>
-          <button style={s.btn("#1e40af")} onClick={loadApuracao}>Calcular</button>
+          <button style={btn("#1e40af")} onClick={loadApuracao}>Calcular</button>
         </div>
       </div>
 
@@ -422,7 +422,7 @@ export default function DirpfPage() {
                   <input type="text" style={s.input} value={formDesp.comprovante} onChange={e => setFormDesp(f => ({ ...f, comprovante: e.target.value }))} />
                 </div>
               </div>
-              <button style={{ ...s.btn("#1e40af"), marginTop: 12 }} onClick={salvarDespesa}>Registrar Despesa</button>
+              <button style={{ ...btn("#1e40af"), marginTop: 12 }} onClick={salvarDespesa}>Registrar Despesa</button>
             </div>
           </div>
 
@@ -458,7 +458,7 @@ export default function DirpfPage() {
                       <td style={{ ...s.td, fontWeight: 700, color: "#ef4444" }}>{fmt(d.valor)}</td>
                       <td style={s.td}>{d.data_despesa ? new Date(d.data_despesa).toLocaleDateString("pt-BR") : "-"}</td>
                       <td style={s.td}>{d.comprovante || "-"}</td>
-                      <td style={s.td}><button style={{ ...s.btn("#ef4444", true), padding: "3px 8px", fontSize: 11 }} onClick={() => excluirDespesa(d.id)}>Excluir</button></td>
+                      <td style={s.td}><button style={{ ...btn("#ef4444", true), padding: "3px 8px", fontSize: 11 }} onClick={() => excluirDespesa(d.id)}>Excluir</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -503,7 +503,7 @@ export default function DirpfPage() {
                 </div>
               </div>
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Vida útil e taxa preenchidos automaticamente pela tabela IN SRF 162/1998.</div>
-              <button style={{ ...s.btn("#1e40af"), marginTop: 12 }} onClick={salvarBem}>Cadastrar Bem</button>
+              <button style={{ ...btn("#1e40af"), marginTop: 12 }} onClick={salvarBem}>Cadastrar Bem</button>
             </div>
           </div>
 
@@ -537,7 +537,7 @@ export default function DirpfPage() {
                           <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{b.pct_depreciado.toFixed(0)}%</div>
                         </td>
                         <td style={s.td}>{b.ativo ? <span style={{ fontSize: 11, color: "#10b981" }}>Ativo</span> : <span style={{ fontSize: 11, color: "#94a3b8" }}>Baixado</span>}</td>
-                        <td style={s.td}>{b.ativo && <button style={{ ...s.btn("#f59e0b", true), padding: "3px 8px", fontSize: 11 }} onClick={() => baixarBem(b.id)}>Baixar</button>}</td>
+                        <td style={s.td}>{b.ativo && <button style={{ ...btn("#f59e0b", true), padding: "3px 8px", fontSize: 11 }} onClick={() => baixarBem(b.id)}>Baixar</button>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -657,7 +657,7 @@ export default function DirpfPage() {
               </>
             )}
 
-            <button style={{ ...s.btn("#1e40af"), marginTop: 20 }} onClick={salvarConfig}>Salvar Configuração</button>
+            <button style={{ ...btn("#1e40af"), marginTop: 20 }} onClick={salvarConfig}>Salvar Configuração</button>
           </div>
         </div>
       )}
