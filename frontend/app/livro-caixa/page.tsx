@@ -106,7 +106,7 @@ export default function LivroCaixaPage() {
     kpiVal: { fontSize:18, fontWeight:700, color:"#1e293b", marginBottom:2 },
     kpiLabel: { fontSize:11, color:"#94a3b8", textTransform:"uppercase" as const, letterSpacing:.5 },
     tabs: { display:"flex", gap:4, marginBottom:20, background:"#fff", borderRadius:10, padding:4, boxShadow:"0 1px 4px rgba(0,0,0,.06)", width:"fit-content" },
-    tab: (a:boolean) => ({ padding:"8px 16px", borderRadius:7, border:"none", cursor:"pointer", fontSize:13, fontWeight:500, background:a?"#1e40af":"transparent", color:a?"#fff":"#64748b" }),
+
     card: { background:"#fff", borderRadius:12, boxShadow:"0 1px 4px rgba(0,0,0,.06)", overflow:"hidden" },
     table: { width:"100%", borderCollapse:"collapse" as const, fontSize:13 },
     th: { textAlign:"left" as const, padding:"10px 12px", background:"#f8fafc", color:"#64748b", fontSize:11, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:.4 },
@@ -115,15 +115,17 @@ export default function LivroCaixaPage() {
     label: { fontSize:12, fontWeight:600, color:"#475569", marginBottom:4, display:"block" },
     grid2: { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 },
     grid3: { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 },
-    alert: (t:"ok"|"err") => ({ padding:"12px 16px", borderRadius:8, marginBottom:16, fontSize:13, background:t==="ok"?"#dcfce7":"#fee2e2", color:t==="ok"?"#166534":"#991b1b", fontWeight:500 }),
+
     emptyState: { textAlign:"center" as const, padding:"40px 20px", color:"#94a3b8" },
   };
+  const tab = (a: boolean): React.CSSProperties => ({ padding:"8px 16px", borderRadius:7, border:"none", cursor:"pointer", fontSize:13, fontWeight:500, background:a?"#1e40af":"transparent", color:a?"#fff":"#64748b" });
+  const alert = (t: "ok"|"err"): React.CSSProperties => ({ padding:"12px 16px", borderRadius:8, marginBottom:16, fontSize:13, background:t==="ok"?"#dcfce7":"#fee2e2", color:t==="ok"?"#166534":"#991b1b", fontWeight:500 });
   const badge = (c: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background:c+"22", color:c });
   const btn = (c: string, o?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border:o?`1.5px solid ${c}`:"none", background:o?"transparent":c, color:o?c:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 });
 
   return (
     <div style={s.page}>
-      {msg && <div style={s.alert(msg.tipo)}>{msg.texto}</div>}
+      {msg && <div style={alert(msg.tipo)}>{msg.texto}</div>}
 
       <div style={s.header}>
         <div>
@@ -157,7 +159,7 @@ export default function LivroCaixaPage() {
 
       <div style={s.tabs}>
         {([["lancamentos","📋 Lançamentos"],["apuracao","📊 Apuração Anual"],["novo","➕ Novo"]] as [string,string][]).map(([id,label])=>(
-          <button key={id} style={s.tab(aba===id)} onClick={()=>setAba(id as typeof aba)}>{label}</button>
+          <button key={id} style={tab(aba===id)} onClick={()=>setAba(id as typeof aba)}>{label}</button>
         ))}
       </div>
 

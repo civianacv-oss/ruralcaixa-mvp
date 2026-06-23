@@ -197,11 +197,11 @@ export default function DirpfPage() {
     title: { fontSize: 22, fontWeight: 700, color: "#1e293b", margin: 0 },
     subtitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
     kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(155px,1fr))", gap: 12, marginBottom: 20 },
-    kpi: (c: string) => ({ background: "#fff", borderRadius: 10, padding: "14px 18px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", borderLeft: `3px solid ${c}` }),
-    kpiVal: (c: string) => ({ fontSize: 17, fontWeight: 700, color: c, marginBottom: 2 }),
+
+
     kpiLabel: { fontSize: 11, color: "#94a3b8", textTransform: "uppercase" as const, letterSpacing: 0.5 },
     tabs: { display: "flex", gap: 4, marginBottom: 20, background: "#fff", borderRadius: 10, padding: 4, boxShadow: "0 1px 4px rgba(0,0,0,.06)", flexWrap: "wrap" as const },
-    tab: (a: boolean) => ({ padding: "8px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, background: a ? "#1e40af" : "transparent", color: a ? "#fff" : "#64748b" }),
+
     card: { background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,.06)", overflow: "hidden", marginBottom: 16 },
     cardHeader: { padding: "14px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" },
     cardBody: { padding: "16px 18px" },
@@ -212,19 +212,24 @@ export default function DirpfPage() {
     label: { fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 4, display: "block" },
     grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
     grid3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 },
-    alert: (t: "ok" | "err") => ({ padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontSize: 13, background: t === "ok" ? "#dcfce7" : "#fee2e2", color: t === "ok" ? "#166534" : "#991b1b", fontWeight: 500 }),
+
     row: { display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 },
     sectionTitle: { fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 10, paddingBottom: 6, borderBottom: "1.5px solid #f1f5f9" },
-    highlight: (c: string) => ({ background: c + "15", border: `1.5px solid ${c}40`, borderRadius: 10, padding: "14px 18px", marginBottom: 12 }),
+
     emptyState: { textAlign: "center" as const, padding: "32px 20px", color: "#94a3b8" },
   };
+  const kpi = (c: string): React.CSSProperties => ({ background: "#fff", borderRadius: 10, padding: "14px 18px", boxShadow: "0 1px 4px rgba(0,0,0,.06)", borderLeft: `3px solid ${c}` });
+  const kpiVal = (c: string): React.CSSProperties => ({ fontSize: 17, fontWeight: 700, color: c, marginBottom: 2 });
+  const tab = (a: boolean): React.CSSProperties => ({ padding: "8px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, background: a ? "#1e40af" : "transparent", color: a ? "#fff" : "#64748b" });
+  const alert = (t: "ok" | "err"): React.CSSProperties => ({ padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontSize: 13, background: t === "ok" ? "#dcfce7" : "#fee2e2", color: t === "ok" ? "#166534" : "#991b1b", fontWeight: 500 });
+  const highlight = (c: string): React.CSSProperties => ({ background: c + "15", border: `1.5px solid ${c}40`, borderRadius: 10, padding: "14px 18px", marginBottom: 12 });
   const btn = (c: string, o?: boolean): React.CSSProperties => ({ padding: "7px 14px", borderRadius: 7, border: o ? `1.5px solid ${c}` : "none", background: o ? "transparent" : c, color: o ? c : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 });
 
   const a = apuracao;
 
   return (
     <div style={s.page}>
-      {msg && <div style={s.alert(msg.tipo)}>{msg.texto}</div>}
+      {msg && <div style={alert(msg.tipo)}>{msg.texto}</div>}
 
       <div style={s.header}>
         <div>
@@ -255,8 +260,8 @@ export default function DirpfPage() {
             ["IRPF Bruto", fmt(a.imposto_bruto), "#ef4444"],
             [a.imposto_a_pagar > 0 ? "A Pagar" : "A Restituir", fmt(a.imposto_a_pagar || a.imposto_a_restituir), a.imposto_a_pagar > 0 ? "#ef4444" : "#10b981"],
           ].map(([l, v, c]) => (
-            <div key={l as string} style={s.kpi(c as string)}>
-              <div style={s.kpiVal(c as string)}>{v}</div>
+            <div key={l as string} style={kpi(c as string)}>
+              <div style={kpiVal(c as string)}>{v}</div>
               <div style={s.kpiLabel}>{l}</div>
             </div>
           ))}
@@ -265,7 +270,7 @@ export default function DirpfPage() {
 
       <div style={s.tabs}>
         {([["apuracao", "📊 Apuração"], ["despesas", "💰 Despesas"], ["depreciacao", "🏗️ Depreciação"], ["prejuizo", "📉 Prejuízo"], ["config", "⚙️ Config"]] as [string, string][]).map(([id, label]) => (
-          <button key={id} style={s.tab(aba === id)} onClick={() => setAba(id as typeof aba)}>{label}</button>
+          <button key={id} style={tab(aba === id)} onClick={() => setAba(id as typeof aba)}>{label}</button>
         ))}
       </div>
 
@@ -288,7 +293,7 @@ export default function DirpfPage() {
                     { label: "Presumido 20%", base: a.comparativo.presumido_base, irpf: a.comparativo.presumido_irpf, rec: "presumido_20pct" },
                     { label: "Resultado Real (Lucro Real)", base: a.comparativo.real_base, irpf: a.comparativo.real_irpf, rec: "resultado_real" },
                   ].map(item => (
-                    <div key={item.rec} style={s.highlight(a.comparativo.recomendacao === item.rec ? "#10b981" : "#94a3b8")}>
+                    <div key={item.rec} style={highlight(a.comparativo.recomendacao === item.rec ? "#10b981" : "#94a3b8")}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 8 }}>
                         {item.label}
                         {a.comparativo.recomendacao === item.rec && <span style={{ marginLeft: 8, fontSize: 11, background: "#10b981", color: "#fff", borderRadius: 20, padding: "2px 8px" }}>✓ Recomendado</span>}
@@ -551,7 +556,7 @@ export default function DirpfPage() {
       {/* ── ABA PREJUÍZO ── */}
       {aba === "prejuizo" && (
         <div>
-          <div style={{ ...s.highlight("#f59e0b"), marginBottom: 16 }}>
+          <div style={{ ...highlight("#f59e0b"), marginBottom: 16 }}>
             <strong style={{ fontSize: 13 }}>📋 Compensação de Prejuízo Rural</strong>
             <p style={{ fontSize: 12, color: "#475569", margin: "6px 0 0" }}>
               O prejuízo rural pode ser compensado em anos futuros <strong>sem limite de prazo</strong> (RIR/2018 art. 63). Diferente do IRPJ que limita a 30% do lucro.
@@ -579,7 +584,7 @@ export default function DirpfPage() {
             )}
           </div>
           {a && a.prejuizo_acumulado_disponivel > 0 && (
-            <div style={{ ...s.highlight("#f59e0b") }}>
+            <div style={{ ...highlight("#f59e0b") }}>
               <strong>Saldo total disponível: {fmt(a.prejuizo_acumulado_disponivel)}</strong>
               <div style={{ fontSize: 12, marginTop: 4 }}>Será compensado automaticamente no cálculo do Resultado Real quando houver lucro.</div>
             </div>

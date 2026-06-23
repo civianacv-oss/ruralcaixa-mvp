@@ -179,13 +179,13 @@ export default function DCTFWebPage() {
     if (r.ok) { showMsg("ok", "Declaração marcada como transmitida"); loadPainel(); loadDeclaracoes(); }
   };
 
-  const s: Record<string, React.CSSProperties> = {
+  const s = {
     page: { minHeight:"100vh", background:"#f8fafc", fontFamily:"'Inter',sans-serif", padding:"24px" },
     header: { display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 },
     title: { fontSize:22, fontWeight:700, color:"#1e293b", margin:0 },
     subtitle: { fontSize:13, color:"#64748b", marginTop:2 },
     tabs: { display:"flex", gap:4, marginBottom:24, background:"#fff", borderRadius:10, padding:4, boxShadow:"0 1px 4px rgba(0,0,0,.06)", width:"fit-content" },
-    tab: (active: boolean) => ({ padding:"8px 16px", borderRadius:7, border:"none", cursor:"pointer", fontSize:13, fontWeight:500, background: active ? "#1e40af" : "transparent", color: active ? "#fff" : "#64748b", transition:"all .15s" }),
+
     kpiGrid: { display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:24 },
     kpi: { background:"#fff", borderRadius:10, padding:"16px 20px", boxShadow:"0 1px 4px rgba(0,0,0,.06)" },
     kpiVal: { fontSize:20, fontWeight:700, color:"#1e293b", marginBottom:2 },
@@ -203,19 +203,22 @@ export default function DCTFWebPage() {
     table: { width:"100%", borderCollapse:"collapse" as const, fontSize:13 },
     th: { textAlign:"left" as const, padding:"8px 10px", background:"#f8fafc", color:"#64748b", fontSize:11, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:.4 },
     td: { padding:"10px 10px", borderBottom:"1px solid #f1f5f9", color:"#334155" },
-    alert: (tipo: "ok"|"err") => ({ padding:"12px 16px", borderRadius:8, marginBottom:16, fontSize:13, background: tipo==="ok" ? "#dcfce7" : "#fee2e2", color: tipo==="ok" ? "#166534" : "#991b1b", fontWeight:500 }),
+
     emptyState: { textAlign:"center" as const, padding:"40px 20px", color:"#94a3b8" },
     previewBox: { background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:10, padding:"14px 18px", marginTop:12 },
     previewRow: { display:"flex", justifyContent:"space-between", padding:"4px 0", fontSize:13 },
     previewTotal: { display:"flex", justifyContent:"space-between", padding:"8px 0 0", marginTop:4, borderTop:"2px solid #e2e8f0", fontWeight:700, fontSize:14 },
-    previewSaldo: (v: number) => ({ display:"flex", justifyContent:"space-between", padding:"6px 0 0", fontWeight:700, fontSize:15, color: v > 0 ? "#ef4444" : "#10b981" }),
+
   };
+  const tab = (active: boolean): React.CSSProperties => ({ padding:"8px 16px", borderRadius:7, border:"none", cursor:"pointer", fontSize:13, fontWeight:500, background: active ? "#1e40af" : "transparent", color: active ? "#fff" : "#64748b", transition:"all .15s" });
+  const alert = (tipo: "ok"|"err"): React.CSSProperties => ({ padding:"12px 16px", borderRadius:8, marginBottom:16, fontSize:13, background: tipo==="ok" ? "#dcfce7" : "#fee2e2", color: tipo==="ok" ? "#166534" : "#991b1b", fontWeight:500 });
+  const previewSaldo = (v: number): React.CSSProperties => ({ display:"flex", justifyContent:"space-between", padding:"6px 0 0", fontWeight:700, fontSize:15, color: v > 0 ? "#ef4444" : "#10b981" });
   const badge = (cor: string) => ({ display:"inline-block", padding:"2px 8px", borderRadius:20, fontSize:11, fontWeight:600, background: cor+"22", color: cor });
   const btn = (color: string, outline?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border: outline ? `1.5px solid ${color}` : "none", background: outline ? "transparent" : color, color: outline ? color : "#fff", cursor:"pointer", fontSize:12, fontWeight:600, transition:"all .15s" });
 
   return (
     <div style={s.page}>
-      {msg && <div style={s.alert(msg.tipo)}>{msg.texto}</div>}
+      {msg && <div style={alert(msg.tipo)}>{msg.texto}</div>}
 
       <div style={s.header}>
         <div>
@@ -233,7 +236,7 @@ export default function DCTFWebPage() {
 
       <div style={s.tabs}>
         {([["painel","🗺️ Painel Guia"],["declaracoes","📄 Declarações"],["creditos","💳 Créditos"],["perdcomp","🔄 PER/DCOMP"],["nova","➕ Nova"]] as [string,string][]).map(([id,label]) => (
-          <button key={id} style={s.tab(aba===id)} onClick={() => setAba(id as typeof aba)}>{label}</button>
+          <button key={id} style={tab(aba===id)} onClick={() => setAba(id as typeof aba)}>{label}</button>
         ))}
       </div>
 
@@ -703,7 +706,7 @@ export default function DCTFWebPage() {
                 {(parseFloat(form.valor_credito_vinculado)||0) > 0 && <div style={s.previewRow}><span style={{ color:"#10b981" }}>(-) Crédito Vinculado</span><span style={{ color:"#10b981" }}>-{fmt(parseFloat(form.valor_credito_vinculado)||0)}</span></div>}
                 {(parseFloat(form.valor_pago)||0) > 0 && <div style={s.previewRow}><span style={{ color:"#10b981" }}>(-) Valor Pago</span><span style={{ color:"#10b981" }}>-{fmt(parseFloat(form.valor_pago)||0)}</span></div>}
                 {(parseFloat(form.valor_compensado)||0) > 0 && <div style={s.previewRow}><span style={{ color:"#10b981" }}>(-) Compensado</span><span style={{ color:"#10b981" }}>-{fmt(parseFloat(form.valor_compensado)||0)}</span></div>}
-                <div style={s.previewSaldo(saldoCalc)}><span>Saldo a Pagar</span><span>{fmt(saldoCalc)}</span></div>
+                <div style={previewSaldo(saldoCalc)}><span>Saldo a Pagar</span><span>{fmt(saldoCalc)}</span></div>
               </div>
             )}
 
