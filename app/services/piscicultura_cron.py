@@ -9,8 +9,8 @@ Alertas gerados (8 tipos):
   1. ph_faixa_critica       : pH fora da faixa ideal no último registro diário
   2. oxigenio_critico       : O₂ dissolvido < 2 mg/L no último registro diário
   3. temperatura_fora_range : temperatura fora do range por espécie
-  4. amonia_alta            : campo `alertas` do registro diário contém "amônia"/"nitrito"
-                              (campo texto livre — até que coluna dedicada seja adicionada)
+  4. amonia_alta            : amonia_mg_l > 0.5 mg/L ou nitrito_mg_l > 0.2 mg/L
+                              (colunas dedicadas em registros_diarios_piscicultura)
   5. despesca_proxima       : ciclo com despesca prevista em ≤ 7 dias
   6. ica_elevado            : ICA acumulado > 2.5 na última biometria
   7. mortalidade_elevada    : mortalidade acumulada > 10% do plantel inicial
@@ -82,7 +82,8 @@ def _gerar_alertas_qualidade_agua(cur, imovel_id: Optional[int]) -> list[dict]:
             r.ph,
             r.oxigenio_dissolvido,
             r.temperatura_c,
-            r.alertas       AS alertas_texto
+            r.amonia_mg_l,
+            r.nitrito_mg_l
         FROM ciclos_piscicultura c
         JOIN registros_diarios_piscicultura r ON r.ciclo_id = c.id
         WHERE c.status = 'ativo'
@@ -202,15 +203,16 @@ def _gerar_alertas_qualidade_agua(cur, imovel_id: Optional[int]) -> list[dict]:
                     origem_evento="cron_piscicultura",
                 ))
 
-        # 4. Amônia/nitrito (campo texto livre `alertas`)
-        alertas_txt = (r["alertas_texto"] or "").lower()
-        if "amônia" in alertas_txt or "amonia" in alertas_txt:
+        # 4. Amônia (NH3+NH4) — limite crítico: 0.5 mg/L
+        NH3_MAX = 0.5
+        if r["amonia_mg_l"] is not None and float(r["amonia_mg_l"]) > NH3_MAX:
+            nh3 = float(r["amonia_mg_l"])
             alertas.append(dict(
                 imovel_id=r["imovel_id"], ref_id=r["ciclo_id"],
                 tipo_alerta="amonia_alta",
-                titulo=f"☠️ Amônia alta registrada: {ciclo}",
+                titulo=f"☠️ Amônia alta: {ciclo} ({nh3} mg/L)",
                 descricao=(
-                    f"Ciclo {ciclo}: registro de amônia elevada em {data_ref}. "
+                    f"Ciclo {ciclo}: amônia {nh3} mg/L — acima do limite ({NH3_MAX} mg/L). "
                     f"Reduzir densidade, aumentar renovação de água e verificar biofiltro."
                 ),
                 nivel="critico", prioridade="alta",
@@ -218,14 +220,18 @@ def _gerar_alertas_qualidade_agua(cur, imovel_id: Optional[int]) -> list[dict]:
                 data_vencimento=date.today(),
                 origem_evento="cron_piscicultura",
             ))
-        if "nitrito" in alertas_txt:
+
+        # 4b. Nitrito (NO2) — limite crítico: 0.2 mg/L
+        NO2_MAX = 0.2
+        if r["nitrito_mg_l"] is not None and float(r["nitrito_mg_l"]) > NO2_MAX:
+            no2 = float(r["nitrito_mg_l"])
             alertas.append(dict(
                 imovel_id=r["imovel_id"], ref_id=r["ciclo_id"],
                 tipo_alerta="amonia_alta",
-                titulo=f"☠️ Nitrito alto registrado: {ciclo}",
+                titulo=f"☠️ Nitrito alto: {ciclo} ({no2} mg/L)",
                 descricao=(
-                    f"Ciclo {ciclo}: registro de nitrito elevado em {data_ref}. "
-                    f"Verificar biofiltro e aumentar renovação de água."
+                    f"Ciclo {ciclo}: nitrito {no2} mg/L — acima do limite ({NO2_MAX} mg/L). "
+                    f"Verificar biofiltro, reduzir arraçoamento e aumentar renovação de água."
                 ),
                 nivel="critico", prioridade="alta",
                 data_referencia=data_ref,
