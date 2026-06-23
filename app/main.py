@@ -54,6 +54,14 @@ except Exception as e:
     print(f"ACAI ROUTER FAILED: {e}")
     acai_router = None
 
+efdreinf_router = None
+try:
+    from app.routers.efdreinf import router as efdreinf_router
+    print("EFDREINF ROUTER LOADED OK")
+except Exception as e:
+    print(f"EFDREINF ROUTER FAILED: {e}")
+    efdreinf_router = None
+
 load_dotenv()
 
 app = FastAPI(title="Rural Caixa PF")
@@ -70,6 +78,7 @@ if caprino_router: app.include_router(caprino_router)
 if suino_router: app.include_router(suino_router)
 if compravenda_router: app.include_router(compravenda_router)
 if acai_router: app.include_router(acai_router)
+if efdreinf_router: app.include_router(efdreinf_router)
 
 # Cron alertas ovinos
 try:
