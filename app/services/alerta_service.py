@@ -219,6 +219,24 @@ class AlertaService:
         if not alertas:
             return {"enviados": 0, "ignorados": 0, "total_alertas": 0}
 
+        # --- Telegram: envia consolidado para o grupo ---
+        try:
+            import requests as _req
+            import os as _os
+            _tg_token = _os.getenv("TELEGRAM_BOT_TOKEN", "")
+            _tg_group = _os.getenv("TELEGRAM_GROUP_CHAT_ID", "")
+            if _tg_token and _tg_group:
+                relevantes_tg = [a for a in alertas if a.get("nivel") in ("critico", "aviso")]
+                if relevantes_tg:
+                    msg_tg = self.montar_mensagem_telegram(relevantes_tg)
+                    _req.post(
+                        f"https://api.telegram.org/bot{_tg_token}/sendMessage",
+                        json={"chat_id": _tg_group, "text": msg_tg, "parse_mode": "HTML"},
+                        timeout=10,
+                    )
+        except Exception as _e:
+            logger.warning("Telegram nao enviado: %s", _e)
+
         # Agrupa por telefone do produtor
         por_tel: dict = {}
         ignorados = 0
