@@ -8,6 +8,7 @@ from typing import Optional, List
 # piscicultura module enabled          ← ADICIONAR
 from app.routers.piscicultura import router as piscicultura_router
 from backend.routers.telegram_router import router as telegram_router
+from app.routers.telegram_bot_router import router as telegram_bot_router
 from backend.routers.telegram_router import router as telegram_router
 from app.routers.agricultura import router as agricultura_router
 
@@ -220,7 +221,8 @@ app.include_router(contratos_rurais_router)
 app.include_router(bovino_router)
 app.include_router(agricultura_router)
 app.include_router(piscicultura_router)
-app.include_router(telegram_router)   # ← ADICIONAR
+app.include_router(telegram_router)
+app.include_router(telegram_bot_router)   # ← ADICIONAR
 
 # â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
