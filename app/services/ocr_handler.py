@@ -1,4 +1,4 @@
-# app/services/ocr_handler.py — VERSÃO ATUALIZADA COM SUPORTE A PDF
+# app/services/ocr_handler.py — VERSÃO COM PyPDF2 (SEM POPPLER)
 import httpx, os, json, base64, logging
 from typing import Optional
 
@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 SISTEMA_OCR = """Você é um especialista em documentos fiscais brasileiros.
-Analise a imagem e extraia as informações do documento fiscal.
+Analise a imagem ou texto e extraia as informações do documento fiscal.
 Responda APENAS com JSON, sem explicações.
 
 Formato:
@@ -28,11 +28,53 @@ Formato:
 """
 
 
+def extrair_texto_pdf(pdf_bytes: bytes) -> str:
+    """
+    Extrai texto de um PDF usando PyPDF2 (sem dependência de Poppler).
+    
+    Args:
+        pdf_bytes: Bytes do arquivo PDF
+    
+    Returns:
+        str: Texto extraído do PDF
+    """
+    try:
+        import PyPDF2
+        from io import BytesIO
+        
+        logger.info(f"[PDF] Extraindo texto com PyPDF2...")
+        
+        pdf_file = BytesIO(pdf_bytes)
+        reader = PyPDF2.PdfReader(pdf_file)
+        
+        texto = ""
+        for page_num, page in enumerate(reader.pages):
+            try:
+                texto += f"\n--- Página {page_num + 1} ---\n"
+                texto += page.extract_text()
+            except Exception as e:
+                logger.warning(f"[PDF] Erro ao extrair página {page_num + 1}: {e}")
+        
+        logger.info(f"[PDF] Texto extraído: {len(texto)} caracteres")
+        return texto
+    
+    except ImportError:
+        logger.error("[PDF] PyPDF2 não está instalado")
+        raise RuntimeError(
+            "Suporte a PDF não configurado. Tente enviar uma foto nítida do documento."
+        )
+    except Exception as e:
+        logger.error(f"[PDF] Erro ao extrair texto: {type(e).__name__}: {e}")
+        raise RuntimeError(f"Não consegui processar o PDF: {str(e)}")
+
+
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
     """
     Extrai dados de documento fiscal usando Claude Vision.
     
-    NOVO: Suporta PDF e imagens. PDFs são convertidos para JPEG antes do envio.
+    NOVO: Suporta PDF e imagens.
+    - Para PDFs: Extrai texto com PyPDF2 e envia como texto para Claude
+    - Para imagens: Envia como imagem base64 para Claude Vision
     
     Args:
         imagem_bytes: Bytes do arquivo (PDF ou imagem)
@@ -44,29 +86,45 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
     try:
         # ── NOVO: Processar PDF se necessário ──────────────────────────────
         if mime_type.lower() == "application/pdf" or mime_type.lower().endswith("+pdf"):
-            logger.info(f"Detectado PDF ({len(imagem_bytes)} bytes). Convertendo para imagem...")
-            try:
-                from app.services.pdf_converter import processar_documento_para_claude
-                imagem_bytes, mime_type = processar_documento_para_claude(
-                    imagem_bytes, mime_type, "documento.pdf"
+            logger.info(f"[PDF] Detectado PDF ({len(imagem_bytes)} bytes). Extraindo texto...")
+            
+            texto_pdf = extrair_texto_pdf(imagem_bytes)
+            
+            logger.info(f"[OCR] Enviando texto do PDF para Claude...")
+            
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": ANTHROPIC_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    },
+                    json={
+                        "model": "claude-opus-4-5-20251001",
+                        "max_tokens": 1000,
+                        "system": SISTEMA_OCR,
+                        "messages": [{
+                            "role": "user",
+                            "content": f"Extraia todos os dados fiscais deste documento:\n\n{texto_pdf}"
+                        }]
+                    }
                 )
-                logger.info(f"PDF convertido para JPEG ({len(imagem_bytes)} bytes)")
-            except ImportError:
-                logger.error("Módulo pdf_converter não encontrado. Instale: pip install pdf2image")
-                raise RuntimeError(
-                    "Suporte a PDF não configurado. Tente enviar uma foto nítida do documento."
-                )
-            except Exception as e:
-                logger.error(f"Erro ao converter PDF: {e}")
-                raise RuntimeError(f"Não consegui processar o PDF: {str(e)}")
+                r.raise_for_status()
+                texto = r.json()["content"][0]["text"]
+                dados = json.loads(texto)
+                logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
+                return dados
         
-        # ── Codificar imagem em base64 ─────────────────────────────────────
+        # ── Processar Imagem ───────────────────────────────────────────────
+        logger.info(f"[OCR] Processando imagem: mime_type={mime_type}, tamanho={len(imagem_bytes)} bytes")
+        
         imagem_b64 = base64.standard_b64encode(imagem_bytes).decode("utf-8")
+        logger.info(f"[OCR] Base64 gerado: {len(imagem_b64)} caracteres")
         
-        # ── Enviar para Claude Vision ──────────────────────────────────────
-        logger.info(f"Enviando para Claude Vision ({len(imagem_b64)} caracteres base64)...")
+        logger.info(f"[OCR] Enviando para Claude Vision...")
         
-        async with httpx.AsyncClient(timeout=60) as client:  # Aumentado para 60s (PDFs podem demorar)
+        async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -85,7 +143,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                                 "type": "image",
                                 "source": {
                                     "type": "base64",
-                                    "media_type": "image/jpeg",  # Sempre JPEG após conversão
+                                    "media_type": "image/jpeg",
                                     "data": imagem_b64
                                 }
                             },
@@ -100,22 +158,27 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
             r.raise_for_status()
             texto = r.json()["content"][0]["text"]
             dados = json.loads(texto)
-            logger.info(f"OCR concluído com sucesso. Confiança: {dados.get('confianca')}")
+            logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
             return dados
     
     except json.JSONDecodeError as e:
-        logger.error(f"Erro ao parsear resposta JSON do Claude: {e}")
+        logger.error(f"[OCR] Erro ao parsear JSON: {e}")
         raise RuntimeError("Claude retornou resposta inválida. Tente novamente.")
+    
     except httpx.HTTPStatusError as e:
-        logger.error(f"Erro HTTP da API Claude: {e.status_code} - {e.response.text}")
-        if e.status_code == 400:
+        status_code = e.response.status_code if hasattr(e.response, 'status_code') else 'unknown'
+        response_text = e.response.text if hasattr(e, 'response') else str(e)
+        logger.error(f"[OCR] Erro HTTP {status_code}: {response_text}")
+        
+        if status_code == 400:
             raise RuntimeError("Imagem inválida ou muito grande. Tente uma foto mais nítida.")
-        elif e.status_code == 429:
+        elif status_code == 429:
             raise RuntimeError("Limite de requisições atingido. Tente novamente em alguns segundos.")
         else:
-            raise RuntimeError(f"Erro na API Claude: {e.status_code}")
+            raise RuntimeError(f"Erro na API Claude: {status_code}")
+    
     except Exception as e:
-        logger.error(f"Erro inesperado no OCR: {e}", exc_info=True)
+        logger.error(f"[OCR] Erro inesperado: {type(e).__name__}: {str(e)}", exc_info=True)
         raise RuntimeError(f"Erro ao processar documento: {str(e)}")
 
 
@@ -135,7 +198,7 @@ def montar_mensagem_ocr(dados: dict, numero: str) -> str:
     itens_txt = ""
     if itens:
         itens_txt = "\n📦 Itens:\n"
-        for item in itens[:3]:  # máximo 3 itens na mensagem
+        for item in itens[:3]:
             itens_txt += f"  • {item.get('descricao', 'N/A')}: R$ {item.get('valor_total', 0):.2f}\n"
         if len(itens) > 3:
             itens_txt += f"  ... e mais {len(itens) - 3} item(ns)\n"
