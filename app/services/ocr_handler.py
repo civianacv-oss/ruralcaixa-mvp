@@ -1,5 +1,8 @@
-# app/services/ocr_handler.py
-import httpx, os, json, base64
+# app/services/ocr_handler.py — VERSÃO ATUALIZADA COM SUPORTE A PDF
+import httpx, os, json, base64, logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -24,44 +27,96 @@ Formato:
 }
 """
 
+
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
-    """Usa Claude Vision para extrair dados de documento fiscal."""
-    imagem_b64 = base64.standard_b64encode(imagem_bytes).decode("utf-8")
+    """
+    Extrai dados de documento fiscal usando Claude Vision.
     
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json={
-                "model": "claude-opus-4-5-20251001",
-                "max_tokens": 1000,
-                "system": SISTEMA_OCR,
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": mime_type,
-                                "data": imagem_b64
+    NOVO: Suporta PDF e imagens. PDFs são convertidos para JPEG antes do envio.
+    
+    Args:
+        imagem_bytes: Bytes do arquivo (PDF ou imagem)
+        mime_type: MIME type do arquivo (application/pdf, image/jpeg, etc.)
+    
+    Returns:
+        dict: Dados extraídos do documento em formato JSON
+    """
+    try:
+        # ── NOVO: Processar PDF se necessário ──────────────────────────────
+        if mime_type.lower() == "application/pdf" or mime_type.lower().endswith("+pdf"):
+            logger.info(f"Detectado PDF ({len(imagem_bytes)} bytes). Convertendo para imagem...")
+            try:
+                from app.services.pdf_converter import processar_documento_para_claude
+                imagem_bytes, mime_type = processar_documento_para_claude(
+                    imagem_bytes, mime_type, "documento.pdf"
+                )
+                logger.info(f"PDF convertido para JPEG ({len(imagem_bytes)} bytes)")
+            except ImportError:
+                logger.error("Módulo pdf_converter não encontrado. Instale: pip install pdf2image")
+                raise RuntimeError(
+                    "Suporte a PDF não configurado. Tente enviar uma foto nítida do documento."
+                )
+            except Exception as e:
+                logger.error(f"Erro ao converter PDF: {e}")
+                raise RuntimeError(f"Não consegui processar o PDF: {str(e)}")
+        
+        # ── Codificar imagem em base64 ─────────────────────────────────────
+        imagem_b64 = base64.standard_b64encode(imagem_bytes).decode("utf-8")
+        
+        # ── Enviar para Claude Vision ──────────────────────────────────────
+        logger.info(f"Enviando para Claude Vision ({len(imagem_b64)} caracteres base64)...")
+        
+        async with httpx.AsyncClient(timeout=60) as client:  # Aumentado para 60s (PDFs podem demorar)
+            r = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-opus-4-5-20251001",
+                    "max_tokens": 1000,
+                    "system": SISTEMA_OCR,
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",  # Sempre JPEG após conversão
+                                    "data": imagem_b64
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": "Extraia todos os dados fiscais desta imagem."
                             }
-                        },
-                        {
-                            "type": "text",
-                            "text": "Extraia todos os dados fiscais desta imagem."
-                        }
-                    ]
-                }]
-            }
-        )
-        r.raise_for_status()
-        texto = r.json()["content"][0]["text"]
-        return json.loads(texto)
+                        ]
+                    }]
+                }
+            )
+            r.raise_for_status()
+            texto = r.json()["content"][0]["text"]
+            dados = json.loads(texto)
+            logger.info(f"OCR concluído com sucesso. Confiança: {dados.get('confianca')}")
+            return dados
+    
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao parsear resposta JSON do Claude: {e}")
+        raise RuntimeError("Claude retornou resposta inválida. Tente novamente.")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Erro HTTP da API Claude: {e.status_code} - {e.response.text}")
+        if e.status_code == 400:
+            raise RuntimeError("Imagem inválida ou muito grande. Tente uma foto mais nítida.")
+        elif e.status_code == 429:
+            raise RuntimeError("Limite de requisições atingido. Tente novamente em alguns segundos.")
+        else:
+            raise RuntimeError(f"Erro na API Claude: {e.status_code}")
+    except Exception as e:
+        logger.error(f"Erro inesperado no OCR: {e}", exc_info=True)
+        raise RuntimeError(f"Erro ao processar documento: {str(e)}")
 
 
 def montar_mensagem_ocr(dados: dict, numero: str) -> str:
