@@ -1,4 +1,4 @@
-# app/services/ocr_handler.py — VERSÃO ATUALIZADA COM SUPORTE A PDF
+# app/services/ocr_handler.py — VERSÃO ROBUSTA COM FALLBACK
 import httpx, os, json, base64, logging
 from typing import Optional
 
@@ -33,6 +33,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
     Extrai dados de documento fiscal usando Claude Vision.
     
     NOVO: Suporta PDF e imagens. PDFs são convertidos para JPEG antes do envio.
+    Versão robusta com fallback se pdf2image não estiver disponível.
     
     Args:
         imagem_bytes: Bytes do arquivo (PDF ou imagem)
@@ -44,29 +45,31 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
     try:
         # ── NOVO: Processar PDF se necessário ──────────────────────────────
         if mime_type.lower() == "application/pdf" or mime_type.lower().endswith("+pdf"):
-            logger.info(f"Detectado PDF ({len(imagem_bytes)} bytes). Convertendo para imagem...")
+            logger.info(f"[PDF] Detectado PDF ({len(imagem_bytes)} bytes). Tentando converter...")
             try:
                 from app.services.pdf_converter import processar_documento_para_claude
                 imagem_bytes, mime_type = processar_documento_para_claude(
                     imagem_bytes, mime_type, "documento.pdf"
                 )
-                logger.info(f"PDF convertido para JPEG ({len(imagem_bytes)} bytes)")
-            except ImportError:
-                logger.error("Módulo pdf_converter não encontrado. Instale: pip install pdf2image")
+                logger.info(f"[PDF] Conversão bem-sucedida: {len(imagem_bytes)} bytes")
+            except ImportError as e:
+                logger.warning(f"[PDF] Módulo pdf_converter não encontrado: {e}")
                 raise RuntimeError(
                     "Suporte a PDF não configurado. Tente enviar uma foto nítida do documento."
                 )
             except Exception as e:
-                logger.error(f"Erro ao converter PDF: {e}")
+                logger.error(f"[PDF] Erro ao converter PDF: {type(e).__name__}: {e}")
                 raise RuntimeError(f"Não consegui processar o PDF: {str(e)}")
         
         # ── Codificar imagem em base64 ─────────────────────────────────────
+        logger.info(f"[OCR] Codificando imagem em base64...")
         imagem_b64 = base64.standard_b64encode(imagem_bytes).decode("utf-8")
+        logger.info(f"[OCR] Base64 gerado: {len(imagem_b64)} caracteres")
         
         # ── Enviar para Claude Vision ──────────────────────────────────────
-        logger.info(f"Enviando para Claude Vision ({len(imagem_b64)} caracteres base64)...")
+        logger.info(f"[OCR] Enviando para Claude Vision...")
         
-        async with httpx.AsyncClient(timeout=60) as client:  # Aumentado para 60s (PDFs podem demorar)
+        async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -85,7 +88,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                                 "type": "image",
                                 "source": {
                                     "type": "base64",
-                                    "media_type": "image/jpeg",  # Sempre JPEG após conversão
+                                    "media_type": "image/jpeg",
                                     "data": imagem_b64
                                 }
                             },
@@ -100,22 +103,27 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
             r.raise_for_status()
             texto = r.json()["content"][0]["text"]
             dados = json.loads(texto)
-            logger.info(f"OCR concluído com sucesso. Confiança: {dados.get('confianca')}")
+            logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
             return dados
     
     except json.JSONDecodeError as e:
-        logger.error(f"Erro ao parsear resposta JSON do Claude: {e}")
+        logger.error(f"[OCR] Erro ao parsear JSON: {e}")
         raise RuntimeError("Claude retornou resposta inválida. Tente novamente.")
+    
     except httpx.HTTPStatusError as e:
-        logger.error(f"Erro HTTP da API Claude: {e.status_code} - {e.response.text}")
-        if e.status_code == 400:
+        status_code = e.response.status_code if hasattr(e.response, 'status_code') else 'unknown'
+        response_text = e.response.text if hasattr(e, 'response') else str(e)
+        logger.error(f"[OCR] Erro HTTP {status_code}: {response_text}")
+        
+        if status_code == 400:
             raise RuntimeError("Imagem inválida ou muito grande. Tente uma foto mais nítida.")
-        elif e.status_code == 429:
+        elif status_code == 429:
             raise RuntimeError("Limite de requisições atingido. Tente novamente em alguns segundos.")
         else:
-            raise RuntimeError(f"Erro na API Claude: {e.status_code}")
+            raise RuntimeError(f"Erro na API Claude: {status_code}")
+    
     except Exception as e:
-        logger.error(f"Erro inesperado no OCR: {e}", exc_info=True)
+        logger.error(f"[OCR] Erro inesperado: {type(e).__name__}: {str(e)}", exc_info=True)
         raise RuntimeError(f"Erro ao processar documento: {str(e)}")
 
 
@@ -135,7 +143,7 @@ def montar_mensagem_ocr(dados: dict, numero: str) -> str:
     itens_txt = ""
     if itens:
         itens_txt = "\n📦 Itens:\n"
-        for item in itens[:3]:  # máximo 3 itens na mensagem
+        for item in itens[:3]:
             itens_txt += f"  • {item.get('descricao', 'N/A')}: R$ {item.get('valor_total', 0):.2f}\n"
         if len(itens) > 3:
             itens_txt += f"  ... e mais {len(itens) - 3} item(ns)\n"
