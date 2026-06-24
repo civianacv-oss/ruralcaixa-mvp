@@ -1,0 +1,66 @@
+name: Alertas Cron (PowerShell)
+
+on:
+  schedule:
+    # Executar às 09:00 e 17:00 UTC (06:00 e 14:00 Brasília)
+    - cron: '0 9,17 * * *'
+  workflow_dispatch: # Permite rodar manualmente pelo GitHub
+
+jobs:
+  monitor-qualidade-agua:
+    runs-on: windows-latest
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+        
+      - name: 📦 Instalar módulo Npgsql
+        shell: pwsh
+        run: |
+          # Instalar NuGet provider se necessário
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          
+          # Baixar Npgsql via NuGet
+          $nugetUrl = "https://www.nuget.org/api/v2/package/Npgsql/4.1.12"
+          $outputPath = "$env:TEMP\Npgsql.zip"
+          Invoke-WebRequest -Uri $nugetUrl -OutFile $outputPath
+          
+          # Extrair e adicionar ao path do PowerShell
+          $extractPath = "$env:TEMP\Npgsql"
+          Expand-Archive -Path $outputPath -DestinationPath $extractPath -Force
+          
+          # Copiar DLL para um local acessível
+          $dllPath = "$extractPath\lib\net461\Npgsql.dll"
+          if (Test-Path $dllPath) {
+              Copy-Item -Path $dllPath -Destination "$PSScriptRoot\Npgsql.dll"
+              Write-Host "Npgsql instalado com sucesso"
+          } else {
+              Write-Host "Erro: Npgsql.dll não encontrado"
+              exit 1
+          }
+          
+      - name: 🧪 Executar Monitor de Amônia/Nitrito
+        shell: pwsh
+        run: |
+          # Carregar assembly Npgsql
+          [Reflection.Assembly]::LoadFrom("$PSScriptRoot\Npgsql.dll") | Out-Null
+          
+          # Executar script
+          & "${{ github.workspace }}\scripts\Monitor-AmoniaaNitrito.ps1"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          
+      - name: 💬 Enviar Alertas WhatsApp (Críticos)
+        shell: pwsh
+        run: |
+          # Carregar assembly Npgsql
+          [Reflection.Assembly]::LoadFrom("$PSScriptRoot\Npgsql.dll") | Out-Null
+          
+          # Executar script
+          & "${{ github.workspace }}\scripts\Send-AlertasWhatsApp.ps1"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+          WHATSAPP_TEMPLATE_NAME: "alerta_piscicultura"
+          DRY_RUN: "false"
