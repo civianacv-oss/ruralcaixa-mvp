@@ -109,48 +109,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if texto_up in ("/AJUDA", "/HELP", "AJUDA", "HELP", "?"):
         return _cmd_ajuda()
 
-    # Confirmação / correção de lançamento pendente na sessão
+    # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
-
-        # ── Correção de classificação: 1, 2 ou 3 ─────────────────────────
-        CORRECOES = {
-            "1": ("despesa",      "3.1.1", "Despesa operacional"),
-            "2": ("investimento", "4.1",   "Investimento/equipamento"),
-            "3": ("receita",      "1.1.1", "Receita"),
-            "4": ("contrato",     "9.9",   "Contrato/documento jurídico"),
-        }
-        if texto_up in CORRECOES:
-            tipo_novo, conta_nova, label_novo = CORRECOES[texto_up]
-            sessoes[key]["tipo"]  = tipo_novo
-            sessoes[key]["conta"] = conta_nova
-
-            # Registra aprendizado se veio de OCR
-            if "_dados_ocr" in sessoes[key]:
-                try:
-                    from app.services.ocr_classificador import registrar_correcao
-                    from app.db import buscar_produtor_por_numero
-                    prod = buscar_produtor_por_numero(msg.numero)
-                    registrar_correcao(
-                        dados_ocr=sessoes[key]["_dados_ocr"],
-                        tipo_correto=tipo_novo,
-                        conta_correta=conta_nova,
-                        produtor_id=prod["id"] if prod else None,
-                    )
-                    logger.info("Aprendizado registrado: %s → %s", msg.numero, tipo_novo)
-                except Exception as e:
-                    logger.error("Erro ao registrar aprendizado: %s", e)
-
-            info_tipo = {"despesa": "💸", "investimento": "🔧", "receita": "💰", "contrato": "📋"}
-            emoji = info_tipo.get(tipo_novo, "📄")
-            return (
-                f"{emoji} Classificação corrigida para *{label_novo}*\n\n"
-                f"Valor: R$ {sessoes[key].get('valor', 0):,.2f}\n"
-                f"Conta: {conta_nova}\n\n"
-                f"Aprendi! Próximos documentos similares serão classificados corretamente.\n\n"
-                f"Responda *SIM* para confirmar e gravar ou *NAO* para cancelar."
-            )
-
-        # ── Confirmação ───────────────────────────────────────────────────
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
@@ -177,13 +137,16 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
             tipo_label = {"despesa": "💸 DESPESA", "investimento": "🔧 INVESTIMENTO", "receita": "💰 RECEITA", "contrato": "📋 CONTRATO"}
             label = tipo_label.get(sess.get("tipo", ""), "📄 LANÇAMENTO")
+            # Só pede comprovante se o lançamento não veio de documento
+            veio_de_doc = "_dados_ocr" in sess or "_midia" in sess
+            rodape = "" if veio_de_doc else "\nEnvie a foto ou PDF do comprovante para vincular."
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"{label}\n"
                 f"Conta: {sess.get('conta','')}\n"
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
-                f"Data: {sess.get('data','')}\n\n"
-                f"Envie a foto ou PDF do comprovante para vincular."
+                f"Data: {sess.get('data','')}"
+                f"{rodape}"
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
             sessoes.pop(key, None)
