@@ -135,18 +135,13 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
-            tipo_label = {"despesa": "💸 DESPESA", "investimento": "🔧 INVESTIMENTO", "receita": "💰 RECEITA", "contrato": "📋 CONTRATO"}
-            label = tipo_label.get(sess.get("tipo", ""), "📄 LANÇAMENTO")
-            # Só pede comprovante se o lançamento não veio de documento
-            veio_de_doc = "_dados_ocr" in sess or "_midia" in sess
-            rodape = "" if veio_de_doc else "\nEnvie a foto ou PDF do comprovante para vincular."
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
-                f"{label}\n"
+                f"Tipo: {sess.get('tipo','').upper()}\n"
                 f"Conta: {sess.get('conta','')}\n"
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
-                f"Data: {sess.get('data','')}"
-                f"{rodape}"
+                f"Data: {sess.get('data','')}\n\n"
+                f"Envie a foto ou PDF do comprovante para vincular."
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
             sessoes.pop(key, None)
@@ -206,6 +201,27 @@ async def processar_mensagem(msg: MsgIn) -> str:
                      "aerador", "biometria", "despesca", "alevino"]
     if any(k in texto.lower() for k in keywords_pisc):
         return await _processar_zootecnico(msg, "piscicultura", texto)
+
+    # ── Intenção de criar contrato rural ─────────────────────────────
+    from app.services.contrato_handler import (
+        detectar_intencao_contrato, iniciar_contrato,
+        processar_etapa_contrato, is_contrato_ativo, confirmar_contrato,
+    )
+
+    # Fluxo de contrato ativo
+    if is_contrato_ativo(sessoes, key):
+        if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
+            ok, resp = await confirmar_contrato(sessoes, key)
+            return resp
+        elif texto_up in ("NAO", "N", "CANCELA"):
+            sessoes.pop(key, None)
+            return "Cancelado. Pode começar de novo quando quiser."
+        else:
+            return await processar_etapa_contrato(sessoes, key, texto)
+
+    # Detecção de intenção de contrato
+    if detectar_intencao_contrato(texto):
+        return await iniciar_contrato(sessoes, key, texto)
 
     # Classificação financeira via IA
     resultado = classificar(texto)
@@ -288,6 +304,8 @@ def _cmd_ajuda() -> str:
         "  Ex: 'vendi 10 sacas de soja 3000'\n\n"
         "📄 Documentos:\n"
         "  Envie foto de NF, contrato ou recibo\n\n"
+        "📋 Contratos:\n"
+        "  Ex: 'fazer parceria agrícola com João Silva, 50ha, 3 anos'\n\n"
         "📊 Consultas:\n"
         "  /saldo   — resumo do mês\n"
         "  /dre     — resultado financeiro\n"
