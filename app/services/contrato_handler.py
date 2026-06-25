@@ -325,7 +325,7 @@ async def criar_contrato_api(dados: dict, produtor_id: Optional[int] = None) -> 
     Retorna dict com id, status e link.
     """
     tipo = dados.get("tipo", "agricola")
-    perc_out = int(dados.get("percentual_outorgante", 50))
+    perc_out = int(dados.get("percentual_outorgante") or 50)
 
     body: dict = {
         "fazenda_id": FAZENDA_ID,
