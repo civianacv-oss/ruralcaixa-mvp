@@ -174,10 +174,11 @@ def montar_mensagem_ocr(dados: dict, numero: str) -> str:
         f"{info_tipo['emoji']} {info_tipo['label']}\n"
         f"Confiança: {estrelas} ({confianca_num}%)\n"
         f"Motivo: {motivo}\n\n"
-        f"✅ *SIM* — confirmar como {info_tipo['label'].lower()}\n"
+        f"✅ *SIM* — confirmar como {info_tipo['label']}\n"
         f"1️⃣ *1* — Despesa operacional (ração, combustível...)\n"
         f"2️⃣ *2* — Investimento/equipamento (máquinas...)\n"
         f"3️⃣ *3* — Receita (venda de produção...)\n"
+        f"4️⃣ *4* — Contrato/documento jurídico\n"
         f"❌ *NAO* — cancelar"
     )
 

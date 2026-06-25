@@ -117,6 +117,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
             "1": ("despesa",      "3.1.1", "Despesa operacional"),
             "2": ("investimento", "4.1",   "Investimento/equipamento"),
             "3": ("receita",      "1.1.1", "Receita"),
+            "4": ("contrato",     "9.9",   "Contrato/documento jurídico"),
         }
         if texto_up in CORRECOES:
             tipo_novo, conta_nova, label_novo = CORRECOES[texto_up]
@@ -139,7 +140,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro ao registrar aprendizado: %s", e)
 
-            info_tipo = {"despesa": "💸", "investimento": "🔧", "receita": "💰"}
+            info_tipo = {"despesa": "💸", "investimento": "🔧", "receita": "💰", "contrato": "📋"}
             emoji = info_tipo.get(tipo_novo, "📄")
             return (
                 f"{emoji} Classificação corrigida para *{label_novo}*\n\n"
@@ -174,7 +175,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
-            tipo_label = {"despesa": "💸 DESPESA", "investimento": "🔧 INVESTIMENTO", "receita": "💰 RECEITA"}
+            tipo_label = {"despesa": "💸 DESPESA", "investimento": "🔧 INVESTIMENTO", "receita": "💰 RECEITA", "contrato": "📋 CONTRATO"}
             label = tipo_label.get(sess.get("tipo", ""), "📄 LANÇAMENTO")
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"

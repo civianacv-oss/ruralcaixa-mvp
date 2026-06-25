@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 
 # Mapeamento tipo → label amigável → conta padrão
 TIPOS = {
-    "despesa":      {"label": "Despesa operacional",  "emoji": "💸", "conta": "3.1.1"},
+    "despesa":      {"label": "Despesa operacional",      "emoji": "💸", "conta": "3.1.1"},
     "investimento": {"label": "Investimento/equipamento", "emoji": "🔧", "conta": "4.1"},
-    "receita":      {"label": "Receita",              "emoji": "💰", "conta": "1.1.1"},
+    "receita":      {"label": "Receita",                  "emoji": "💰", "conta": "1.1.1"},
+    "contrato":     {"label": "Contrato/documento jurídico", "emoji": "📋", "conta": "9.9"},
 }
 
 
@@ -61,8 +62,8 @@ def classificar_documento(dados_ocr: dict, produtor_id: Optional[int] = None) ->
     palavras = _extrair_palavras(dados_ocr)
 
     # Consulta banco de aprendizado
-    scores = {"despesa": 0, "investimento": 0, "receita": 0}
-    contas = {"despesa": "3.1.1", "investimento": "4.1", "receita": "1.1.1"}
+    scores = {"despesa": 0, "investimento": 0, "receita": 0, "contrato": 0}
+    contas = {"despesa": "3.1.1", "investimento": "4.1", "receita": "1.1.1", "contrato": "9.9"}
     palavras_ativas = []
 
     try:
@@ -89,8 +90,25 @@ def classificar_documento(dados_ocr: dict, produtor_id: Optional[int] = None) ->
     # Regra de desempate: tipo_documento como sinal extra
     tipo_doc = dados_ocr.get("tipo_documento", "").lower()
     tipo_op = dados_ocr.get("tipo_operacao", "").lower()
+    observacao = (dados_ocr.get("observacao") or "").lower()
 
-    if tipo_op == "venda" and scores["receita"] == 0 and scores["despesa"] == 0:
+    # Contratos e documentos jurídicos têm prioridade máxima
+    palavras_contrato = [
+        "contrato", "cessão", "arrendamento", "parceria", "consórcio",
+        "locação", "comodato", "escritura", "procuração", "testamento",
+        "inventário", "partilha", "distrato", "aditivo", "termo",
+        "possessório", "possessória", "direitos", "hectare", "área rural",
+    ]
+    texto_completo = " ".join([
+        dados_ocr.get("emitente", ""),
+        dados_ocr.get("observacao", "") or "",
+        " ".join(i.get("descricao", "") for i in dados_ocr.get("itens", [])),
+    ]).lower()
+
+    if any(p in texto_completo for p in palavras_contrato):
+        scores["contrato"] += 15  # peso alto para garantir vitória
+
+    elif tipo_op == "venda" and scores["receita"] == 0 and scores["despesa"] == 0:
         scores["receita"] += 3
     elif tipo_op in ("compra", "pagamento") and scores["despesa"] == 0 and scores["investimento"] == 0:
         scores["despesa"] += 3
