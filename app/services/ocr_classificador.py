@@ -102,7 +102,7 @@ def classificar_documento(dados_ocr: dict, produtor_id: Optional[int] = None) ->
     texto_completo = " ".join([
         dados_ocr.get("emitente", ""),
         dados_ocr.get("observacao", "") or "",
-        " ".join(i.get("descricao", "") for i in dados_ocr.get("itens", [])),
+        " ".join(i.get("descricao") or "" for i in dados_ocr.get("itens", [])),
     ]).lower()
 
     if any(p in texto_completo for p in palavras_contrato):
