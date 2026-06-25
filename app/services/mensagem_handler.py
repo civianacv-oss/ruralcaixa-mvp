@@ -109,8 +109,24 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if texto_up in ("/AJUDA", "/HELP", "AJUDA", "HELP", "?"):
         return _cmd_ajuda()
 
-    # Confirmação de lançamento pendente na sessão
-    if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
+    # ── Fluxo de contrato ativo ──────────────────────────────────────
+    from app.services.contrato_handler import (
+        detectar_intencao_contrato, iniciar_contrato,
+        processar_etapa_contrato, is_contrato_ativo, confirmar_contrato,
+    )
+
+    if is_contrato_ativo(sessoes, key):
+        if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
+            ok, resp = await confirmar_contrato(sessoes, key)
+            return resp
+        elif texto_up in ("NAO", "N", "CANCELA"):
+            sessoes.pop(key, None)
+            return "Cancelado. Pode começar de novo quando quiser."
+        else:
+            return await processar_etapa_contrato(sessoes, key, texto)
+
+        # Confirmação de lançamento pendente na sessão
+    if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "contrato"):
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
@@ -202,24 +218,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if any(k in texto.lower() for k in keywords_pisc):
         return await _processar_zootecnico(msg, "piscicultura", texto)
 
-    # ── Intenção de criar contrato rural ─────────────────────────────
-    from app.services.contrato_handler import (
-        detectar_intencao_contrato, iniciar_contrato,
-        processar_etapa_contrato, is_contrato_ativo, confirmar_contrato,
-    )
-
-    # Fluxo de contrato ativo
-    if is_contrato_ativo(sessoes, key):
-        if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
-            ok, resp = await confirmar_contrato(sessoes, key)
-            return resp
-        elif texto_up in ("NAO", "N", "CANCELA"):
-            sessoes.pop(key, None)
-            return "Cancelado. Pode começar de novo quando quiser."
-        else:
-            return await processar_etapa_contrato(sessoes, key, texto)
-
-    # Detecção de intenção de contrato
+    # Detecção de intenção de contrato (nova conversa)
     if detectar_intencao_contrato(texto):
         return await iniciar_contrato(sessoes, key, texto)
 
@@ -304,8 +303,6 @@ def _cmd_ajuda() -> str:
         "  Ex: 'vendi 10 sacas de soja 3000'\n\n"
         "📄 Documentos:\n"
         "  Envie foto de NF, contrato ou recibo\n\n"
-        "📋 Contratos:\n"
-        "  Ex: 'fazer parceria agrícola com João Silva, 50ha, 3 anos'\n\n"
         "📊 Consultas:\n"
         "  /saldo   — resumo do mês\n"
         "  /dre     — resultado financeiro\n"
