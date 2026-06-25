@@ -8,9 +8,9 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 SISTEMA_OCR = """Você é um especialista em documentos fiscais brasileiros.
 Analise a imagem e extraia as informações do documento fiscal.
+Responda APENAS com JSON, sem explicações.
 
-REGRA CRÍTICA: Responda SOMENTE com o objeto JSON abaixo, sem nenhum texto antes ou depois, sem markdown, sem ```json, sem explicações. Apenas o JSON puro começando com { e terminando com }.
-
+Formato:
 {
   "tipo_documento": "nfe | cupom_fiscal | boleto | recibo | outros",
   "emitente": "nome da empresa/pessoa que emitiu",
@@ -24,7 +24,8 @@ REGRA CRÍTICA: Responda SOMENTE com o objeto JSON abaixo, sem nenhum texto ante
   "tipo_operacao": "compra | venda | pagamento | outros",
   "confianca": "alta | media | baixa",
   "observacao": "qualquer informação relevante ou null"
-}"""
+}
+"""
 
 
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
@@ -77,7 +78,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": "claude-opus-4-5-20251001",
                     "max_tokens": 1000,
                     "system": SISTEMA_OCR,
                     "messages": [{
@@ -100,16 +101,8 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                 }
             )
             r.raise_for_status()
-            texto = r.json()["content"][0]["text"].strip()
-            logger.info(f"[OCR] Resposta bruta: {texto[:200]}")
-            import re as _re
-            if "```" in texto:
-                texto = _re.sub(r"```[a-z]*\n?", "", texto).strip()
-            inicio = texto.find("{")
-            fim = texto.rfind("}") + 1
-            if inicio == -1 or fim == 0:
-                raise json.JSONDecodeError("Nenhum JSON encontrado", texto, 0)
-            dados = json.loads(texto[inicio:fim])
+            texto = r.json()["content"][0]["text"]
+            dados = json.loads(texto)
             logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
             return dados
     
@@ -135,17 +128,25 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
 
 
 def montar_mensagem_ocr(dados: dict, numero: str) -> str:
-    """Monta mensagem de confirmação para o produtor."""
-    tipo = dados.get("tipo_documento", "documento").upper()
+    """
+    Monta mensagem de confirmação com classificação automática sugerida.
+    O classificador decide o tipo; o usuário confirma ou corrige com 1/2/3.
+    """
+    from app.services.ocr_classificador import classificar_documento, TIPOS
+
+    tipo_doc = dados.get("tipo_documento", "documento").upper()
     emitente = dados.get("emitente") or "N/A"
     data = dados.get("data") or "não identificada"
     valor = dados.get("valor_total", 0)
-    operacao = dados.get("tipo_operacao", "outros")
-    confianca = dados.get("confianca", "baixa")
-    
-    emoji = "🧾" if operacao == "compra" else "💰" if operacao == "venda" else "📄"
-    tipo_label = "[DESPESA]" if operacao in ("compra", "pagamento") else "[RECEITA]" if operacao == "venda" else "[DOCUMENTO]"
-    
+
+    # Classificação automática
+    classif = classificar_documento(dados)
+    tipo_sug = classif["tipo"]          # "despesa" | "investimento" | "receita"
+    confianca_num = classif["confianca"]
+    motivo = classif["motivo"]
+    info_tipo = TIPOS[tipo_sug]
+
+    # Itens
     itens = dados.get("itens", [])
     itens_txt = ""
     if itens:
@@ -155,45 +156,53 @@ def montar_mensagem_ocr(dados: dict, numero: str) -> str:
         if len(itens) > 3:
             itens_txt += f"  ... e mais {len(itens) - 3} item(ns)\n"
 
+    # Barra de confiança textual
+    estrelas = "⭐" * (confianca_num // 25) + "☆" * (4 - confianca_num // 25)
+
     return (
-        f"{emoji} *Documento identificado:*\n"
-        f"📋 Tipo: {tipo}\n"
+        f"🧾 *Documento identificado:*\n"
+        f"📋 Tipo: {tipo_doc}\n"
         f"🏢 Emitente: {emitente}\n"
         f"📅 Data: {data}\n"
         f"💲 Valor: R$ {valor:.2f}\n"
-        f"{tipo_label}\n"
         f"{itens_txt}\n"
-        f"Confiança: {confianca}\n\n"
-        f"Responda *SIM* para lançar como {tipo_label.strip('[]').lower()} ou *NAO* para cancelar."
+        f"━━━━━━━━━━━━━━━━\n"
+        f"🤖 *Classificação sugerida:*\n"
+        f"{info_tipo['emoji']} {info_tipo['label']}\n"
+        f"Confiança: {estrelas} ({confianca_num}%)\n"
+        f"Motivo: {motivo}\n\n"
+        f"✅ *SIM* — confirmar como {info_tipo['label'].lower()}\n"
+        f"1️⃣ *1* — Despesa operacional (ração, combustível...)\n"
+        f"2️⃣ *2* — Investimento/equipamento (máquinas...)\n"
+        f"3️⃣ *3* — Receita (venda de produção...)\n"
+        f"❌ *NAO* — cancelar"
     )
 
 
 def ocr_para_lancamento(dados: dict) -> dict:
-    """Converte dados do OCR para o formato de lançamento interno."""
+    """
+    Converte dados do OCR para o formato de lançamento interno.
+    Usa o classificador automático para definir tipo e conta.
+    """
     from datetime import date as dt
-    
-    operacao = dados.get("tipo_operacao", "outros")
-    tipo = "despesa" if operacao in ("compra", "pagamento") else "receita" if operacao == "venda" else "despesa"
-    
-    MAPA_CONTA = {
-        "compra": "3.1.1",
-        "pagamento": "3.9",
-        "venda": "1.1.1",
-        "outros": "3.9",
-    }
-    
+    from app.services.ocr_classificador import classificar_documento
+
+    classif = classificar_documento(dados)
+
     itens = dados.get("itens", [])
     descricao = dados.get("emitente") or "Documento fiscal"
     if itens:
         descricao = itens[0].get("descricao") or descricao
 
     return {
-        "conta": MAPA_CONTA.get(operacao, "3.9"),
-        "tipo": tipo,
+        "conta": classif["conta"],
+        "tipo": classif["tipo"],
         "valor": float(dados.get("valor_total", 0)),
         "data": dados.get("data") or dt.today().isoformat(),
-        "confianca": 80 if dados.get("confianca") == "alta" else 60,
+        "confianca": classif["confianca"],
         "produto": descricao,
         "numero_documento": dados.get("numero_documento"),
         "chave_nfe": dados.get("chave_nfe"),
+        "_classificacao": classif,   # guardado na sessão para aprendizado
+        "_dados_ocr": dados,         # guardado para extrair palavras na correção
     }

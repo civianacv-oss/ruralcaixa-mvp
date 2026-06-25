@@ -1,5 +1,5 @@
 """
-app/services/mensagem_handler.py – RuralCaixa MVP
+app/services/mensagem_handler.py — RuralCaixa MVP
 
 Handler compartilhado WhatsApp + Telegram.
 Recebe mensagem normalizada e retorna resposta de texto.
@@ -23,7 +23,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Sessões em memória – compartilhadas entre canais
+# Sessões em memória — compartilhadas entre canais
 # chave: f"{canal}:{numero}"
 _sessoes: dict = {}
 
@@ -57,7 +57,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     sessoes = _sessoes
     key = msg.key
 
-    # ── Audio ──────────────────────────────────────────────────────────────
+    # ── Audio ──────────────────────────────────────────────────────────
     if msg.tipo == "audio":
         try:
             from app.services.groq_stt import transcrever_audio
@@ -74,47 +74,28 @@ async def processar_mensagem(msg: MsgIn) -> str:
             logger.error("Erro STT: %s", e)
             return "Não consegui transcrever o áudio. Tente digitar o lançamento."
 
-    # ── Imagem / Documento (OCR) ──────────────────────────────────────────
+    # ── Imagem / Documento (OCR) ───────────────────────────────────────
     if msg.tipo in ("image", "document"):
         try:
             from app.services.ocr_handler import (
                 extrair_dados_documento,
                 montar_mensagem_ocr,
+                ocr_para_lancamento,
             )
-            
-            # ✅ Extrair dados do documento
             dados_ocr = await extrair_dados_documento(msg.midia_bytes, msg.mime_type)
-            
-            # ✅ Preparar lançamento a partir dos dados OCR
-            lancamento = {
-                "tipo": dados_ocr.get("tipo_operacao", "outros"),
-                "conta": dados_ocr.get("tipo_documento", "documento"),
-                "valor": dados_ocr.get("valor_total", 0),
-                "data": dados_ocr.get("data", ""),
-                "descricao": f"{dados_ocr.get('tipo_documento', 'Documento')} - {dados_ocr.get('emitente', 'N/A')}",
-            }
-            
-            # ✅ Armazenar na sessão
+            lancamento = ocr_para_lancamento(dados_ocr)
             sessoes[key] = {
                 **lancamento,
                 "_ocr": dados_ocr,
                 "_midia": msg.midia_bytes,
                 "_mime": msg.mime_type,
             }
-            
-            # ✅ Retornar mensagem de confirmação
             return montar_mensagem_ocr(dados_ocr, msg.numero)
-            
-        except RuntimeError as e:
-            # ✅ Erro esperado (ex: PDF não suportado)
-            logger.warning(f"[OCR] Erro esperado: {str(e)}")
-            return str(e)
-            
         except Exception as e:
-            logger.error(f"[OCR] Erro inesperado: {type(e).__name__}: {str(e)}", exc_info=True)
+            logger.error("Erro OCR: %s", e)
             return "Não consegui ler o documento. Tente uma foto mais nítida ou digite o lançamento."
 
-    # ── Texto ──────────────────────────────────────────────────────────────
+    # ── Texto ──────────────────────────────────────────────────────────
     texto = msg.texto.strip()
     texto_up = texto.upper()
 
@@ -128,8 +109,47 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if texto_up in ("/AJUDA", "/HELP", "AJUDA", "HELP", "?"):
         return _cmd_ajuda()
 
-    # Confirmação de lançamento pendente na sessão
+    # Confirmação / correção de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
+
+        # ── Correção de classificação: 1, 2 ou 3 ─────────────────────────
+        CORRECOES = {
+            "1": ("despesa",      "3.1.1", "Despesa operacional"),
+            "2": ("investimento", "4.1",   "Investimento/equipamento"),
+            "3": ("receita",      "1.1.1", "Receita"),
+        }
+        if texto_up in CORRECOES:
+            tipo_novo, conta_nova, label_novo = CORRECOES[texto_up]
+            sessoes[key]["tipo"]  = tipo_novo
+            sessoes[key]["conta"] = conta_nova
+
+            # Registra aprendizado se veio de OCR
+            if "_dados_ocr" in sessoes[key]:
+                try:
+                    from app.services.ocr_classificador import registrar_correcao
+                    from app.db import buscar_produtor_por_numero
+                    prod = buscar_produtor_por_numero(msg.numero)
+                    registrar_correcao(
+                        dados_ocr=sessoes[key]["_dados_ocr"],
+                        tipo_correto=tipo_novo,
+                        conta_correta=conta_nova,
+                        produtor_id=prod["id"] if prod else None,
+                    )
+                    logger.info("Aprendizado registrado: %s → %s", msg.numero, tipo_novo)
+                except Exception as e:
+                    logger.error("Erro ao registrar aprendizado: %s", e)
+
+            info_tipo = {"despesa": "💸", "investimento": "🔧", "receita": "💰"}
+            emoji = info_tipo.get(tipo_novo, "📄")
+            return (
+                f"{emoji} Classificação corrigida para *{label_novo}*\n\n"
+                f"Valor: R$ {sessoes[key].get('valor', 0):,.2f}\n"
+                f"Conta: {conta_nova}\n\n"
+                f"Aprendi! Próximos documentos similares serão classificados corretamente.\n\n"
+                f"Responda *SIM* para confirmar e gravar ou *NAO* para cancelar."
+            )
+
+        # ── Confirmação ───────────────────────────────────────────────────
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
@@ -154,9 +174,11 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
+            tipo_label = {"despesa": "💸 DESPESA", "investimento": "🔧 INVESTIMENTO", "receita": "💰 RECEITA"}
+            label = tipo_label.get(sess.get("tipo", ""), "📄 LANÇAMENTO")
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
-                f"Tipo: {sess.get('tipo','').upper()}\n"
+                f"{label}\n"
                 f"Conta: {sess.get('conta','')}\n"
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
                 f"Data: {sess.get('data','')}\n\n"
@@ -167,37 +189,102 @@ async def processar_mensagem(msg: MsgIn) -> str:
             return "Cancelado. Pode mandar de novo quando quiser."
 
     # Fluxo de cadastro
-    if key in sessoes and sessoes[key].get("_tipo") == "cadastro":
-        # Lógica de cadastro aqui
-        pass
+    from app.services.cadastro_handler import (
+        iniciar_cadastro, processar_etapa,
+        confirmar_cadastro, is_cadastro_ativo,
+    )
 
-    # Classificação automática
-    try:
-        classificacao = classificar(texto)
-        if classificacao["tipo"] == "lancamento":
-            return await _processar_lancamento_texto(msg.numero, texto, classificacao)
-        elif classificacao["tipo"] == "consulta":
-            return await _processar_consulta(msg.numero, classificacao)
+    if is_cadastro_ativo(sessoes, key):
+        if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
+            dados = confirmar_cadastro(sessoes, key)
+            if dados:
+                from app.db import cadastrar
+                try:
+                    pid = cadastrar(dados["produtor"], dados["imovel"])
+                    return (
+                        f"✅ Cadastro realizado! ID: #{pid}\n\n"
+                        f"Agora envie lançamentos por texto ou áudio.\n"
+                        f"Ex: 'vendi 10 sacas de soja por 3000 reais'\n\n"
+                        f"Digite /ajuda para ver todos os comandos."
+                    )
+                except Exception as e:
+                    return "Erro ao cadastrar. Tente novamente."
         else:
-            return _cmd_ajuda()
-    except Exception as e:
-        logger.error("Erro classificação: %s", e)
-        return _cmd_ajuda()
+            resp = processar_etapa(sessoes, key, texto)
+            if resp:
+                return resp
+        return ""
 
+    # Saudação / cadastro inicial
+    if texto_up in ("CADASTRAR", "CADASTRO", "OI", "OLA", "INICIO", "/START"):
+        prod = buscar_produtor_por_numero(msg.numero)
+        if prod:
+            return (
+                f"Olá, {prod['nome']}! 👋\n\n"
+                f"Você já está cadastrado.\n"
+                f"Digite /ajuda para ver o que posso fazer."
+            )
+        return iniciar_cadastro(sessoes, key)
+
+    # Detecção módulos zootécnicos
+    keywords_ovino = ["brinco", "ovino", "ovelha", "cordeiro", "carneiro",
+                      "pesagem", "vacina", "vermifug", "parto", "monta",
+                      "famacha", "abate", "desmame"]
+    if any(k in texto.lower() for k in keywords_ovino):
+        return await _processar_zootecnico(msg, "ovino", texto)
+
+    keywords_bovino = ["boi", "vaca", "novilho", "bezerro", "bovino",
+                       "nelore", "angus", "gado"]
+    if any(k in texto.lower() for k in keywords_bovino):
+        return await _processar_zootecnico(msg, "bovino", texto)
+
+    keywords_pisc = ["peixe", "tilapia", "tambaqui", "viveiro", "tanque",
+                     "aerador", "biometria", "despesca", "alevino"]
+    if any(k in texto.lower() for k in keywords_pisc):
+        return await _processar_zootecnico(msg, "piscicultura", texto)
+
+    # Classificação financeira via IA
+    resultado = classificar(texto)
+    if not resultado:
+        return (
+            "Não entendi. Exemplos:\n"
+            "• 'vendi 5 bois por 10000'\n"
+            "• 'comprei ração 500 reais'\n"
+            "• /saldo — ver resumo do mês\n"
+            "• /ajuda — todos os comandos"
+        )
+
+    sessoes[key] = resultado
+    tipo_label = {"receita": "💰 RECEITA", "despesa": "💸 DESPESA"}.get(
+        resultado["tipo"], "📊 INVESTIMENTO"
+    )
+    return (
+        f"Recebi! Lançamento sugerido:\n\n"
+        f"{tipo_label}\n"
+        f"Valor: R$ {resultado['valor']:,.2f}\n"
+        f"Conta: {resultado['conta']}\n"
+        f"Produto: {resultado.get('produto') or 'N/A'}\n"
+        f"Confiança: {resultado['confianca']}%\n\n"
+        f"Responda SIM para confirmar ou NÃO para cancelar."
+    )
+
+
+# ── Comandos de consulta ──────────────────────────────────────────────
 
 async def _cmd_resumo(numero: str) -> str:
-    """Retorna resumo do mês."""
     try:
-        from app.db import buscar_resumo_produtor
-        resumo = buscar_resumo_produtor(numero)
-        if not resumo:
-            return "Nenhum lançamento encontrado."
-        
+        from app.db import buscar_produtor_por_numero, buscar_resumo_mes
+        prod = buscar_produtor_por_numero(numero)
+        if not prod:
+            return "Produtor não encontrado. Digite CADASTRAR para se cadastrar."
+        r = buscar_resumo_mes(prod["id"])
         return (
-            f"📊 **Resumo do Mês**\n\n"
-            f"💰 Receitas: R$ {resumo.get('receitas', 0):,.2f}\n"
-            f"💸 Despesas: R$ {resumo.get('despesas', 0):,.2f}\n"
-            f"📈 Saldo: R$ {resumo.get('saldo', 0):,.2f}"
+            f"📊 Resumo do mês — {prod['nome']}\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"💰 Receitas:  R$ {float(r.get('receita', 0)):,.2f}\n"
+            f"💸 Despesas:  R$ {float(r.get('despesa', 0)):,.2f}\n"
+            f"📋 Lançamentos: {r.get('total_lancamentos', 0)}\n"
+            f"⏳ Pendentes: {r.get('pendentes', 0)}"
         )
     except Exception as e:
         logger.error("Erro resumo: %s", e)
@@ -205,69 +292,69 @@ async def _cmd_resumo(numero: str) -> str:
 
 
 async def _cmd_dre(numero: str) -> str:
-    """Retorna DRE (Demonstração de Resultado)."""
     try:
-        from app.db import buscar_dre_produtor
-        dre = buscar_dre_produtor(numero)
-        if not dre:
-            return "Nenhum dado de DRE encontrado."
-        
+        from app.db import buscar_produtor_por_numero, engine
+        from app.services.dre_service import gerar_dre
+        prod = buscar_produtor_por_numero(numero)
+        if not prod:
+            return "Produtor não encontrado."
+        dre = gerar_dre(engine=engine, produtor_id=prod["id"], view_type="managerial")
+        rec = dre.get("receita_bruta", 0)
+        desp = dre.get("total_despesas", 0)
+        lucro = dre.get("resultado_liquido", 0)
         return (
-            f"📈 **DRE - Demonstração de Resultado**\n\n"
-            f"Receitas: R$ {dre.get('receitas', 0):,.2f}\n"
-            f"Despesas: R$ {dre.get('despesas', 0):,.2f}\n"
-            f"Lucro: R$ {dre.get('lucro', 0):,.2f}"
+            f"📈 DRE — {prod['nome']}\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"Receita bruta:  R$ {float(rec):,.2f}\n"
+            f"Total despesas: R$ {float(desp):,.2f}\n"
+            f"Resultado:      R$ {float(lucro):,.2f}\n\n"
+            f"Para detalhes acesse o RuralCaixa."
         )
     except Exception as e:
         logger.error("Erro DRE: %s", e)
-        return "Erro ao buscar DRE."
+        return "Erro ao gerar DRE."
 
 
 def _cmd_ajuda() -> str:
-    """Retorna mensagem de ajuda."""
     return (
-        "Não entendi. Exemplos:\n"
-        "• 'vendi 5 bois por 10000'\n"
-        "• 'comprei ração 500 reais'\n"
-        "• /saldo — ver resumo do mês\n"
-        "• /ajuda — todos os comandos"
+        "🌾 RuralCaixa — Comandos\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💰 Lançamentos:\n"
+        "  Envie texto livre ou áudio\n"
+        "  Ex: 'vendi 10 sacas de soja 3000'\n\n"
+        "📄 Documentos:\n"
+        "  Envie foto de NF, contrato ou recibo\n\n"
+        "📊 Consultas:\n"
+        "  /saldo   — resumo do mês\n"
+        "  /dre     — resultado financeiro\n"
+        "  /ajuda   — esta mensagem\n\n"
+        "🐄 Zootécnico:\n"
+        "  Mencione a espécie no texto\n"
+        "  Ex: 'pesagem boi 450kg'\n\n"
+        "📋 Cadastro:\n"
+        "  Digite CADASTRAR para se registrar"
     )
 
 
-async def _processar_lancamento_texto(numero: str, texto: str, classificacao: dict) -> str:
-    """Processa lançamento a partir de texto."""
+async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
     try:
-        # Extrair dados do texto usando classificação
-        lancamento = {
-            "tipo": classificacao.get("tipo_operacao", "outros"),
-            "conta": classificacao.get("conta", ""),
-            "valor": classificacao.get("valor", 0),
-            "data": classificacao.get("data", ""),
-            "descricao": texto,
-        }
-        
-        key = f"telegram:{numero}"
-        _sessoes[key] = lancamento
-        
-        return (
-            f"📝 **Lançamento**\n\n"
-            f"Tipo: {lancamento['tipo'].upper()}\n"
-            f"Valor: R$ {lancamento['valor']:,.2f}\n"
-            f"Descrição: {lancamento['descricao']}\n\n"
-            f"Confirma? (sim/não)"
-        )
+        if modulo == "ovino":
+            from app.routers.ovino import webhook_whatsapp_ovino, WhatsAppMensagem
+            from app.db import engine
+            from sqlalchemy import text as sqlt
+            with engine.connect() as conn:
+                row = conn.execute(sqlt(
+                    "SELECT id FROM imoveis_rurais WHERE produtor_id = "
+                    "(SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+                ), {"tel": f"%{msg.numero[-8:]}"}).fetchone()
+                imovel_id = row[0] if row else 1
+            payload = WhatsAppMensagem(
+                telefone=msg.numero, tipo_midia="texto",
+                conteudo=texto, imovel_id=imovel_id,
+            )
+            resultado = webhook_whatsapp_ovino(payload)
+            return resultado.get("resumo", "Registrado.")
+        return f"Módulo {modulo} recebido. Acesse o app para detalhes."
     except Exception as e:
-        logger.error("Erro processar lançamento: %s", e)
-        return "Erro ao processar lançamento."
-
-
-async def _processar_consulta(numero: str, classificacao: dict) -> str:
-    """Processa consulta."""
-    tipo_consulta = classificacao.get("tipo_consulta", "")
-    
-    if tipo_consulta == "saldo":
-        return await _cmd_resumo(numero)
-    elif tipo_consulta == "dre":
-        return await _cmd_dre(numero)
-    else:
-        return _cmd_ajuda()
+        logger.error("Erro zootécnico %s: %s", modulo, e)
+        return f"Erro ao processar registro {modulo}."
