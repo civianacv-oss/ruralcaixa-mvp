@@ -45,18 +45,18 @@ TIPO_ALIASES = {
 }
 
 CAMPOS_OBRIGATORIOS_PARCERIA = [
-    "tipo", "data_inicio", "data_fim",
+    "tipo", "data_inicio",
     "outorgante_nome", "outorgante_doc",
     "outorgado_nome",  "outorgado_doc",
 ]
 CAMPOS_OBRIGATORIOS_CONDOMINIO = [
-    "tipo", "data_inicio", "data_fim",
+    "tipo", "data_inicio",
 ]
 
 PERGUNTAS = {
     "tipo":            "Qual o tipo de contrato?\n1️⃣ Parceria Agrícola\n2️⃣ Parceria Pecuária\n3️⃣ Parceria Agroindustrial\n4️⃣ Parceria Extrativa\n5️⃣ Condomínio Rural",
     "data_inicio":     "Qual a *data de início* do contrato? (ex: 01/01/2025)",
-    "data_fim":        "Qual a *data de término* do contrato? (ex: 31/12/2027)",
+    "data_fim":        "Qual a *data de término* do contrato? (ex: 31/12/2027)\nOu responda *indeterminado* para prazo aberto.",
     "outorgante_nome": "Qual o nome completo do *outorgante* (quem cede a terra/atividade)?",
     "outorgante_doc":  "Qual o CPF/CNPJ do outorgante?",
     "outorgado_nome":  "Qual o nome completo do *outorgado* (quem recebe)?",
@@ -195,7 +195,9 @@ def formatar_resumo(dados: dict) -> str:
 
     if dados.get("data_inicio"):
         linhas.append(f"Início: {_fmt_data(dados['data_inicio'])}")
-    if dados.get("data_fim"):
+    if dados.get("prazo_indeterminado"):
+        linhas.append("Término: Prazo indeterminado")
+    elif dados.get("data_fim"):
         linhas.append(f"Término: {_fmt_data(dados['data_fim'])}")
 
     if tipo != "condominio":
@@ -248,9 +250,17 @@ def processar_resposta_campo(campo: str, texto: str, dados: dict) -> tuple[dict,
         dados["tipo"] = v
 
     elif campo in ("data_inicio", "data_fim"):
+        # Aceitar prazo indeterminado para data_fim
+        if campo == "data_fim" and t.lower() in (
+            "indeterminado", "indeterminada", "prazo indeterminado",
+            "sem prazo", "sem fim", "aberto", "indefinido", "nao", "não", "-", "/pular"
+        ):
+            dados["data_fim"] = None
+            dados["prazo_indeterminado"] = True
+            return dados, None
         d = _parse_data(t)
         if not d:
-            return dados, "Data inválida. Use o formato DD/MM/AAAA (ex: 15/03/2025)."
+            return dados, "Data inválida. Use o formato DD/MM/AAAA (ex: 15/03/2025) ou 'indeterminado' para prazo aberto."
         dados[campo] = d
 
     elif campo in ("outorgante_nome", "outorgado_nome"):
@@ -321,7 +331,7 @@ async def criar_contrato_api(dados: dict, produtor_id: Optional[int] = None) -> 
         "fazenda_id": FAZENDA_ID,
         "tipo": tipo,
         "data_inicio": dados["data_inicio"],
-        "data_fim": dados["data_fim"],
+        "data_fim": dados.get("data_fim"),  # None = prazo indeterminado
         "frequencia_pagamento": dados.get("frequencia", "safra"),
         "area_parceria_hectares": dados.get("area_hectares"),
         "percentual_outorgante": perc_out if tipo in TIPOS_PARCERIA else 0,
@@ -439,8 +449,15 @@ def _proxima_pergunta_ou_resumo(sessoes: dict, key: str) -> str:
     dados = sessoes[key]
     faltam = campos_faltantes(dados)
 
-    # Filtra área e frequência como opcionais na primeira rodada
-    faltam_criticos = [f for f in faltam if f not in ("area_hectares",)]
+    # data_fim é opcional (prazo indeterminado é válido)
+    # area_hectares também é opcional
+    opcionals = {"area_hectares"}
+    # Só pergunta data_fim se ainda não foi respondida (nem definida como indeterminado)
+    if "data_fim" not in dados and not dados.get("prazo_indeterminado"):
+        pass  # data_fim está em faltam, será perguntado
+    else:
+        opcionals.add("data_fim")
+    faltam_criticos = [f for f in faltam if f not in opcionals]
 
     if faltam_criticos:
         campo = faltam_criticos[0]
