@@ -78,7 +78,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-opus-4-5-20251001",
+                    "model": "claude-haiku-4-5-20251001",
                     "max_tokens": 1000,
                     "system": SISTEMA_OCR,
                     "messages": [{
