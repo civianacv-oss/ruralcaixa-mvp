@@ -41,7 +41,8 @@ async def _send(chat_id: str, text: str) -> None:
 
 async def _download_file(file_id: str) -> bytes:
     """Baixa arquivo do Telegram pelo file_id."""
-    async with httpx.AsyncClient(timeout=30) as client:
+    # ✅ AUMENTADO: timeout de 30s para 120s para evitar ReadTimeout
+    async with httpx.AsyncClient(timeout=120) as client:
         r = await client.get(f"{TELEGRAM_API}/getFile?file_id={file_id}")
         path = r.json()["result"]["file_path"]
         r2 = await client.get(
