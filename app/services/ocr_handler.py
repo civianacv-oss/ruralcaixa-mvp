@@ -8,9 +8,9 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 SISTEMA_OCR = """Você é um especialista em documentos fiscais brasileiros.
 Analise a imagem e extraia as informações do documento fiscal.
-Responda APENAS com JSON, sem explicações.
 
-Formato:
+REGRA CRÍTICA: Responda SOMENTE com o objeto JSON abaixo, sem nenhum texto antes ou depois, sem markdown, sem ```json, sem explicações. Apenas o JSON puro começando com { e terminando com }.
+
 {
   "tipo_documento": "nfe | cupom_fiscal | boleto | recibo | outros",
   "emitente": "nome da empresa/pessoa que emitiu",
@@ -24,8 +24,7 @@ Formato:
   "tipo_operacao": "compra | venda | pagamento | outros",
   "confianca": "alta | media | baixa",
   "observacao": "qualquer informação relevante ou null"
-}
-"""
+}"""
 
 
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
@@ -78,7 +77,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-haiku-4-5-20251001",
+                    "model": "claude-opus-4-5-20251001",
                     "max_tokens": 1000,
                     "system": SISTEMA_OCR,
                     "messages": [{
@@ -101,8 +100,16 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                 }
             )
             r.raise_for_status()
-            texto = r.json()["content"][0]["text"]
-            dados = json.loads(texto)
+            texto = r.json()["content"][0]["text"].strip()
+            logger.info(f"[OCR] Resposta bruta: {texto[:200]}")
+            import re as _re
+            if "```" in texto:
+                texto = _re.sub(r"```[a-z]*\n?", "", texto).strip()
+            inicio = texto.find("{")
+            fim = texto.rfind("}") + 1
+            if inicio == -1 or fim == 0:
+                raise json.JSONDecodeError("Nenhum JSON encontrado", texto, 0)
+            dados = json.loads(texto[inicio:fim])
             logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
             return dados
     
