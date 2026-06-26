@@ -125,7 +125,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
         else:
             return await processar_etapa_contrato(sessoes, key, texto)
 
-        # Confirmação de lançamento pendente na sessão
+    # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "contrato"):
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
