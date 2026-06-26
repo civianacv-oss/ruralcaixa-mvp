@@ -202,13 +202,13 @@ export default function BetaPage() {
               destaque: true,
             },
             {
-              icon: "💬", titulo: "WhatsApp",
-              desc: "Mande mensagem diretamente para o número do sistema: +55 (98) 3022-3992",
-              link: WHATSAPP_LINK, linkLabel: "Abrir WhatsApp",
+              icon: "✈️", titulo: "Telegram",
+              desc: "Entre no grupo de testadores e reporte diretamente por lá.",
+              link: "https://t.me/+9ZM4w6fwOUMxYTkx", linkLabel: "Entrar no grupo",
             },
             {
-              icon: "📧", titulo: "Telegram (em breve)",
-              desc: "Grupo de testadores em criação. Use o app ou WhatsApp por enquanto.",
+              icon: "💬", titulo: "WhatsApp (em breve)",
+              desc: "Canal via WhatsApp em configuração. Use o Telegram ou o formulário no app por enquanto.",
             },
           ].map(item => (
             <div key={item.titulo} style={{
