@@ -20,11 +20,15 @@ ROTAS_PUBLICAS = {
     "/docs",
     "/openapi.json",
     "/redoc",
+    "/cadastro",
 }
 
 PREFIXOS_PUBLICOS = (
     "/telegram/",       # webhook do Telegram
-    "/whatsapp/",       # webhook do WhatsApp
+    "/whatsapp/",
+    "/produtores",      # listagem pública para cadastro
+    "/produtor/",       # endpoints de produtor para cadastro
+    "/imoveis/",        # busca de imóveis no cadastro       # webhook do WhatsApp
     "/assinar/",        # página de assinatura (OTP próprio)
     "/contratos/assinar/",  # endpoint de assinatura via OTP
     "/auth/",           # endpoints de autenticação
