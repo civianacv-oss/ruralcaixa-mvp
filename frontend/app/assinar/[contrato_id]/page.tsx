@@ -40,7 +40,7 @@ const TIPO_LABEL: Record<string, string> = {
   pecuaria: "Parceria Pecuária",
   agroindustrial: "Parceria Agroindustrial",
   extrativa: "Parceria Extrativa",
-  condominio: contrato.tipo === "condominio" ? "Constituição de Condomínio Rural" : "Condomínio Rural",
+  condominio: "Constituição de Condomínio Rural",
 }
 
 function iconCircle(bg: string): React.CSSProperties {
