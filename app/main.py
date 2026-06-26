@@ -526,6 +526,36 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
         }
 
 
+
+# ── Autenticação por CPF + OTP ────────────────────────────────────────
+
+class SolicitarCodigoRequest(BaseModel):
+    cpf: str
+
+class VerificarCodigoRequest(BaseModel):
+    cpf: str
+    codigo: str
+
+@app.post("/auth/solicitar")
+async def auth_solicitar(body: SolicitarCodigoRequest):
+    """Envia código OTP via WhatsApp/Telegram para o CPF informado."""
+    from app.services.auth_service import solicitar_codigo
+    result = solicitar_codigo(body.cpf)
+    if "erro" in result:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=result["erro"])
+    return result
+
+@app.post("/auth/verificar")
+async def auth_verificar(body: VerificarCodigoRequest):
+    """Valida o código OTP e retorna o token de acesso."""
+    from app.services.auth_service import verificar_codigo
+    result = verificar_codigo(body.cpf, body.codigo)
+    if "erro" in result:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=result["erro"])
+    return result
+
 @app.get("/auth/me")
 async def auth_me(request: Request):
     """Retorna dados do produtor autenticado via Bearer token."""
