@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
@@ -249,8 +248,6 @@ export default function AcaiPage() {
   );
 
   return (
-
-    <AuthGuard>
     <div style={{ minHeight: "100vh", background: COR_LIGHT, fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ background: COR, color: "#fff", padding: "18px 24px", display: "flex", alignItems: "center", gap: 14 }}>

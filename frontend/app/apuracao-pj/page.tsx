@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
@@ -155,8 +154,6 @@ export default function ApuracaoPJPage() {
   ];
 
   return (
-
-    <AuthGuard>
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}

@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
@@ -281,8 +280,6 @@ export default function CompraVendaPage() {
   );
 
   return (
-
-    <AuthGuard>
     <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "system-ui, sans-serif" }}>
 
       {/* Header */}

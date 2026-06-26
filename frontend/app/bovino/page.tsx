@@ -1,7 +1,6 @@
 import { apiFetch } from "@/lib/api";
 // v2 - bovino leite e corte - fix nome
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -330,8 +329,6 @@ export default function BovinoPage() {
   );
 
   return (
-
-    <AuthGuard>
     <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ background: green, color: "white", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>

@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useCallback } from "react";
 
@@ -106,7 +105,6 @@ export default function ImportacaoPage() {
   const campos = tipo === "rebanho" ? camposRebanho : camposLanc;
 
   return (
-    <AuthGuard>
       <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "'DM Sans',system-ui,sans-serif" }}>
         {/* Header */}
         <header style={{ background: "#1a2e1a", color: "#e8e0d0", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -393,6 +391,5 @@ export default function ImportacaoPage() {
 
         </div>
       </div>
-    </AuthGuard>
   );
 }

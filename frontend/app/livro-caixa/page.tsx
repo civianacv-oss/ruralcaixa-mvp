@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -126,8 +125,6 @@ export default function LivroCaixaPage() {
   const btn = (c: string, o?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border:o?`1.5px solid ${c}`:"none", background:o?"transparent":c, color:o?c:"#fff", cursor:"pointer", fontSize:12, fontWeight:600 });
 
   return (
-
-    <AuthGuard>
     <div style={s.page}>
       {msg && <div style={alert(msg.tipo)}>{msg.texto}</div>}
 

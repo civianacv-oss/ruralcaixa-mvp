@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -33,8 +32,6 @@ function AnalyticsContent() {
   if (!data) return <div className="p-8 text-center text-red-500">Erro ao conectar no Backend. Verifique se o Uvicorn está rodando.</div>;
 
   return (
-
-    <AuthGuard>
     <div className="p-4 max-w-md mx-auto space-y-4">
       <a href="/" className="text-xs text-green-700 opacity-70 block mb-1">← Inicio</a>
       <h1 className="text-xl font-bold text-green-800">Dashboard João Batista</h1>

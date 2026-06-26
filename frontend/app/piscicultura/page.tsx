@@ -1,7 +1,6 @@
 import { apiFetch } from "@/lib/api";
 // page.tsx — Piscicultura
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -337,8 +336,6 @@ export default function PisciculturaPage() {
   const ciclosEncerrados = ciclos.filter(c => c.status !== "ativo");
 
   return (
-
-    <AuthGuard>
     <div className="min-h-screen bg-gray-50">
       <div style={{padding:"16px 24px 0",display:"flex",gap:8}}>
         <a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",textDecoration:"none"}}>🏠 Painel Principal</a>

@@ -1,7 +1,6 @@
 import { apiFetch } from "@/lib/api";
 
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -103,8 +102,6 @@ function RelatorioContent() {
   );
 
   return (
-
-    <AuthGuard>
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-20">
       <div className="bg-green-800 text-white px-4 py-4">
         <a href="/contador" className="text-xs opacity-70">← Voltar</a>

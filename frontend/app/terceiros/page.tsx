@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -46,8 +45,6 @@ function DonutChart({ fatias }: { fatias: { label: string; perc: number; cor: st
   });
 
   return (
-
-    <AuthGuard>
     <div className="flex items-center gap-4">
       <svg width="112" height="112" viewBox="0 0 112 112">
         {arcs.map((a, i) => (

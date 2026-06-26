@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 /**
  * RuralCaixa — Módulo EFD-Reinf (v2)
@@ -269,7 +268,6 @@ export default function EfdReinfPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <AuthGuard>
     <div className="min-h-screen bg-[#f5f0e8]">
       {/* Header */}
       <div className="bg-[#1a4d2e] text-white px-6 py-4">
@@ -940,6 +938,5 @@ export default function EfdReinfPage() {
         )}
       </div>
     </div>
-    </AuthGuard>
   );
 }

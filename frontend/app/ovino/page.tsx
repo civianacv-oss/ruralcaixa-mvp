@@ -1,5 +1,4 @@
 "use client";
-import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 
@@ -340,8 +339,6 @@ export default function OvinoDashboard() {
   );
 
   return (
-
-    <AuthGuard>
     <div style={{ minHeight: "100vh", background: "#f5f0e8", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#15803d", color: "white", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 0 }}>
