@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -14,6 +15,7 @@ type Nota = { id: number; numero: number; valor_total: number; valor_funrural: n
 function StepIndicator({ step, current }: { step: number; current: number }) {
   const labels = ["Configurar", "Destinatario", "Itens", "Emitir"];
   return (
+    <AuthGuard>
     <div className="flex items-center gap-0 mb-6">
       {labels.map((l, i) => (
         <div key={i} className="flex items-center flex-1 last:flex-none">
@@ -559,5 +561,6 @@ export default function NfePage() {
     <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="text-gray-400">Carregando...</div></div>}>
       <NFeContent />
     </Suspense>
+    </AuthGuard>
   );
 }

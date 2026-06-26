@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api";
 // Menu "Agricultura" no sidebar -- lista todas as safras por imovel
 
 'use client';
+import AuthGuard from "@/lib/AuthGuard";
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -41,6 +42,7 @@ type Imovel = {
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.planejada;
   return (
+    <AuthGuard>
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
       {cfg.label}
     </span>
@@ -568,5 +570,6 @@ function NovaSafraModal({
         </div>
       </div>
     </div>
+    </AuthGuard>
   );
 }

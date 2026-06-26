@@ -155,6 +155,8 @@ export default function VotarPage() {
     : 0
 
   return (
+
+    <AuthGuard>
     <main style={s.main}>
       <div style={s.card}>
         {/* Logo */}

@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -89,6 +90,8 @@ export default function AcertosListaPage() {
   const btn = (color: string, outline?: boolean): React.CSSProperties => ({ padding:"7px 14px", borderRadius:7, border: outline ? `1.5px solid ${color}` : "none", background: outline ? "transparent" : color, color: outline ? color : "#fff", cursor:"pointer", fontSize:12, fontWeight:600, textDecoration:"none", display:"inline-block" });
 
   return (
+
+    <AuthGuard>
     <div style={s.page}>
       <div style={s.header}>
         <div>

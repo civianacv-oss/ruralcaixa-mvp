@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import GuiaInicio from "@/components/GuiaInicio";
@@ -132,6 +133,8 @@ export default function Dashboard() {
   const maxEspecie = Math.max(...Object.values(totalAnimaisEspecie), 1);
 
   return (
+
+    <AuthGuard>
     <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#f5f0e8",overflow:"hidden"}}>
       <GuiaInicio />
 

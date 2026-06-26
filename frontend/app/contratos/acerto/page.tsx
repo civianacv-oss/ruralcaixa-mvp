@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
@@ -156,7 +157,8 @@ export default function AcertoContratoPage() {
         setCalculando(false);
       }
     }, 600);
-    return () => clearTimeout(timer);
+    return (
+      <AuthGuard>) => clearTimeout(timer);
   }, [qtdSacas, vlrSaca, pctProd, pctFrete, outrosDesc]); // eslint-disable-line
 
   function reset() {

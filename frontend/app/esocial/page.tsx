@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -104,6 +105,8 @@ function ESocialContent() {
   ];
 
   return (
+
+    <AuthGuard>
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-10">
 
       {/* Header */}

@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
@@ -191,6 +192,8 @@ export default function SimuladorRegimePage() {
   ];
 
   return (
+
+    <AuthGuard>
     <div style={{ minHeight: "100vh", background: "#f8f7f4", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#1a3a2a", color: "#fff", padding: "20px 32px" }}>

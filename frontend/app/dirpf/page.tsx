@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 
@@ -229,6 +230,8 @@ export default function DirpfPage() {
   const a = apuracao;
 
   return (
+
+    <AuthGuard>
     <div style={s.page}>
       {msg && <div style={alert(msg.tipo)}>{msg.texto}</div>}
 

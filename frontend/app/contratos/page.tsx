@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
@@ -55,6 +56,7 @@ function ParteSelector({ label, produtores, origem, setOrigem, prodId, setProdId
 }) {
   const prod = produtores.find(p => p.id === prodId);
   return (
+    <AuthGuard>
     <div style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <label style={{ fontSize: 13, fontWeight: 600, color: "#3a4a3a" }}>{label}</label>
@@ -497,5 +499,6 @@ export default function ContratosPage() {
         contato: civiana.cv@gmail.com · ruralcaixa-mvp.vercel.app
       </footer>
     </div>
+    </AuthGuard>
   );
 }

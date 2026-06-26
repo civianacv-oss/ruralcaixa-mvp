@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 
@@ -74,6 +75,7 @@ function AlertaBadge({ alertas }: { alertas: Alerta[] }) {
   const avisos = alertas.filter(a => a.nivel === "aviso").length;
   if (alertas.length === 0) return null;
   return (
+    <AuthGuard>
     <div className="flex gap-1.5">
       {erros > 0 && (
         <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
@@ -505,5 +507,6 @@ export default function Contador() {
         </div>
       )}
     </div>
+    </AuthGuard>
   );
 }

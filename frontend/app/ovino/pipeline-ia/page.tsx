@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { useState, useEffect, useRef } from "react";
 
 const IMOVEL_ID = 1;
@@ -202,6 +203,8 @@ function CodeBlock({ code, lang = "python", filename }: { code: string; lang?: s
   }
 
   return (
+
+    <AuthGuard>
     <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 20, border: "1px solid #d1d5db" }}>
       <div style={{ background: "#1e1e1e", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", gap: 6 }}>

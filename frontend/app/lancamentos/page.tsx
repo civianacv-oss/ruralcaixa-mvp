@@ -1,4 +1,5 @@
 "use client";
+import AuthGuard from "@/lib/AuthGuard";
 import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
@@ -94,6 +95,8 @@ function ModalLancamento({
   const canSave = form.descricao.trim() && form.valor && form.data;
 
   return (
+
+    <AuthGuard>
     <div style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 16,

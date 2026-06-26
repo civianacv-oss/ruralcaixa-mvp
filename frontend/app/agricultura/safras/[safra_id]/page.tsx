@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api";
 // app/agricultura/safras/[safra_id]/page.tsx
 'use client';
+import AuthGuard from "@/lib/AuthGuard";
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -38,6 +39,7 @@ function fmtDate(d: string | null | undefined) {
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.planejada;
   return (
+    <AuthGuard>
     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${cfg.bg} ${cfg.text}`}>
       {cfg.label}
     </span>
@@ -868,5 +870,6 @@ export default function SafraDetailPage() {
         )}
       </div>
     </div>
+    </AuthGuard>
   );
 }
