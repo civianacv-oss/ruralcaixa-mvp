@@ -30,7 +30,7 @@ export function useAuth() {
 
       // Tenta usar cache local primeiro para resposta instantânea
       const cache = getProdutorLocal();
-      if (cache) setProdutor(cache as Produtor);
+      if (cache) setProdutor(cache as unknown as Produtor);
 
       // Valida token no backend
       try {
