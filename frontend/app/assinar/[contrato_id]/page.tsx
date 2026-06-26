@@ -1,5 +1,4 @@
 "use client";
-import React from "react";
 // v2-condominio
 "use client"
 // página pública — usa fetch sem token
