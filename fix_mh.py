@@ -1,4 +1,5 @@
 # force rebuild
+// force rebuild vercel
 content = open("app/services/mensagem_handler.py", encoding="utf-8", errors="replace").read()
 
 old = """    if is_contrato_ativo(sessoes, key):
