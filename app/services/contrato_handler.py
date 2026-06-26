@@ -126,21 +126,6 @@ async def extrair_campos_contrato(texto: str) -> dict:
     """Usa Claude para extrair campos do contrato da mensagem."""
     hoje = date.today().isoformat()
     try:
-        # Busca token do produtor para autenticar na API
-    from app.db import get_db
-    token = None
-    if produtor_id:
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                        cur.execute("SELECT api_token FROM produtores WHERE id=%s", (produtor_id,))
-                        row = cur.fetchone()
-                        if row:
-                            token = row["api_token"]
-
-    headers_api = {"Content-Type": "application/json"}
-    if token:
-            headers_api["Authorization"] = f"Bearer {token}"
-
     async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(
                 "https://api.anthropic.com/v1/messages",
