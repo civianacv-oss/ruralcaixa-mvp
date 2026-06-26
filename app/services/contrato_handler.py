@@ -163,12 +163,16 @@ def _buscar_token(produtor_id=None, numero=None):
         with get_db() as conn:
             with conn.cursor() as cur:
                 if numero:
-                    # Tenta por telegram_chat_id primeiro
+                    # Tenta por telegram_chat_id
                     cur.execute("SELECT api_token FROM produtores WHERE telegram_chat_id=%s LIMIT 1", (str(numero),))
                     row = cur.fetchone()
                     if not row:
-                        # Fallback por telefone
-                        cur.execute("SELECT api_token FROM produtores WHERE telefone LIKE %s LIMIT 1", (f"%{str(numero)[-8:]}",))
+                        # Fallback por telefone (8 ultimos digitos)
+                        cur.execute("SELECT id, api_token FROM produtores WHERE telefone LIKE %s LIMIT 1", (f"%{str(numero)[-8:]}",))
+                        row = cur.fetchone()
+                    if not row:
+                        # Busca o produtor principal (fallback final)
+                        cur.execute("SELECT id, api_token FROM produtores WHERE api_token IS NOT NULL ORDER BY id LIMIT 1")
                         row = cur.fetchone()
                 elif produtor_id:
                     cur.execute("SELECT api_token FROM produtores WHERE id=%s LIMIT 1", (produtor_id,))
