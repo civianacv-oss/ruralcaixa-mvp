@@ -45,13 +45,6 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
       {cfg.label}
     </span>
-      {modalImportar && (
-        <ImportarModal
-          modulo="agricultura"
-          onClose={() => setModalImportar(false)}
-          onSuccess={(qtd) => { setModalImportar(false); }}
-        />
-      )}
   );
 }
 
@@ -319,6 +312,13 @@ export default function AgriculturaPage() {
           imoveis={imoveis}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); fetchSafras(); }}
+        />
+      )}
+      {modalImportar && (
+        <ImportarModal
+          modulo="agricultura"
+          onClose={() => setModalImportar(false)}
+          onSuccess={(qtd) => { setModalImportar(false); }}
         />
       )}
     </div>

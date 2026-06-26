@@ -1381,7 +1381,6 @@ export default function OvinoDashboard() {
         </div>
       )}
       </div>
-    </div>
       {modalImportar && (
         <ImportarModal
           modulo="ovino"
@@ -1389,6 +1388,7 @@ export default function OvinoDashboard() {
           onSuccess={(qtd) => { setModalImportar(false); }}
         />
       )}
+    </div>
   );
 }
 

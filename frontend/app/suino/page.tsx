@@ -842,7 +842,6 @@ export default function SuinoDashboard() {
           </div>
         </div>
       )}
-    </div>
       {modalImportar && (
         <ImportarModal
           modulo="suino"
@@ -850,5 +849,6 @@ export default function SuinoDashboard() {
           onSuccess={(qtd) => { setModalImportar(false); }}
         />
       )}
+    </div>
   );
 }

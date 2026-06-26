@@ -900,7 +900,6 @@ export default function BovinoPage() {
         )}
 
       </div>
-    </div>
       {modalImportar && (
         <ImportarModal
           modulo="bovino"
@@ -908,6 +907,7 @@ export default function BovinoPage() {
           onSuccess={(qtd) => { setModalImportar(false); }}
         />
       )}
+    </div>
   );
 }
 

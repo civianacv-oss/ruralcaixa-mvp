@@ -766,7 +766,6 @@ export default function AcaiPage() {
         )}
 
       </div>
-    </div>
       {modalImportar && (
         <ImportarModal
           modulo="acai"
@@ -774,5 +773,6 @@ export default function AcaiPage() {
           onSuccess={(qtd) => { setModalImportar(false); }}
         />
       )}
+    </div>
   );
 }
