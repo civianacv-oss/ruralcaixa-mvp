@@ -267,6 +267,39 @@ export default function BetaPage() {
         </div>
       </Section>
 
+
+      {/* SEÇÃO: COMO USAR */}
+      <Section>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <Tag color="#2a5a2a">Como usar</Tag>
+          <h2 style={{ fontSize: 26, fontWeight: 700, margin: "12px 0 8px" }}>Guia rápido para testadores</h2>
+          <p style={{ fontSize: 14, color: "#6a7a6a" }}>Telegram, importação de dados e criação de contratos</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {[
+            { icon: "📱", titulo: "Lançamentos via chat", itens: ["Digite 'comprei ração 350' no Telegram", "Envie foto de nota fiscal para OCR automático", "Responda SIM para confirmar o lançamento"] },
+            { icon: "📋", titulo: "Criar contrato", itens: ["Digite 'contrato' no Telegram", "Escolha o tipo: Agrícola, Pecuária, Condomínio", "Informe condôminos com Nome, CPF, % e /fim"] },
+            { icon: "📂", titulo: "Importar planilha", itens: ["Acesse Importação no menu do app", "Envie Excel, CSV ou OFX", "Confirme o mapeamento de colunas e importe"] },
+            { icon: "💬", titulo: "Comandos úteis", itens: ["/saldo — resumo financeiro do mês", "/ajuda — lista todos os comandos", "rebanho — resumo dos animais"] },
+          ].map(item => (
+            <div key={item.titulo} style={{ background: "#faf8f4", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 20 }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>{item.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: "#1a2e1a" }}>{item.titulo}</div>
+              {item.itens.map(it => (
+                <div key={it} style={{ fontSize: 12, color: "#5a6a5a", marginBottom: 4, display: "flex", gap: 6 }}>
+                  <span style={{ color: "#4a9a3a", flexShrink: 0 }}>→</span>{it}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: "center", marginTop: 28 }}>
+          <a href="/como-usar" style={{ display: "inline-block", background: "#1a2e1a", color: "#fff", textDecoration: "none", padding: "12px 28px", borderRadius: 10, fontWeight: 600, fontSize: 14 }}>
+            Ver guia completo →
+          </a>
+        </div>
+      </Section>
+
       {/* FOOTER */}
       <footer style={{
         background: "#1a2e1a", color: "#7a9a6a",
