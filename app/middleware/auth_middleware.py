@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Rotas que NÃO exigem autenticação
 ROTAS_PUBLICAS = {
+    "/feedback",
     "/",
     "/health",
     "/docs",

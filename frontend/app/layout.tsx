@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
+import BetaBanner from "@/components/BetaBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -59,7 +60,8 @@ export default function RootLayout({
             });
           }
         ` }} />
-        {children}
+        <BetaBanner />
+      {children}
         {/* Rodape — visivel para validacao Meta WhatsApp Business */}
         <footer className="bg-green-900 text-white text-center py-3 text-xs opacity-70 mt-auto">
           <p>

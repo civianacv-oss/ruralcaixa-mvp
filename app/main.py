@@ -567,6 +567,59 @@ async def auth_verificar(body: VerificarCodigoRequest):
         raise HTTPException(status_code=400, detail=result["erro"])
     return result
 
+
+# ── Feedback de testadores ────────────────────────────────────────────
+
+class FeedbackRequest(BaseModel):
+    descricao: str
+    pagina: str = ""
+    origem: str = "app"
+
+@app.post("/feedback")
+async def receber_feedback(body: FeedbackRequest, request: Request):
+    """Recebe feedback de testadores e envia para o grupo Telegram."""
+    import os, httpx as _httpx
+    token_bot = os.getenv("TELEGRAM_BOT_TOKEN")
+    group_id = os.getenv("TELEGRAM_GROUP_CHAT_ID", "-5457537054")
+
+    # Tenta identificar o produtor pelo token
+    auth = request.headers.get("Authorization", "")
+    produtor_nome = "Anônimo"
+    if auth.startswith("Bearer "):
+        try:
+            from app.db import get_db
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT nome FROM produtores WHERE api_token=%s LIMIT 1",
+                        (auth.split(" ", 1)[1].strip(),)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        produtor_nome = row["nome"]
+        except Exception:
+            pass
+
+    mensagem = (
+        f"🐛 *Novo feedback de testador*\n\n"
+        f"👤 Produtor: {produtor_nome}\n"
+        f"📍 Página: {body.pagina or 'não informada'}\n"
+        f"📝 Descrição:\n{body.descricao}"
+    )
+
+    if token_bot:
+        try:
+            async with _httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{token_bot}/sendMessage",
+                    json={"chat_id": group_id, "text": mensagem, "parse_mode": "Markdown"},
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Feedback telegram error: {e}")
+
+    return {"ok": True, "msg": "Feedback recebido. Obrigado!"}
+
 @app.get("/auth/me")
 async def auth_me(request: Request):
     """Retorna dados do produtor autenticado via Bearer token."""
