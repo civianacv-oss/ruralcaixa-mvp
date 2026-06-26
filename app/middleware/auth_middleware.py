@@ -31,6 +31,10 @@ PREFIXOS_PUBLICOS = (
     "/static/",
 )
 
+ROTAS_PUBLICAS_GET = (
+    "/contratos/",      # GET público para leitura de contrato na assinatura
+)
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -41,6 +45,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if any(path.startswith(p) for p in PREFIXOS_PUBLICOS):
+            return await call_next(request)
+
+        # GET em rotas de contrato é público (para página de assinatura)
+        if request.method == "GET" and any(path.startswith(p) for p in ROTAS_PUBLICAS_GET):
             return await call_next(request)
 
         # Verifica Bearer token
