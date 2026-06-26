@@ -618,6 +618,14 @@ async def receber_feedback(body: FeedbackRequest, request: Request):
             import logging
             logging.getLogger(__name__).error(f"Feedback telegram error: {e}")
 
+    # Envia também por WhatsApp
+    try:
+        from app.services.whatsapp_service import enviar_whatsapp
+        enviar_whatsapp("5598992002705", mensagem.replace("*", ""))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Feedback whatsapp error: {e}")
+
     return {"ok": True, "msg": "Feedback recebido. Obrigado!"}
 
 @app.get("/auth/me")
