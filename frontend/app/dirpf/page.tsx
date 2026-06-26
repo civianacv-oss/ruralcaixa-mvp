@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
@@ -86,30 +87,30 @@ export default function DirpfPage() {
   const loadApuracao = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/dirpf/apuracao/${IMOVEL_ID}/${ano}?regime=${regime}`);
+      const r = await apiFetch(`${API}/dirpf/apuracao/${IMOVEL_ID}/${ano}?regime=${regime}`);
       if (r.ok) setApuracao(await r.json());
     } catch { setApuracao(null); }
     setLoading(false);
   }, [ano, regime]);
 
   const loadDespesas = useCallback(async () => {
-    try { setDespesas(await fetch(`${API}/dirpf/despesas/${IMOVEL_ID}/${ano}`).then(r => r.json())); }
+    try { setDespesas(await apiFetch(`${API}/dirpf/despesas/${IMOVEL_ID}/${ano}`).then(r => r.json())); }
     catch { setDespesas([]); }
   }, [ano]);
 
   const loadBens = useCallback(async () => {
-    try { setBens(await fetch(`${API}/dirpf/bens/${IMOVEL_ID}?ano_base=${ano}`).then(r => r.json())); }
+    try { setBens(await apiFetch(`${API}/dirpf/bens/${IMOVEL_ID}?ano_base=${ano}`).then(r => r.json())); }
     catch { setBens([]); }
   }, [ano]);
 
   const loadPrejuizos = useCallback(async () => {
-    try { setPrejuizos(await fetch(`${API}/dirpf/prejuizo/${IMOVEL_ID}`).then(r => r.json())); }
+    try { setPrejuizos(await apiFetch(`${API}/dirpf/prejuizo/${IMOVEL_ID}`).then(r => r.json())); }
     catch { setPrejuizos([]); }
   }, []);
 
   const loadConfig = useCallback(async () => {
     try {
-      const c = await fetch(`${API}/dirpf/config/${IMOVEL_ID}/${ano}`).then(r => r.json());
+      const c = await apiFetch(`${API}/dirpf/config/${IMOVEL_ID}/${ano}`).then(r => r.json());
       if (c && c.imovel_id) {
         setFormConfig({
           dependentes: String(c.dependentes || 0),
@@ -136,7 +137,7 @@ export default function DirpfPage() {
 
   const salvarDespesa = async () => {
     if (!formDesp.descricao || !formDesp.valor) { showMsg("err", "Preencha descrição e valor"); return; }
-    const r = await fetch(`${API}/dirpf/despesas`, {
+    const r = await apiFetch(`${API}/dirpf/despesas`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imovel_id: IMOVEL_ID, ano_base: ano, ...formDesp, valor: parseFloat(formDesp.valor) }),
     });
@@ -146,13 +147,13 @@ export default function DirpfPage() {
 
   const excluirDespesa = async (id: number) => {
     if (!confirm("Excluir esta despesa?")) return;
-    await fetch(`${API}/dirpf/despesas/${id}`, { method: "DELETE" });
+    await apiFetch(`${API}/dirpf/despesas/${id}`, { method: "DELETE" });
     loadDespesas(); loadApuracao();
   };
 
   const salvarBem = async () => {
     if (!formBem.descricao || !formBem.data_aquisicao || !formBem.valor_aquisicao) { showMsg("err", "Preencha todos os campos"); return; }
-    const r = await fetch(`${API}/dirpf/bens`, {
+    const r = await apiFetch(`${API}/dirpf/bens`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imovel_id: IMOVEL_ID, ...formBem, valor_aquisicao: parseFloat(formBem.valor_aquisicao), valor_residual: parseFloat(formBem.valor_residual || "0") }),
     });
@@ -163,7 +164,7 @@ export default function DirpfPage() {
   const baixarBem = async (id: number) => {
     const motivo = prompt("Motivo da baixa (alienacao, sucateamento, sinistro):", "alienacao");
     if (!motivo) return;
-    await fetch(`${API}/dirpf/bens/${id}/baixa`, {
+    await apiFetch(`${API}/dirpf/bens/${id}/baixa`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data_baixa: new Date().toISOString().split("T")[0], valor_baixa: 0, motivo_baixa: motivo }),
     });
@@ -171,7 +172,7 @@ export default function DirpfPage() {
   };
 
   const salvarConfig = async () => {
-    const r = await fetch(`${API}/dirpf/config`, {
+    const r = await apiFetch(`${API}/dirpf/config`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         imovel_id: IMOVEL_ID, ano_base: ano, regime,

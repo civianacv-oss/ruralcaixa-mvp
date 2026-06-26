@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
@@ -137,13 +138,13 @@ export default function SuinoDashboard() {
     setLoading(true);
     try {
       const [dashRes, animaisRes, lotesRes, alertasRes, indicRes, racaoRes, sanitRes] = await Promise.allSettled([
-        fetch(`${API}/suino/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/suino/animais?imovel_id=${IMOVEL_ID}&status=${filtroStatus}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/suino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/suino/alertas?imovel_id=${IMOVEL_ID}&status=pendente`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/suino/indicadores/${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/suino/racao/previsao/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/suino/sanitario/historico?imovel_id=${IMOVEL_ID}&limit=30`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/suino/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/suino/animais?imovel_id=${IMOVEL_ID}&status=${filtroStatus}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/suino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/suino/alertas?imovel_id=${IMOVEL_ID}&status=pendente`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/suino/indicadores/${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/suino/racao/previsao/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/suino/sanitario/historico?imovel_id=${IMOVEL_ID}&limit=30`).then(r => r.ok ? r.json() : []),
       ]);
       if (dashRes.status === "fulfilled") setDashboard(dashRes.value);
       if (animaisRes.status === "fulfilled") setAnimais(animaisRes.value || []);
@@ -159,7 +160,7 @@ export default function SuinoDashboard() {
   }
 
   async function carregarAnimais() {
-    const r = await fetch(`${API}/suino/animais?imovel_id=${IMOVEL_ID}&status=${filtroStatus}`);
+    const r = await apiFetch(`${API}/suino/animais?imovel_id=${IMOVEL_ID}&status=${filtroStatus}`);
     if (r.ok) setAnimais(await r.json());
   }
 
@@ -167,7 +168,7 @@ export default function SuinoDashboard() {
     if (!novoAnimal.brinco) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/suino/animais`, {
+      const r = await apiFetch(`${API}/suino/animais`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imovel_id: IMOVEL_ID, ...novoAnimal, raca: novoAnimal.raca || null }),
@@ -199,7 +200,7 @@ export default function SuinoDashboard() {
       if (editando.categoria) payload.categoria = editando.categoria;
       if (editando.lote_id !== undefined) payload.lote_id = editando.lote_id ? Number(editando.lote_id) : null;
       if (editando.novo_peso) payload.novo_peso = Number(editando.novo_peso);
-      const r = await fetch(`${API}/suino/animais/${editando.id}`, {
+      const r = await apiFetch(`${API}/suino/animais/${editando.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -222,7 +223,7 @@ export default function SuinoDashboard() {
     if (!novoLote.nome) return;
     setSalvandoLote(true);
     try {
-      const r = await fetch(`${API}/suino/lotes`, {
+      const r = await apiFetch(`${API}/suino/lotes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imovel_id: IMOVEL_ID, ...novoLote }),
@@ -254,7 +255,7 @@ export default function SuinoDashboard() {
       };
       if (novaSaude.lote_id) payload.lote_id = Number(novaSaude.lote_id);
       if (novaSaude.animal_id) payload.animal_id = Number(novaSaude.animal_id);
-      const r = await fetch(`${API}/suino/saude`, {
+      const r = await apiFetch(`${API}/suino/saude`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -275,7 +276,7 @@ export default function SuinoDashboard() {
   }
 
   async function resolverAlerta(id: number) {
-    await fetch(`${API}/suino/alertas/${id}/status`, {
+    await apiFetch(`${API}/suino/alertas/${id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ novo_status: "resolvido" }),

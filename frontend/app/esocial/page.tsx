@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -50,11 +51,11 @@ function ESocialContent() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/produtores/${produtorId}/esocial/resumo`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/esocial/s1260`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/esocial/s1200`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/esocial/config`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/esocial/resumo`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/esocial/s1260`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/esocial/s1200`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/esocial/config`).then(r => r.json()),
     ]).then(([res, s26, s12, trab, cfg]) => {
       setResumo(res);
       setS1260(s26);
@@ -67,12 +68,12 @@ function ESocialContent() {
 
   async function adicionarTrabalhador() {
     setSalvando(true);
-    await fetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`, {
+    await apiFetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formTrab),
     });
-    const trab = await fetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`).then(r => r.json());
+    const trab = await apiFetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`).then(r => r.json());
     setTrabalhadores(trab);
     setShowForm(false);
     setSalvando(false);

@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import GuiaInicio from "@/components/GuiaInicio";
 
@@ -64,8 +65,8 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const [lancs, animais] = await Promise.all([
-        fetch(`${API}/produtores/1/lancamentos`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/produtores/1/lancamentos`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()).catch(() => []),
       ]);
       const ls = Array.isArray(lancs) ? lancs : [];
       setLancamentos(ls);
@@ -73,7 +74,7 @@ export default function Dashboard() {
       const desp = ls.filter((l:Lancamento) => l.tipo==="despesa").reduce((s:number,l:Lancamento)=>s+l.valor,0);
       setFinanceiro({receitas:rec,despesas:desp,saldo:rec-desp});
       const anim = Array.isArray(animais) ? animais : [];
-      fetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
+      apiFetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
         const bovCount = Array.isArray(bov) ? bov.length : 0;
         setAnimaisAtivos(anim.length + bovCount);
         setTotalAnimaisEspecie({ovino:anim.length,bovino:bovCount,caprino:0,suino:0});
@@ -81,7 +82,7 @@ export default function Dashboard() {
     } catch(e) { console.error(e); }
     // Buscar safras ativas
     try {
-      const resSafras = await fetch(`${API}/agricultura/imoveis/1/safras/resumo`);
+      const resSafras = await apiFetch(`${API}/agricultura/imoveis/1/safras/resumo`);
       if (resSafras.ok) {
         const dataSafras = await resSafras.json();
         const arr = Array.isArray(dataSafras) ? dataSafras : [];

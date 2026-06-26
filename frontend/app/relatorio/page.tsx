@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 
 "use client";
 import { useState, useEffect, Suspense } from "react";
@@ -35,8 +36,8 @@ function RelatorioContent() {
   useEffect(() => {
     const pid = produtorId || "1";
     Promise.all([
-      fetch(`${API}/produtores/${pid}/lancamentos?atividade=rural`).then(r => r.json()),
-      fetch(`${API}/produtores`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${pid}/lancamentos?atividade=rural`).then(r => r.json()),
+      apiFetch(`${API}/produtores`).then(r => r.json()),
     ]).then(([lancs, prods]) => {
       setLancamentos(lancs);
       setProdutor(prods.find((p: any) => p.id === parseInt(pid)) || prods[0]);

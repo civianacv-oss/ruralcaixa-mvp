@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
@@ -71,27 +72,27 @@ export default function ApuracaoPJPage() {
   const [resumo, setResumo] = useState<any>(null);
 
   const loadConfig = useCallback(async () => {
-    const r = await fetch(`${API}/apuracao-pj/config/${imovelId}/${anoBase}`);
+    const r = await apiFetch(`${API}/apuracao-pj/config/${imovelId}/${anoBase}`);
     if (r.ok) { const d = await r.json(); if (d.id) setCfg({...cfg, ...d}); }
   }, [imovelId, anoBase]);
 
   const loadLancamentos = useCallback(async () => {
-    const r = await fetch(`${API}/apuracao-pj/lancamentos/${imovelId}/${anoBase}`);
+    const r = await apiFetch(`${API}/apuracao-pj/lancamentos/${imovelId}/${anoBase}`);
     if (r.ok) setLancamentos(await r.json());
   }, [imovelId, anoBase]);
 
   const loadApuracoes = useCallback(async () => {
-    const r = await fetch(`${API}/apuracao-pj/apuracoes/${imovelId}/${anoBase}`);
+    const r = await apiFetch(`${API}/apuracao-pj/apuracoes/${imovelId}/${anoBase}`);
     if (r.ok) setApuracoes(await r.json());
   }, [imovelId, anoBase]);
 
   const loadCreditos = useCallback(async () => {
-    const r = await fetch(`${API}/apuracao-pj/creditos-pis-cofins/${imovelId}/${anoBase}`);
+    const r = await apiFetch(`${API}/apuracao-pj/creditos-pis-cofins/${imovelId}/${anoBase}`);
     if (r.ok) setCreditos(await r.json());
   }, [imovelId, anoBase]);
 
   const loadResumo = useCallback(async () => {
-    const r = await fetch(`${API}/apuracao-pj/resumo-anual/${imovelId}/${anoBase}`);
+    const r = await apiFetch(`${API}/apuracao-pj/resumo-anual/${imovelId}/${anoBase}`);
     if (r.ok) setResumo(await r.json());
   }, [imovelId, anoBase]);
 
@@ -100,7 +101,7 @@ export default function ApuracaoPJPage() {
   }, [anoBase]);
 
   const salvarConfig = async () => {
-    const r = await fetch(`${API}/apuracao-pj/config`, {
+    const r = await apiFetch(`${API}/apuracao-pj/config`, {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({...cfg, imovel_id: imovelId, ano_base: anoBase}),
     });
@@ -108,7 +109,7 @@ export default function ApuracaoPJPage() {
   };
 
   const salvarLancamento = async () => {
-    const r = await fetch(`${API}/apuracao-pj/lancamento`, {
+    const r = await apiFetch(`${API}/apuracao-pj/lancamento`, {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({...lanc, imovel_id: imovelId}),
     });
@@ -117,14 +118,14 @@ export default function ApuracaoPJPage() {
 
   const apurarTrimestre = async (trim: number) => {
     setApurandoTrim(trim);
-    const r = await fetch(`${API}/apuracao-pj/apurar/${imovelId}/${anoBase}/${trim}`, {method:"POST"});
+    const r = await apiFetch(`${API}/apuracao-pj/apurar/${imovelId}/${anoBase}/${trim}`, {method:"POST"});
     if (r.ok) { loadApuracoes(); loadResumo(); }
     setApurandoTrim(null);
   };
 
   const marcarPago = async (id: number) => {
     const hoje = new Date().toISOString().split("T")[0];
-    await fetch(`${API}/apuracao-pj/apuracoes/${id}/pagar`, {
+    await apiFetch(`${API}/apuracao-pj/apuracoes/${id}/pagar`, {
       method: "PATCH", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({data_pagamento: hoje}),
     });
@@ -132,7 +133,7 @@ export default function ApuracaoPJPage() {
   };
 
   const salvarCredito = async () => {
-    const r = await fetch(`${API}/apuracao-pj/credito-pis-cofins`, {
+    const r = await apiFetch(`${API}/apuracao-pj/credito-pis-cofins`, {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({...cred, imovel_id: imovelId}),
     });

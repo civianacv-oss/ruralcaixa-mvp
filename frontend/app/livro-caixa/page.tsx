@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
@@ -51,7 +52,7 @@ export default function LivroCaixaPage() {
     try {
       const params = new URLSearchParams({ ano_base: anoBase.toString() });
       if (filtroTipo) params.append("tipo", filtroTipo);
-      const r = await fetch(`${API}/livro-caixa/${IMOVEL_ID}?${params}`);
+      const r = await apiFetch(`${API}/livro-caixa/${IMOVEL_ID}?${params}`);
       setLancamentos(await r.json());
     } catch { setLancamentos([]); }
     setLoading(false);
@@ -59,7 +60,7 @@ export default function LivroCaixaPage() {
 
   const loadApuracao = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/livro-caixa/${IMOVEL_ID}/apuracao/${anoBase}`);
+      const r = await apiFetch(`${API}/livro-caixa/${IMOVEL_ID}/apuracao/${anoBase}`);
       setApuracao(await r.json());
     } catch { setApuracao(null); }
   }, [anoBase]);
@@ -77,7 +78,7 @@ export default function LivroCaixaPage() {
       deducao_irpf: true,
       natureza_fiscal: form.tipo === "receita" ? "receita_bruta" : "despesa_custeio"
     };
-    const r = await fetch(`${API}/livro-caixa/`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+    const r = await apiFetch(`${API}/livro-caixa/`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) { showMsg("err", d.detail||"Erro ao salvar"); return; }
     showMsg("ok","Lançamento registrado com sucesso");
@@ -88,7 +89,7 @@ export default function LivroCaixaPage() {
 
   const excluir = async (id:number) => {
     if (!confirm("Excluir este lançamento?")) return;
-    await fetch(`${API}/livro-caixa/${id}`, { method:"DELETE" });
+    await apiFetch(`${API}/livro-caixa/${id}`, { method:"DELETE" });
     loadLancamentos();
   };
 

@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -143,7 +144,7 @@ export default function AcertoContratoPage() {
           pct_desconto_frete: pctFrete || "0",
           outros_descontos: outrosDesc || "0",
         });
-        const r = await fetch(`${API}/acertos-contrato/preview-calculo?${params}`);
+        const r = await apiFetch(`${API}/acertos-contrato/preview-calculo?${params}`);
         const data = await r.json();
         if (data.ok) {
           setCalculo(data.calculo);
@@ -200,7 +201,7 @@ export default function AcertoContratoPage() {
         data_pagamento: dataPgto || undefined,
         observacoes: obs || undefined,
       };
-      const r = await fetch(`${API}/acertos-contrato/`, {
+      const r = await apiFetch(`${API}/acertos-contrato/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -220,7 +221,7 @@ export default function AcertoContratoPage() {
   }
 
   async function atualizarStatus(id: number, status: string) {
-    await fetch(`${API}/acertos-contrato/${id}`, {
+    await apiFetch(`${API}/acertos-contrato/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
@@ -230,7 +231,7 @@ export default function AcertoContratoPage() {
 
   async function deletar(id: number) {
     if (!confirm("Excluir este acerto?")) return;
-    const r = await fetch(`${API}/acertos-contrato/${id}`, { method: "DELETE" });
+    const r = await apiFetch(`${API}/acertos-contrato/${id}`, { method: "DELETE" });
     if (r.ok) await carregar();
     else {
       const d = await r.json();

@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
@@ -93,7 +94,7 @@ export default function DCTFWebPage() {
   const loadPainel = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/dctfweb/painel/${IMOVEL_ID}?competencia_inicio=${filtroAno}-01&competencia_fim=${filtroAno}-12`);
+      const r = await apiFetch(`${API}/dctfweb/painel/${IMOVEL_ID}?competencia_inicio=${filtroAno}-01&competencia_fim=${filtroAno}-12`);
       const d = await r.json();
       setPainel(d.painel || []);
       setKpis(d.kpis || null);
@@ -103,17 +104,17 @@ export default function DCTFWebPage() {
   }, [filtroAno]);
 
   const loadDeclaracoes = useCallback(async () => {
-    const r = await fetch(`${API}/dctfweb/declaracoes/${IMOVEL_ID}?ano=${filtroAno}`);
+    const r = await apiFetch(`${API}/dctfweb/declaracoes/${IMOVEL_ID}?ano=${filtroAno}`);
     setDeclaracoes(await r.json());
   }, [filtroAno]);
 
   const loadCreditos = useCallback(async () => {
-    const r = await fetch(`${API}/dctfweb/creditos/${IMOVEL_ID}`);
+    const r = await apiFetch(`${API}/dctfweb/creditos/${IMOVEL_ID}`);
     setCreditos(await r.json());
   }, []);
 
   const loadPerdcomp = useCallback(async () => {
-    const r = await fetch(`${API}/dctfweb/perdcomp/${IMOVEL_ID}`);
+    const r = await apiFetch(`${API}/dctfweb/perdcomp/${IMOVEL_ID}`);
     setPerdcomps(await r.json());
   }, []);
 
@@ -148,7 +149,7 @@ export default function DCTFWebPage() {
       data_transmissao: form.data_transmissao || null,
       observacoes: form.observacoes || null,
     };
-    const r = await fetch(`${API}/dctfweb/declaracoes`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+    const r = await apiFetch(`${API}/dctfweb/declaracoes`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) { showMsg("err", d.detail || "Erro ao salvar"); return; }
     showMsg("ok", `Declaração criada (id ${d.id}). Saldo a pagar: ${fmt(d.saldo_a_pagar)}`);
@@ -162,7 +163,7 @@ export default function DCTFWebPage() {
       showMsg("err", "Preencha competência, valor e descrição"); return;
     }
     const body = { imovel_id: IMOVEL_ID, ...formCred, valor_original: parseFloat(formCred.valor_original) };
-    const r = await fetch(`${API}/dctfweb/creditos`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+    const r = await apiFetch(`${API}/dctfweb/creditos`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
     if (!r.ok) { showMsg("err", "Erro ao salvar crédito"); return; }
     showMsg("ok", "Crédito registrado com sucesso");
     setFormCred({ tipo:"pagamento_indevido", competencia_origem:"", valor_original:"", descricao:"", numero_perdcomp:"" });
@@ -172,7 +173,7 @@ export default function DCTFWebPage() {
   const marcarTransmitida = async (id: number) => {
     const num = prompt("Número da declaração DCTFWeb (e-CAC):");
     if (!num) return;
-    const r = await fetch(`${API}/dctfweb/declaracoes/${id}`, {
+    const r = await apiFetch(`${API}/dctfweb/declaracoes/${id}`, {
       method:"PATCH", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ status:"transmitida", numero_declaracao: num, data_transmissao: new Date().toISOString().split("T")[0] })
     });

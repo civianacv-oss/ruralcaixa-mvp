@@ -1,4 +1,5 @@
 "use client"
+import { apiFetch } from "@/lib/api";
 import { useEffect, useState } from "react"
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app"
@@ -54,7 +55,7 @@ export default function ContratosPage() {
   })
 
   const carregar = () => {
-    fetch(`${API}/contratos/`)
+    apiFetch(`${API}/contratos/`)
       .then(r => r.json())
       .then(data => { setContratos(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => { setLoading(false) })
@@ -62,7 +63,7 @@ export default function ContratosPage() {
 
   useEffect(() => {
     carregar()
-    fetch(`${API}/produtores`).then(r => r.json())
+    apiFetch(`${API}/produtores`).then(r => r.json())
       .then(data => setSocios(Array.isArray(data) ? data.map((p: any) => ({ id: p.id, nome: p.nome })) : []))
       .catch(() => {})
   }, [])
@@ -87,7 +88,7 @@ export default function ContratosPage() {
       if (form.outorgado_tipo === "socio") body.outorgado_socio_id = parseInt(form.outorgado_socio_id)
       else body.outorgado_externo = { nome: form.outorgado_nome, cpf_cnpj: form.outorgado_cpf }
 
-      const r = await fetch(`${API}/contratos/`, {
+      const r = await apiFetch(`${API}/contratos/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })

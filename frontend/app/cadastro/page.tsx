@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -25,7 +26,7 @@ function CadastroContent() {
   useEffect(() => {
     if (!modoEdicao || !produtorIdParam) return;
     const pid = parseInt(produtorIdParam);
-    fetch(`${API}/produtores`)
+    apiFetch(`${API}/produtores`)
       .then(r => r.json())
       .then(prods => {
         const p = prods.find((x: any) => x.id === pid);
@@ -33,7 +34,7 @@ function CadastroContent() {
           const tel = p.telefone?.replace(/^55/, "").replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3") || "";
           setProdutor({ nome: p.nome, cpf: p.cpf, telefone: tel, nirf: "" });
         }
-        return fetch(`${API}/produtor/imoveis?cpf=${p?.cpf?.replace(/\D/g,"") || ""}`);
+        return apiFetch(`${API}/produtor/imoveis?cpf=${p?.cpf?.replace(/\D/g,"") || ""}`);
       })
       .then(r => r.json())
       .then(imoveis => {
@@ -57,7 +58,7 @@ function CadastroContent() {
     try {
       if (modoEdicao && produtorId) {
         // Atualizar produtor existente
-        const res = await fetch(`${API}/produtores/${produtorId}`, {
+        const res = await apiFetch(`${API}/produtores/${produtorId}`, {
           method: "PUT",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
@@ -228,9 +229,9 @@ function CadastroContent() {
                 if (!produtor.nome || !produtor.cpf || !produtor.telefone) return;
                 const cpf = produtor.cpf.replace(/\D/g, "");
                 try {
-                  const res = await fetch(`${API}/produtor/imoveis?cpf=${cpf}`);
+                  const res = await apiFetch(`${API}/produtor/imoveis?cpf=${cpf}`);
                   const data = await res.json();
-                  const todos = await fetch(`${API}/imoveis/buscar?q=`).then(r => r.json()).catch(() => []);
+                  const todos = await apiFetch(`${API}/imoveis/buscar?q=`).then(r => r.json()).catch(() => []);
                   const combinados = [...data, ...todos.filter((t: any) => !data.find((d: any) => d.nome === t.nome))];
                   setImoveisExistentes(combinados);
                 } catch (e) {

@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import BannerOrientacao from "@/components/BannerOrientacao";
@@ -94,7 +95,7 @@ export default function RebanhoPage() {
   useEffect(() => {
     ESPECIES.filter(e => e.disponivel && e.fetchUrl).forEach(async (e) => {
       try {
-        const r = await fetch(`${API}${e.fetchUrl}`);
+        const r = await apiFetch(`${API}${e.fetchUrl}`);
         const data = await r.json();
         setCounts(prev => ({
           ...prev,

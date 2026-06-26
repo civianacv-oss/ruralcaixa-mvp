@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -78,10 +79,10 @@ function NFeContent() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/produtores/${produtorId}/nfe/config`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/nfe/produtos`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/nfe/destinatarios`).then(r => r.json()),
-      fetch(`${API}/produtores/${produtorId}/nfe/notas`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/nfe/config`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/nfe/produtos`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/nfe/destinatarios`).then(r => r.json()),
+      apiFetch(`${API}/produtores/${produtorId}/nfe/notas`).then(r => r.json()),
     ]).then(([cfg, prods, dests, nts]) => {
       setConfig(cfg);
       setProdutos(prods);
@@ -103,7 +104,7 @@ function NFeContent() {
 
   async function salvarConfig() {
     setSalvando(true);
-    await fetch(`${API}/produtores/${produtorId}/nfe/config`, {
+    await apiFetch(`${API}/produtores/${produtorId}/nfe/config`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ inscricao_estadual: ie, caepf, municipio, uf, endereco, numero, bairro, cep }),
@@ -114,13 +115,13 @@ function NFeContent() {
 
   async function adicionarDestinatario() {
     setSalvando(true);
-    const res = await fetch(`${API}/produtores/${produtorId}/nfe/destinatarios`, {
+    const res = await apiFetch(`${API}/produtores/${produtorId}/nfe/destinatarios`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(novoDestForm),
     });
     const data = await res.json();
-    const dests = await fetch(`${API}/produtores/${produtorId}/nfe/destinatarios`).then(r => r.json());
+    const dests = await apiFetch(`${API}/produtores/${produtorId}/nfe/destinatarios`).then(r => r.json());
     setDestinatarios(dests);
     setDestSelecionado(data.id);
     setShowNovoDestinatario(false);
@@ -160,7 +161,7 @@ function NFeContent() {
     if (!destSelecionado || itens.length === 0) return;
     setSalvando(true);
     try {
-      const res = await fetch(`${API}/produtores/${produtorId}/nfe/notas`, {
+      const res = await apiFetch(`${API}/produtores/${produtorId}/nfe/notas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,7 +187,7 @@ function NFeContent() {
       setNotaEmitida(data);
       setStep(4);
       // Atualiza lista de notas
-      fetch(`${API}/produtores/${produtorId}/nfe/notas`).then(r => r.json()).then(setNotas);
+      apiFetch(`${API}/produtores/${produtorId}/nfe/notas`).then(r => r.json()).then(setNotas);
     } catch (e) {
       alert("Erro ao emitir nota");
     } finally {
@@ -197,7 +198,7 @@ function NFeContent() {
   async function baixarPdf(notaId: number, numero: number) {
     setBaixandoPdf(true);
     try {
-      const res = await fetch(`${API}/nfe/notas/${notaId}/pdf`);
+      const res = await apiFetch(`${API}/nfe/notas/${notaId}/pdf`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

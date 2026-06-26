@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-api.up.railway.app";
@@ -111,7 +112,7 @@ export default function SimuladorRegimePage() {
   const carregarLancamentos = useCallback(async () => {
     setLoadingLanc(true);
     try {
-      const r = await fetch(`${API}/simulador-regime/lancamentos/${IMOVEL_ID}`);
+      const r = await apiFetch(`${API}/simulador-regime/lancamentos/${IMOVEL_ID}`);
       if (r.ok) setLancamentos(await r.json());
     } finally {
       setLoadingLanc(false);
@@ -124,7 +125,7 @@ export default function SimuladorRegimePage() {
   async function simular() {
     setSimLoading(true);
     try {
-      const r = await fetch(`${API}/simulador-regime/simulacao`, {
+      const r = await apiFetch(`${API}/simulador-regime/simulacao`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,7 +145,7 @@ export default function SimuladorRegimePage() {
   async function registrarLancamento() {
     setLancLoading(true);
     try {
-      const r = await fetch(`${API}/simulador-regime/lancamento`, {
+      const r = await apiFetch(`${API}/simulador-regime/lancamento`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -170,7 +171,7 @@ export default function SimuladorRegimePage() {
 
   async function deletarLancamento(competencia: string) {
     const comp = competencia.substring(0, 7);
-    await fetch(`${API}/simulador-regime/lancamento/${IMOVEL_ID}/${comp}`, { method: "DELETE" });
+    await apiFetch(`${API}/simulador-regime/lancamento/${IMOVEL_ID}/${comp}`, { method: "DELETE" });
     await carregarLancamentos();
   }
 

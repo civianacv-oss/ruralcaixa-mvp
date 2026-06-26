@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 // app/agricultura/page.tsx  (ou pages/agricultura/index.tsx)
 // Menu "Agricultura" no sidebar -- lista todas as safras por imovel
 
@@ -73,7 +74,7 @@ export default function AgriculturaPage() {
   }, [filtroImovel, filtroAno, filtroCultura, filtroStatus]);
 
   async function fetchImoveis() {
-    const res = await fetch(`${API}/imoveis/buscar?q=`);
+    const res = await apiFetch(`${API}/imoveis/buscar?q=`);
     if (res.ok) { const d = await res.json(); setImoveis(Array.isArray(d) ? d : (d.imoveis || [])); }
   }
 
@@ -85,7 +86,7 @@ export default function AgriculturaPage() {
         if (filtroAno)    params.append('ano_safra', filtroAno);
         if (filtroCultura) params.append('cultura', filtroCultura);
         if (filtroStatus) params.append('status', filtroStatus);
-        const res = await fetch(`${API}/agricultura/imoveis/${filtroImovel}/safras?${params}`);
+        const res = await apiFetch(`${API}/agricultura/imoveis/${filtroImovel}/safras?${params}`);
         if (res.ok) setSafras(await res.json());
       } else {
         // Busca safras de todos os imoveis
@@ -96,7 +97,7 @@ export default function AgriculturaPage() {
           if (filtroAno)    params.append('ano_safra', filtroAno);
           if (filtroCultura) params.append('cultura', filtroCultura);
           if (filtroStatus) params.append('status', filtroStatus);
-          const res = await fetch(`${API}/agricultura/imoveis/${im.id}/safras?${params}`);
+          const res = await apiFetch(`${API}/agricultura/imoveis/${im.id}/safras?${params}`);
           if (res.ok) {
             const data = await res.json();
             todas.push(...data);
@@ -344,7 +345,7 @@ function NovaSafraModal({
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/agricultura/culturas`)
+    apiFetch(`${API}/agricultura/culturas`)
       .then(r => r.json())
       .then(data => setCulturas(data.map((c: { nome: string }) => c.nome)));
   }, []);
@@ -362,7 +363,7 @@ function NovaSafraModal({
     setSaving(true);
     setErro('');
     try {
-      const res = await fetch(`${API}/agricultura/imoveis/${form.imovel_id}/safras`, {
+      const res = await apiFetch(`${API}/agricultura/imoveis/${form.imovel_id}/safras`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

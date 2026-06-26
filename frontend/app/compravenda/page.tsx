@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
@@ -143,14 +144,14 @@ export default function CompraVendaPage() {
     setLoading(true);
     try {
       const [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes] = await Promise.allSettled([
-        fetch(`${API}/compravenda/produtos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/compravenda/compras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/compravenda/vendas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/compravenda/fluxo-caixa/${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/compravenda/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/compravenda/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/compravenda/despesas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/compravenda/produtos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/compravenda/compras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/compravenda/vendas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/compravenda/fluxo-caixa/${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/compravenda/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/compravenda/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/compravenda/despesas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`).then(r => r.ok ? r.json() : null),
       ]);
       if (prodRes.status === "fulfilled") setProdutos(prodRes.value || []);
       if (compRes.status === "fulfilled") setCompras(compRes.value || []);
@@ -162,7 +163,7 @@ export default function CompraVendaPage() {
       const alertRes = [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes][7] as PromiseSettledResult<AlertasResponse | null> | undefined;
       // fetch alertas separately since it's the 8th item
       try {
-        const ar = await fetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`);
+        const ar = await apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`);
         if (ar.ok) setAlertasFiscais(await ar.json());
       } catch {}
     } catch (e) { console.error(e); }
@@ -178,7 +179,7 @@ export default function CompraVendaPage() {
     if (!novoProduto.nome) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/compravenda/produtos`, {
+      const r = await apiFetch(`${API}/compravenda/produtos`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID, nome: novoProduto.nome, especie: novoProduto.especie,
@@ -199,7 +200,7 @@ export default function CompraVendaPage() {
     if (!novaCompra.produto_id || !novaCompra.quantidade || !novaCompra.valor_unitario) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/compravenda/compras`, {
+      const r = await apiFetch(`${API}/compravenda/compras`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID, produto_id: Number(novaCompra.produto_id),
@@ -222,7 +223,7 @@ export default function CompraVendaPage() {
     if (!novaVenda.produto_id || !novaVenda.quantidade || !novaVenda.valor_unitario) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/compravenda/vendas`, {
+      const r = await apiFetch(`${API}/compravenda/vendas`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID, produto_id: Number(novaVenda.produto_id),
@@ -245,7 +246,7 @@ export default function CompraVendaPage() {
     if (!novaDespesa.descricao || !novaDespesa.valor) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/compravenda/despesas`, {
+      const r = await apiFetch(`${API}/compravenda/despesas`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID, descricao: novaDespesa.descricao,

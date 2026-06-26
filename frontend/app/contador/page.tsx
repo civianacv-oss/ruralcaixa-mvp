@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -178,7 +179,7 @@ export default function Contador() {
   const produtor = produtores.find(p => p.id === selecionado);
 
   useEffect(() => {
-    fetch(`${API}/produtores`)
+    apiFetch(`${API}/produtores`)
       .then(r => r.json())
       .then(data => { setProdutores(data); setLoading(false); })
       .catch(() => setLoading(false));
@@ -188,14 +189,14 @@ export default function Contador() {
     if (!selecionado) return;
     setLoadingLanc(true);
     Promise.all([
-      fetch(`${API}/produtores/${selecionado}/lancamentos`).then(r => r.json()),
-      fetch(`${API}/produtor/imoveis?cpf=${produtores.find(p => p.id === selecionado)?.cpf?.replace(/\D/g,"") || ""}`).then(r => r.json()).catch(() => []),
+      apiFetch(`${API}/produtores/${selecionado}/lancamentos`).then(r => r.json()),
+      apiFetch(`${API}/produtor/imoveis?cpf=${produtores.find(p => p.id === selecionado)?.cpf?.replace(/\D/g,"") || ""}`).then(r => r.json()).catch(() => []),
     ]).then(async ([lancs, imoveis]) => {
       setLancamentos(lancs);
 
       const todosImoveis = Array.isArray(imoveis) ? imoveis : [];
       const validacaoPromises = todosImoveis.map((im: { id: number }) =>
-        fetch(`${API}/imoveis/${im.id}/terceiros/validacao`).then(r => r.json()).catch(() => null)
+        apiFetch(`${API}/imoveis/${im.id}/terceiros/validacao`).then(r => r.json()).catch(() => null)
       );
       const validacoes = (await Promise.all(validacaoPromises)).filter(Boolean);
       const todosTerceiros = validacoes.flatMap((v: { terceiros?: unknown[] }) => v.terceiros || []);
@@ -256,8 +257,8 @@ export default function Contador() {
     if (!selecionado) return;
     if (!confirm("Confirma o fechamento do mes?")) return;
     setFechando(true);
-    await fetch(`${API}/produtores/${selecionado}/fechar-mes`, { method: "POST" });
-    const updated = await fetch(`${API}/produtores`).then(r => r.json());
+    await apiFetch(`${API}/produtores/${selecionado}/fechar-mes`, { method: "POST" });
+    const updated = await apiFetch(`${API}/produtores`).then(r => r.json());
     setProdutores(updated);
     setFechando(false);
     alert("Mes fechado com sucesso!");
@@ -487,9 +488,9 @@ export default function Contador() {
                   <button
                     onClick={async () => {
                       if (!confirm(`Excluir ${produtor.nome}? Esta acao nao pode ser desfeita.`)) return;
-                      await fetch(`${API}/produtores/${produtor.id}`, { method: "DELETE" });
+                      await apiFetch(`${API}/produtores/${produtor.id}`, { method: "DELETE" });
                       setSelecionado(null);
-                      const updated = await fetch(`${API}/produtores`).then(r => r.json());
+                      const updated = await apiFetch(`${API}/produtores`).then(r => r.json());
                       setProdutores(updated);
                     }}
                     className="w-full flex items-center gap-3 py-3 text-sm hover:bg-red-50 text-red-600">

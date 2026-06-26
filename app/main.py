@@ -525,6 +525,29 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
             "inv_total": inv_total,
         }
 
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Retorna dados do produtor autenticado via Bearer token."""
+    from app.db import get_db
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Token não fornecido.")
+    token = auth.split(" ", 1)[1].strip()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, nome, cpf, telefone, caepf, municipio, uf "
+                "FROM produtores WHERE api_token = %s LIMIT 1",
+                (token,)
+            )
+            row = cur.fetchone()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Token inválido.")
+    return dict(row)
+
 @app.get("/")
 def root():
     return {"status": "Rural Caixa PF online", "version": "2.0"}

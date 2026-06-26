@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
@@ -127,12 +128,12 @@ export default function AcaiPage() {
     setLoading(true);
     try {
       const [talRes, safRes, insRes, dashRes, prodRes, dreRes] = await Promise.allSettled([
-        fetch(`${API}/acai/talhoes?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/acai/safras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/acai/insumos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
-        fetch(`${API}/acai/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/acai/produtividade/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/acai/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/acai/talhoes?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/acai/safras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/acai/insumos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+        apiFetch(`${API}/acai/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/acai/produtividade/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+        apiFetch(`${API}/acai/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
       ]);
       if (talRes.status === "fulfilled") setTalhoes(talRes.value || []);
       if (safRes.status === "fulfilled") setSafras(safRes.value || []);
@@ -153,7 +154,7 @@ export default function AcaiPage() {
     if (!novoTalhao.nome || !novoTalhao.area_ha) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/acai/talhoes`, {
+      const r = await apiFetch(`${API}/acai/talhoes`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID,
@@ -181,7 +182,7 @@ export default function AcaiPage() {
     if (!novaSafra.talhao_id || !novaSafra.quantidade_kg || !novaSafra.preco_kg) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/acai/safras`, {
+      const r = await apiFetch(`${API}/acai/safras`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID,
@@ -207,7 +208,7 @@ export default function AcaiPage() {
     if (!novoInsumo.descricao || !novoInsumo.valor_total) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/acai/insumos`, {
+      const r = await apiFetch(`${API}/acai/insumos`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imovel_id: IMOVEL_ID,

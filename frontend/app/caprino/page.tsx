@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -199,20 +200,20 @@ export default function OvinoDashboard() {
     setLoading(true);
     try {
       const [dash, anim, lots, alert, ins, indic, rac, mort, pastAlertas, sazonal, indicMort, car, taref, resumoT] = await Promise.all([
-        fetch(`${API}/caprino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
-        fetch(`${API}/caprino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/caprino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
-        fetch(`${API}/caprino/sanitario/insumos`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/caprino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/caprino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/caprino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/caprino/pastagem/alertas/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/caprino/sazonalidade/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/caprino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/caprino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/caprino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/caprino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/caprino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
+        apiFetch(`${API}/caprino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/caprino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
+        apiFetch(`${API}/caprino/sanitario/insumos`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/caprino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/caprino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/caprino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/caprino/pastagem/alertas/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/caprino/sazonalidade/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/caprino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/caprino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/caprino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/caprino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
       ]);
       setDashboard(dash);
       setAnimais(anim);
@@ -238,7 +239,7 @@ export default function OvinoDashboard() {
     if (!editando) return;
     setSalvandoEdit(true);
     try {
-      const r = await fetch(`${API}/caprino/animais/${editando.id}`, {
+      const r = await apiFetch(`${API}/caprino/animais/${editando.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -253,7 +254,7 @@ export default function OvinoDashboard() {
       if (r.ok) {
         // Registra pesagem se informada
         if (editando.novo_peso && Number(editando.novo_peso) > 0) {
-          await fetch(`${API}/caprino/pesagens`, {
+          await apiFetch(`${API}/caprino/pesagens`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -278,7 +279,7 @@ export default function OvinoDashboard() {
     setReclassificando(true);
     setResultadoReclass(null);
     try {
-      const r = await fetch(`${API}/caprino/animais/reclassificar?imovel_id=${IMOVEL_ID}`, {
+      const r = await apiFetch(`${API}/caprino/animais/reclassificar?imovel_id=${IMOVEL_ID}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dry_run: dryRun }),
@@ -296,7 +297,7 @@ export default function OvinoDashboard() {
     if (!novoAnimal.brinco) return;
     setSalvando(true);
     try {
-      const r = await fetch(`${API}/caprino/animais`, {
+      const r = await apiFetch(`${API}/caprino/animais`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imovel_id: IMOVEL_ID, brinco: novoAnimal.brinco, sexo: novoAnimal.sexo, raca: novoAnimal.raca || null }),
@@ -531,7 +532,7 @@ export default function OvinoDashboard() {
               <button onClick={async () => {
                 if (!novoPiquete.nome || !novoPiquete.area_ha) return;
                 setSalvandoPiquete(true);
-                const r = await fetch(`${API}/caprino/pastagem/piquetes`, {
+                const r = await apiFetch(`${API}/caprino/pastagem/piquetes`, {
                   method:"POST", headers:{"Content-Type":"application/json"},
                   body: JSON.stringify({ imovel_id: IMOVEL_ID, nome: novoPiquete.nome,
                     area_ha: Number(novoPiquete.area_ha), forrageira: novoPiquete.forrageira || null,
@@ -664,10 +665,10 @@ export default function OvinoDashboard() {
               <button onClick={async () => {
                 if (!novaMorte.brinco) return;
                 setSalvandoMorte(true);
-                const ar = await fetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+                const ar = await apiFetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
                 const found = ar.find((a:any) => a.brinco.toLowerCase() === novaMorte.brinco.toLowerCase());
                 if (!found) { setMsgMorte("Animal não encontrado."); setSalvandoMorte(false); return; }
-                const r = await fetch(`${API}/caprino/mortalidade`, {
+                const r = await apiFetch(`${API}/caprino/mortalidade`, {
                   method:"POST", headers:{"Content-Type":"application/json"},
                   body: JSON.stringify({
                     imovel_id: IMOVEL_ID, animal_id: found.id,
@@ -778,7 +779,7 @@ export default function OvinoDashboard() {
                 const body: any = {};
                 if (precoRacao) body.preco_racao_kg = Number(precoRacao);
                 if (estoqueRacao) body.estoque_atual_kg = Number(estoqueRacao);
-                await fetch(`${API}/caprino/racao/config/${IMOVEL_ID}`, {
+                await apiFetch(`${API}/caprino/racao/config/${IMOVEL_ID}`, {
                   method:"PATCH", headers:{"Content-Type":"application/json"},
                   body: JSON.stringify(body)
                 });
@@ -1090,7 +1091,7 @@ export default function OvinoDashboard() {
                               {vencida && <div style={{ fontSize: 11, color: "#dc2626" }}>atrasada</div>}
                             </div>
                             <button onClick={async () => {
-                              await fetch(`${API}/caprino/tarefas/${t.id}/concluir?executado_por=usuario`, {method:"POST"});
+                              await apiFetch(`${API}/caprino/tarefas/${t.id}/concluir?executado_por=usuario`, {method:"POST"});
                               carregarTudo();
                             }} style={{ padding:"4px 10px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontSize:13, cursor:"pointer", fontWeight:700 }}>
                               ✓
@@ -1157,11 +1158,11 @@ export default function OvinoDashboard() {
                 // Busca animal por brinco se informado
                 let animal_id = null;
                 if (novaAplic.animal_id) {
-                  const ar = await fetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+                  const ar = await apiFetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
                   const found = ar.find((a:any) => a.brinco.toLowerCase() === novaAplic.animal_id.toLowerCase());
                   if (found) animal_id = found.id;
                 }
-                const r = await fetch(`${API}/caprino/sanitario/aplicar`, {
+                const r = await apiFetch(`${API}/caprino/sanitario/aplicar`, {
                   method:"POST", headers:{"Content-Type":"application/json"},
                   body: JSON.stringify({
                     imovel_id: IMOVEL_ID,
@@ -1263,7 +1264,7 @@ export default function OvinoDashboard() {
                             </div>
                           </div>
                           <button onClick={async () => {
-                            await fetch(`${API}/caprino/alertas/${a.id}/status?novo_status=concluido`, {method:"PATCH"});
+                            await apiFetch(`${API}/caprino/alertas/${a.id}/status?novo_status=concluido`, {method:"PATCH"});
                             carregarTudo();
                           }} style={{ padding:"4px 10px", background:"#16a34a", color:"#fff", border:"none", borderRadius:6, fontSize:12, cursor:"pointer", fontWeight:600 }}>
                             ✓

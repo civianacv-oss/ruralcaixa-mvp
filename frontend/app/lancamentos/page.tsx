@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
@@ -239,7 +240,7 @@ export default function LancamentosPage() {
   function carregarLancamentos(mes?: string) {
     setLoading(true);
     const q = mes ? `?mes=${mes}` : "";
-    fetch(`${API}/produtores/${PRODUTOR_ID}/lancamentos${q}`)
+    apiFetch(`${API}/produtores/${PRODUTOR_ID}/lancamentos${q}`)
       .then(r => r.json())
       .then(data => { setLancamentos(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -256,7 +257,7 @@ export default function LancamentosPage() {
   async function handleCriar() {
     setSavingCriar(true);
     try {
-      const res = await fetch(`${API}/lancamentos`, {
+      const res = await apiFetch(`${API}/lancamentos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -297,7 +298,7 @@ export default function LancamentosPage() {
     if (!editando) return;
     setSavingEditar(true);
     try {
-      const res = await fetch(`${API}/lancamentos/${editando.id}`, {
+      const res = await apiFetch(`${API}/lancamentos/${editando.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -324,7 +325,7 @@ export default function LancamentosPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${API}/lancamentos/${lancamentoId}/documento`, {
+      const res = await apiFetch(`${API}/lancamentos/${lancamentoId}/documento`, {
         method: "POST",
         body: fd,
       });

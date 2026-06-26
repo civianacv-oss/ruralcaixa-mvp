@@ -1,4 +1,5 @@
 "use client"
+import { apiFetch } from "@/lib/api";
 
 import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
@@ -86,7 +87,7 @@ export default function AssinarPage() {
   const [consentiu, setConsentiu] = useState(false)
 
   useEffect(() => {
-    fetch(`${API}/contratos/${contratoId}`)
+    apiFetch(`${API}/contratos/${contratoId}`)
       .then(r => r.json())
       .then(data => {
         if (data.detail) { setErro(data.detail); setStep("erro"); return }
@@ -101,7 +102,7 @@ export default function AssinarPage() {
     if (!consentiu) { setErro("Confirme que leu e concordou com os termos."); return }
     setErro("")
     try {
-      const r = await fetch(`${API}/contratos/${contratoId}/enviar`, {
+      const r = await apiFetch(`${API}/contratos/${contratoId}/enviar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -124,7 +125,7 @@ export default function AssinarPage() {
       geo = { lat: pos.coords.latitude, lng: pos.coords.longitude }
     } catch { /* opcional */ }
     try {
-      const r = await fetch(`${API}/contratos/${contratoId}/assinar`, {
+      const r = await apiFetch(`${API}/contratos/${contratoId}/assinar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ papel, otp, geolocalizacao: geo }),

@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 // v2 - bovino leite e corte - fix nome
 "use client";
 import { useState, useEffect } from "react";
@@ -182,17 +183,17 @@ export default function BovinoPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const tipoRes = await fetch(`${API}/bovino/tipo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null);
+      const tipoRes = await apiFetch(`${API}/bovino/tipo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null);
       if (tipoRes?.tipo_bovino) setTipoBovino(tipoRes.tipo_bovino);
       const [animRes, lotesRes, racasRes, dashRes, abatesRes, sanRes, reforcoRes, prenhasRes] = await Promise.all([
-        fetch(`${API}/bovino/animais/${IMOVEL_ID}?status=ativo`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/bovino/lotes/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/bovino/racas`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/bovino/dashboard/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/bovino/abates/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=90`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=30`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/bovino/reproducao/${IMOVEL_ID}/prenhas`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/animais/${IMOVEL_ID}?status=ativo`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/lotes/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/racas`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/dashboard/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+        apiFetch(`${API}/bovino/abates/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=90`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=30`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/bovino/reproducao/${IMOVEL_ID}/prenhas`).then(r => r.json()).catch(() => []),
       ]);
       setAnimais(Array.isArray(animRes) ? animRes : []);
       setLotes(Array.isArray(lotesRes) ? lotesRes : []);
@@ -221,7 +222,7 @@ export default function BovinoPage() {
         origem,
         valor_aquisicao: valorAquis ? Number(valorAquis) : null,
       };
-      const res = await fetch(`${API}/bovino/animais`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await apiFetch(`${API}/bovino/animais`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (res.ok) {
         setMsg("✅ Animal cadastrado!");
         setBrinco(""); setNome(""); setPesoNasc(""); setValorAquis(""); setDataNasc("");
@@ -237,13 +238,13 @@ export default function BovinoPage() {
 
   async function carregarPesagens(animal: Animal) {
     setAnimalPesagem(animal);
-    const res = await fetch(`${API}/bovino/pesagens/${animal.id}`).then(r => r.json()).catch(() => []);
+    const res = await apiFetch(`${API}/bovino/pesagens/${animal.id}`).then(r => r.json()).catch(() => []);
     setPesagens(Array.isArray(res) ? res : []);
   }
 
   async function registrarPesagem() {
     if (!animalPesagem || !pesagemPeso) return;
-    const res = await fetch(`${API}/bovino/pesagens`, {
+    const res = await apiFetch(`${API}/bovino/pesagens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ animal_id: animalPesagem.id, data: pesagemData, peso_kg: Number(pesagemPeso), motivo: pesagemMotivo })
@@ -264,7 +265,7 @@ export default function BovinoPage() {
       preco_arroba: abatePrecoArroba ? Number(abatePrecoArroba) : null,
       comprador: abateComprador || null,
     };
-    const res = await fetch(`${API}/bovino/abates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await apiFetch(`${API}/bovino/abates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (res.ok) { setShowAbate(false); loadData(); }
   }
 
@@ -282,7 +283,7 @@ export default function BovinoPage() {
       responsavel: sanResponsavel || null,
       custo_total: sanCusto ? Number(sanCusto) : null,
     };
-    const res = await fetch(`${API}/bovino/sanitario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await apiFetch(`${API}/bovino/sanitario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (res.ok) {
       setMsgSan("✅ Registro salvo!");
       setSanProduto(""); setSanDose(""); setSanReforco(""); setSanResponsavel(""); setSanCusto("");
@@ -300,7 +301,7 @@ export default function BovinoPage() {
       data_cobertura: repData,
       observacoes: repObs || null,
     };
-    const res = await fetch(`${API}/bovino/reproducao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await apiFetch(`${API}/bovino/reproducao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (res.ok) {
       setMsgRep("✅ Cobertura registrada!");
       setRepFemeaId(""); setRepTouroId(""); setRepObs("");
@@ -371,7 +372,7 @@ export default function BovinoPage() {
         {(["corte", "leite", "misto"] as const).map(t => (
           <button key={t} onClick={() => {
             setTipoBovino(t);
-            fetch(`${API}/bovino/tipo/${IMOVEL_ID}`, {
+            apiFetch(`${API}/bovino/tipo/${IMOVEL_ID}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ tipo_bovino: t })

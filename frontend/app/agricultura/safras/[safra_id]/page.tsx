@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api";
 // app/agricultura/safras/[safra_id]/page.tsx
 'use client';
 
@@ -161,7 +162,7 @@ function TabLancamentos({ safraId, imovelId }: { safraId: number; imovelId: numb
 
   function loadLancamentos() {
     setLoading(true);
-    fetch(`${API}/agricultura/safras/${safraId}/lancamentos`)
+    apiFetch(`${API}/agricultura/safras/${safraId}/lancamentos`)
       .then(r => r.json())
       .then(data => { setLancamentos(Array.isArray(data) ? data : []); setLoading(false); });
   }
@@ -253,7 +254,7 @@ function TabColheita({ safraId, safraStatus, onRegistrar }: {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/agricultura/safras/${safraId}/producao`)
+    apiFetch(`${API}/agricultura/safras/${safraId}/producao`)
       .then(r => r.json())
       .then(data => { setProducoes(data); setLoading(false); });
   }, [safraId]);
@@ -338,7 +339,7 @@ function TabColheita({ safraId, safraStatus, onRegistrar }: {
           onSaved={() => {
             setShowModal(false);
             setLoading(true);
-            fetch(`${API}/agricultura/safras/${safraId}/producao`)
+            apiFetch(`${API}/agricultura/safras/${safraId}/producao`)
               .then(r => r.json())
               .then(data => { setProducoes(data); setLoading(false); });
             onRegistrar();
@@ -379,7 +380,7 @@ function ModalColheita({ safraId, onClose, onSaved }: {
     setSaving(true);
     setErro('');
     try {
-      const res = await fetch(`${API}/agricultura/safras/${safraId}/producao`, {
+      const res = await apiFetch(`${API}/agricultura/safras/${safraId}/producao`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -553,7 +554,7 @@ function ModalNovoLancamento({ safraId, imovelId, onClose, onSaved }: {
         : form.tipo === 'receita' ? '1.1'
         : '5.3'; // investimento
 
-      const res = await fetch(`${API}/lancamentos`, {
+      const res = await apiFetch(`${API}/lancamentos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -686,14 +687,14 @@ function ModalEditarLancamento({ lancamento, onClose, onSaved }: {
     setSaving(true); setErro('');
     try {
       const valorFinal = tipo === 'despesa' ? -Math.abs(parseFloat(valor)) : Math.abs(parseFloat(valor));
-      const res = await fetch(`${API}/lancamentos/${lancamento.id}`, {
+      const res = await apiFetch(`${API}/lancamentos/${lancamento.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ valor: valorFinal, data }),
       });
       if (!res.ok) {
         // Tentar PATCH
-        const res2 = await fetch(`${API}/lancamentos/${lancamento.id}/classificacao`, {
+        const res2 = await apiFetch(`${API}/lancamentos/${lancamento.id}/classificacao`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ valor: valorFinal, data }),
@@ -709,7 +710,7 @@ function ModalEditarLancamento({ lancamento, onClose, onSaved }: {
     if (!confirm('Excluir este lançamento?')) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API}/lancamentos/${lancamento.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API}/lancamentos/${lancamento.id}`, { method: 'DELETE' });
       if (res.ok || res.status === 204) { onSaved(); return; }
       setErro('Erro ao excluir');
     } catch { setErro('Erro de conexão'); }
@@ -783,8 +784,8 @@ export default function SafraDetailPage() {
 
   async function fetchData() {
     const [resSafra, resDre] = await Promise.all([
-      fetch(`${API}/agricultura/safras/${safraId}`),
-      fetch(`${API}/agricultura/safras/${safraId}/dre`),
+      apiFetch(`${API}/agricultura/safras/${safraId}`),
+      apiFetch(`${API}/agricultura/safras/${safraId}/dre`),
     ]);
     if (resSafra.ok) setSafra(await resSafra.json());
     if (resDre.ok) setDre(await resDre.json());

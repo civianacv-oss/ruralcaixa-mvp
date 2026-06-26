@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
@@ -48,7 +49,7 @@ export default function AcertosListaPage() {
       const params = new URLSearchParams({ imovel_id: "1" });
       if (filtroSafra) params.append("safra", filtroSafra);
       if (filtroStatus) params.append("status", filtroStatus);
-      const r = await fetch(`${API}/acertos-contrato?${params}`);
+      const r = await apiFetch(`${API}/acertos-contrato?${params}`);
       const d = await r.json();
       setAcertos(Array.isArray(d) ? d : []);
     } catch { setAcertos([]); }

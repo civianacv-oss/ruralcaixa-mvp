@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useCallback } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -131,8 +132,8 @@ export default function ContratosPage() {
     setLoading(true);
     try {
       const [cs, ps] = await Promise.all([
-        fetch(`${API}/contratos/?fazenda_id=${FAZENDA_ID}`).then(r => r.json()).catch(() => ({ data: [] })),
-        fetch(`${API}/produtores`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/contratos/?fazenda_id=${FAZENDA_ID}`).then(r => r.json()).catch(() => ({ data: [] })),
+        apiFetch(`${API}/produtores`).then(r => r.json()).catch(() => []),
       ]);
       setContratos(Array.isArray(cs.data) ? cs.data : []);
       setProdutores(Array.isArray(ps) ? ps : []);
@@ -194,7 +195,7 @@ export default function ContratosPage() {
         else body.outorgado_externo = { ...extOut2, telefone: extOut2.telefone || undefined };
       }
 
-      const r = await fetch(`${API}/contratos/`, {
+      const r = await apiFetch(`${API}/contratos/`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const data = await r.json();
@@ -207,7 +208,7 @@ export default function ContratosPage() {
           const cb: Record<string, unknown> = { percentual_cota: c.percentual, data_entrada: dataInicio };
           if (c.origem === "cadastrado") cb.produtor_id = c.prodId;
           else cb.parceiro_externo = { ...c.ext, telefone: c.ext.telefone || undefined };
-          await fetch(`${API}/contratos/${contratoId}/condominos`, {
+          await apiFetch(`${API}/contratos/${contratoId}/condominos`, {
             method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cb),
           });
         }
@@ -223,7 +224,7 @@ export default function ContratosPage() {
   async function enviar(id: string) {
     setEnviando(id);
     try {
-      const r = await fetch(`${API}/contratos/${id}/enviar`, { method: "POST" });
+      const r = await apiFetch(`${API}/contratos/${id}/enviar`, { method: "POST" });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail || "Erro");
       setSucesso(`Enviado! ${data.partes_notificadas?.length ?? 0} parte(s) notificada(s).`);
@@ -235,7 +236,7 @@ export default function ContratosPage() {
 
   async function deletar(id: string) {
     if (!confirm("Excluir este rascunho?")) return;
-    await fetch(`${API}/contratos/${id}`, { method: "DELETE" });
+    await apiFetch(`${API}/contratos/${id}`, { method: "DELETE" });
     await carregar();
   }
 

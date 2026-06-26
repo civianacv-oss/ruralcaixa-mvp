@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 /**
  * RuralCaixa — Módulo EFD-Reinf (v2)
  * Eventos R-2055 (comercialização), R-2010 (serviços), Apuração FUNRURAL, DARF, XML
@@ -128,12 +129,12 @@ export default function EfdReinfPage() {
     setLoading(true);
     try {
       const [dash, r55, r10, ap, lotes, aliq] = await Promise.all([
-        fetch(`${API}/efdreinf/dashboard/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/r2055/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/r2010/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/apuracao/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/xml-lotes/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/aliquotas`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/dashboard/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/r2055/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/r2010/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/apuracao/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/xml-lotes/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/aliquotas`).then(r => r.json()),
       ]);
       setDashboard(dash);
       setR2055List(Array.isArray(r55) ? r55 : []);
@@ -173,7 +174,7 @@ export default function EfdReinfPage() {
     e.preventDefault();
     if (!f2055.cnpj_adquirente || !f2055.valor_bruto) return showMsg("Preencha CNPJ e valor.", "err");
     const comp = f2055.data_nota.substring(0, 7);
-    const res = await fetch(`${API}/efdreinf/r2055`, {
+    const res = await apiFetch(`${API}/efdreinf/r2055`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         imovel_id: IMOVEL_ID, competencia: comp, ...f2055,
@@ -195,7 +196,7 @@ export default function EfdReinfPage() {
     e.preventDefault();
     if (!f2010.cnpj_prestador || !f2010.valor_bruto) return showMsg("Preencha CNPJ e valor.", "err");
     const comp = f2010.data_nota.substring(0, 7);
-    const res = await fetch(`${API}/efdreinf/r2010`, {
+    const res = await apiFetch(`${API}/efdreinf/r2010`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         imovel_id: IMOVEL_ID, competencia: comp, ...f2010,
@@ -213,7 +214,7 @@ export default function EfdReinfPage() {
 
   // ── Gerar R-2055 a partir de acerto ─────────────────────────────────────
   const gerarR2055FromAcerto = async (acertoId: number) => {
-    const res = await fetch(`${API}/efdreinf/r2055/from-acerto/${acertoId}`, { method: "POST" });
+    const res = await apiFetch(`${API}/efdreinf/r2055/from-acerto/${acertoId}`, { method: "POST" });
     if (res.ok) {
       const data = await res.json();
       showMsg(`✅ R-2055 gerado automaticamente (competência ${data.competencia}). Verifique o CNPJ do adquirente.`);
@@ -224,13 +225,13 @@ export default function EfdReinfPage() {
   // ── Excluir ──────────────────────────────────────────────────────────────
   const excluirR2055 = async (id: number) => {
     if (!confirm("Excluir este registro?")) return;
-    const res = await fetch(`${API}/efdreinf/r2055/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`${API}/efdreinf/r2055/${id}`, { method: "DELETE" });
     if (res.ok) { showMsg("Registro excluído."); carregar(); }
     else { const e = await res.json(); showMsg(e.detail || "Erro ao excluir.", "err"); }
   };
   const excluirR2010 = async (id: number) => {
     if (!confirm("Excluir este registro?")) return;
-    const res = await fetch(`${API}/efdreinf/r2010/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`${API}/efdreinf/r2010/${id}`, { method: "DELETE" });
     if (res.ok) { showMsg("Registro excluído."); carregar(); }
     else { const e = await res.json(); showMsg(e.detail || "Erro ao excluir.", "err"); }
   };
