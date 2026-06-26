@@ -56,17 +56,34 @@ class ParceiroExterno(BaseModel):
 
 class ContratoCreate(BaseModel):
     fazenda_id: int
-    tipo: str                          # agricola | pecuaria | agroindustrial | extrativa
+    tipo: str                          # agricola | pecuaria | agroindustrial | extrativa | condominio
     outorgante_socio_id: Optional[int] = None
     outorgante_externo: Optional[ParceiroExterno] = None
     outorgado_socio_id: Optional[int] = None
     outorgado_externo: Optional[ParceiroExterno] = None
     data_inicio: str                   # YYYY-MM-DD
-    data_fim: str
-    percentual_outorgante: float
-    percentual_outorgado: float
+    data_fim: Optional[str] = None     # None = prazo indeterminado
+    percentual_outorgante: float = 0
+    percentual_outorgado: float = 0
     frequencia_pagamento: str = "safra"
     area_parceria_hectares: Optional[float] = None
+
+    @validator("tipo")
+    def tipo_valido(cls, v):
+        tipos = ["agricola", "pecuaria", "agroindustrial", "extrativa", "condominio"]
+        if v not in tipos:
+            raise ValueError(f"tipo deve ser um de: {tipos}")
+        return v
+
+    @validator("percentual_outorgado", always=True)
+    def percentuais_validos(cls, v, values):
+        tipo = values.get("tipo", "")
+        if tipo == "condominio":
+            return v  # condominio nao usa percentuais de outorgante/outorgado
+        total = values.get("percentual_outorgante", 0) + v
+        if total != 100:
+            raise ValueError(f"percentual_outorgante + percentual_outorgado deve ser 100")
+        return v
     clausulas_adicionais: Optional[dict] = {}
 
     @validator("tipo")
