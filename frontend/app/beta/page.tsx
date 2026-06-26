@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 // frontend/app/beta/page.tsx — RuralCaixa MVP
 // Página pública de apresentação para testadores.
 
