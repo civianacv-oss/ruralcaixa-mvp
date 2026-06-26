@@ -153,6 +153,17 @@ except Exception as e:
     apuracao_pj_router = None
 if apuracao_pj_router: app.include_router(apuracao_pj_router)
 
+
+# Importação em lote
+importacao_router = None
+try:
+    from app.routers.importacao import router as importacao_router
+    print("IMPORTACAO ROUTER LOADED OK")
+except Exception as e:
+    print(f"IMPORTACAO ROUTER FAILED: {e}")
+if importacao_router:
+    app.include_router(importacao_router)
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos
