@@ -38,7 +38,7 @@ const TIPO_LABEL: Record<string, string> = {
   pecuaria: "Parceria Pecuária",
   agroindustrial: "Parceria Agroindustrial",
   extrativa: "Parceria Extrativa",
-  condominio: "Condomínio Rural",
+  condominio: contrato.tipo === "condominio" ? "Constituição de Condomínio Rural" : "Condomínio Rural",
 }
 
 function iconCircle(bg: string): React.CSSProperties {
@@ -87,7 +87,18 @@ export default function AssinarPage() {
   const [consentiu, setConsentiu] = useState(false)
 
   useEffect(() => {
-    fetch(`${API}/contratos/${contratoId}`)
+    fetch(`${API}/contratos/${contratoId}`).then(async r => {
+        if (!r.ok) return r;
+        const data = await r.json();
+        // Busca condôminos se for condomínio
+        if (data.tipo === "condominio") {
+          try {
+            const rc = await fetch(`${API}/contratos/${contratoId}/condominos`);
+            if (rc.ok) { const rcd = await rc.json(); data.condominos = rcd.data || []; }
+          } catch {}
+        }
+        return { ok: true, json: () => Promise.resolve(data) };
+      })
       .then(r => r.json())
       .then(data => {
         if (data.detail) { setErro(data.detail); setStep("erro"); return }

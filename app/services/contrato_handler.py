@@ -19,18 +19,19 @@ TIPO_ALIASES = {
     "condominio": "condominio", "arrendamento": "agricola",
 }
 CAMPOS_OBRIGATORIOS_PARCERIA = ["tipo","data_inicio","outorgante_nome","outorgante_doc","outorgado_nome","outorgado_doc"]
-CAMPOS_OBRIGATORIOS_CONDOMINIO = ["tipo","data_inicio"]
+CAMPOS_OBRIGATORIOS_CONDOMINIO = ["tipo","data_inicio","condominos"]
 PERGUNTAS = {
-    "tipo": "Qual o tipo de contrato?\n1 Parceria Agricola\n2 Parceria Pecuaria\n3 Parceria Agroindustrial\n4 Parceria Extrativa\n5 Condominio Rural",
-    "data_inicio": "Qual a data de inicio do contrato? (ex: 01/01/2025)",
-    "data_fim": "Qual a data de termino? (ex: 31/12/2027)\nOu responda indeterminado para prazo aberto.",
-    "outorgante_nome": "Qual o nome completo do outorgante (quem cede)?",
+    "tipo": "Qual o tipo de contrato?\n1️⃣ Parceria Agrícola\n2️⃣ Parceria Pecuária\n3️⃣ Parceria Agroindustrial\n4️⃣ Parceria Extrativa\n5️⃣ Condomínio Rural",
+    "data_inicio": "Qual a *data de início* do contrato? (ex: 01/01/2025)",
+    "data_fim": "Qual a *data de término*? (ex: 31/12/2027)\nOu responda *indeterminado* para prazo aberto.",
+    "outorgante_nome": "Qual o nome completo do *outorgante* (quem cede)?",
     "outorgante_doc": "Qual o CPF/CNPJ do outorgante?",
-    "outorgado_nome": "Qual o nome completo do outorgado (quem recebe)?",
+    "outorgado_nome": "Qual o nome completo do *outorgado* (quem recebe)?",
     "outorgado_doc": "Qual o CPF/CNPJ do outorgado?",
     "percentual_outorgante": "Qual o percentual do outorgante? (ex: 60)",
-    "area_hectares": "Qual a area em hectares? (opcional — responda /pular)",
-    "frequencia": "Frequencia de pagamento?\n1 Por safra\n2 Mensal\n3 Semestral\n4 Anual",
+    "area_hectares": "Qual a área em hectares? (opcional — responda /pular)",
+    "frequencia": "Frequência de pagamento?\n1️⃣ Por safra\n2️⃣ Mensal\n3️⃣ Semestral\n4️⃣ Anual",
+    "condominos": "Agora informe os *condôminos* um por vez.\nFormato: *Nome, CPF, %*\n\nEx: João Silva, 123.456.789-00, 50\n\nDigite /fim quando terminar de adicionar condôminos.",
 }
 FREQ_MAP = {
     "1":"safra","safra":"safra","por safra":"safra",
@@ -78,7 +79,15 @@ async def extrair_campos_contrato(texto):
 def campos_faltantes(dados):
     tipo = dados.get("tipo")
     obrig = CAMPOS_OBRIGATORIOS_CONDOMINIO if tipo == "condominio" else CAMPOS_OBRIGATORIOS_PARCERIA
-    faltam = [c for c in obrig if not dados.get(c)]
+    faltam = []
+    for c in obrig:
+        if c == "condominos":
+            # Condominos OK se tem lista com 2+ e soma 100%
+            if dados.get("_condominos_ok"):
+                continue
+            faltam.append("condominos")
+        elif not dados.get(c):
+            faltam.append(c)
     if tipo in TIPOS_PARCERIA and dados.get("outorgante_nome") and dados.get("outorgado_nome"):
         if dados.get("percentual_outorgante") is None:
             faltam.append("percentual_outorgante")
@@ -98,7 +107,13 @@ def formatar_resumo(dados):
         if dados.get("percentual_outorgante") is not None:
             p = int(dados["percentual_outorgante"])
             linhas.append(f"Partilha: {p}% / {100-p}%")
-    if dados.get("area_hectares"): linhas.append(f"Area: {dados['area_hectares']} ha")
+    # Condôminos
+    conds = dados.get("condominos", [])
+    if conds:
+        linhas.append(f"Condôminos ({len(conds)}):")
+        for c in conds:
+            linhas.append(f"  • {c['nome']} — {c['percentual']}%")
+    if dados.get("area_hectares"): linhas.append(f"Área: {dados['area_hectares']} ha")
     if dados.get("frequencia"):
         fl = {"safra":"Por safra","mensal":"Mensal","semestral":"Semestral","anual":"Anual"}
         linhas.append(f"Pagamento: {fl.get(dados['frequencia'], dados['frequencia'])}")
@@ -155,6 +170,36 @@ def processar_resposta_campo(campo, texto, dados):
         v = FREQ_MAP.get(t.lower())
         if not v: return dados, "Responda 1, 2, 3 ou 4."
         dados["frequencia"] = v
+    elif campo == "condominos":
+        # Inicializa lista se necessário
+        if "condominos" not in dados or not isinstance(dados["condominos"], list):
+            dados["condominos"] = []
+        # Comando /fim encerra a coleta
+        if t.lower() in ("/fim", "fim", "pronto", "ok", "finalizar"):
+            if len(dados["condominos"]) < 2:
+                return dados, f"Mínimo 2 condôminos. Você adicionou {len(dados['condominos'])}. Continue adicionando."
+            total_cotas = sum(c.get("percentual", 0) for c in dados["condominos"])
+            if abs(total_cotas - 100) > 0.1:
+                return dados, f"A soma das cotas deve ser 100%. Atual: {total_cotas:.1f}%. Ajuste e digite /fim novamente."
+            dados["_condominos_ok"] = True
+            return dados, None
+        # Parseia "Nome, CPF, %" 
+        partes = [p.strip() for p in t.split(",")]
+        if len(partes) < 3:
+            return dados, "Formato inválido. Use: *Nome, CPF, %*\nEx: João Silva, 123.456.789-00, 50"
+        nome = partes[0]
+        cpf = partes[1]
+        try:
+            perc = float(partes[2].replace("%","").replace(",","."))
+        except ValueError:
+            return dados, "Percentual inválido. Use número (ex: 50)"
+        doc_limpo = re.sub(r"\D","",cpf)
+        if len(doc_limpo) not in (11,14):
+            return dados, "CPF inválido. Use 11 dígitos."
+        dados["condominos"].append({"nome": nome.title(), "doc": cpf, "percentual": perc})
+        total = sum(c.get("percentual",0) for c in dados["condominos"])
+        n = len(dados["condominos"])
+        return dados, f"✅ Condômino {n} adicionado: {nome.title()} ({perc}%)\nTotal atual: {total:.1f}%\n\nAdione mais ou digite /fim para encerrar."
     return dados, None
 
 def _buscar_token(produtor_id=None, numero=None):
@@ -241,6 +286,9 @@ async def processar_etapa_contrato(sessoes, key, texto):
 
 def _proxima(sessoes, key):
     dados = sessoes[key]
+    # Se está coletando condôminos, mantém o campo atual
+    if dados.get("_campo_atual") == "condominos" and not dados.get("_condominos_ok"):
+        return PERGUNTAS["condominos"]
     faltam = campos_faltantes(dados)
     opcionals = {"area_hectares"}
     if "data_fim" in dados or dados.get("prazo_indeterminado"): opcionals.add("data_fim")
@@ -249,7 +297,9 @@ def _proxima(sessoes, key):
         campo = criticos[0]
         dados["_campo_atual"] = campo
         sessoes[key] = dados
-        return f"? {PERGUNTAS[campo]}"
+        if campo == "condominos":
+            return f"📋 {PERGUNTAS['condominos']}"
+        return f"❓ {PERGUNTAS[campo]}"
     dados["_campo_atual"] = None
     sessoes[key] = dados
     return formatar_resumo(dados)
