@@ -1,5 +1,6 @@
 "use client";
 import { apiFetch } from "@/lib/api";
+import ImportarModal from "@/components/ImportarModal";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
@@ -95,6 +96,7 @@ const COR = "#1a5c2e";
 const COR_LIGHT = "#f0f7f2";
 
 export default function AcaiPage() {
+  const [modalImportar, setModalImportar] = useState(false);
   const [aba, setAba] = useState<"talhoes" | "safra" | "insumos" | "produtividade" | "dre">("talhoes");
   const [loading, setLoading] = useState(true);
   const [talhoes, setTalhoes] = useState<Talhao[]>([]);
@@ -384,6 +386,7 @@ export default function AcaiPage() {
                   style={{ padding: "8px 18px", background: COR, color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14, opacity: salvando || !novoTalhao.nome || !novoTalhao.area_ha ? 0.6 : 1, alignSelf: "flex-end" }}>
                   {salvando ? "..." : "+ Cadastrar"}
                 </button>
+          <button onClick={() => setModalImportar(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid #c8d8c0", background: "#f0f8ea", color: "#2a5a2a", fontSize: 13, fontWeight: 600, cursor: "pointer", marginLeft: 8 }}>📂 Importar planilha</button>
               </div>
             </div>
 
@@ -764,5 +767,12 @@ export default function AcaiPage() {
 
       </div>
     </div>
+      {modalImportar && (
+        <ImportarModal
+          modulo="acai"
+          onClose={() => setModalImportar(false)}
+          onSuccess={(qtd) => { setModalImportar(false); }}
+        />
+      )}
   );
 }

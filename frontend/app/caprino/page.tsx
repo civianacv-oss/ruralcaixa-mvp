@@ -1,5 +1,6 @@
 "use client";
 import { apiFetch } from "@/lib/api";
+import ImportarModal from "@/components/ImportarModal";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -153,6 +154,7 @@ type Alerta = {
 };
 
 export default function OvinoDashboard() {
+  const [modalImportar, setModalImportar] = useState(false);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [animais, setAnimais] = useState<Animal[]>([]);
   const [lotes, setLotes] = useState<Lote[]>([]);
@@ -407,6 +409,7 @@ export default function OvinoDashboard() {
                 style={{ padding: "8px 18px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>
                 {salvando ? "..." : "Cadastrar"}
               </button>
+          <button onClick={() => setModalImportar(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid #c8d8c0", background: "#f0f8ea", color: "#2a5a2a", fontSize: 13, fontWeight: 600, cursor: "pointer", marginLeft: 8 }}>📂 Importar planilha</button>
               {msg && <span style={{ alignSelf: "center", fontSize: 13, color: msg.includes("sucesso") ? "#16a34a" : "#dc2626" }}>{msg}</span>}
             </div>
           </div>
@@ -1355,6 +1358,13 @@ export default function OvinoDashboard() {
         </div>
       )}
     </div>
+      {modalImportar && (
+        <ImportarModal
+          modulo="caprino"
+          onClose={() => setModalImportar(false)}
+          onSuccess={(qtd) => { setModalImportar(false); }}
+        />
+      )}
   );
 }
 

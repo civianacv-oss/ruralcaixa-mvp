@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 // Menu "Agricultura" no sidebar -- lista todas as safras por imovel
 
 
+import ImportarModal from "@/components/ImportarModal";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -44,6 +45,13 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
       {cfg.label}
     </span>
+      {modalImportar && (
+        <ImportarModal
+          modulo="agricultura"
+          onClose={() => setModalImportar(false)}
+          onSuccess={(qtd) => { setModalImportar(false); }}
+        />
+      )}
   );
 }
 
@@ -56,6 +64,7 @@ function fmtBRL(v: number) {
 }
 
 export default function AgriculturaPage() {
+  const [modalImportar, setModalImportar] = useState(false);
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [safras, setSafras] = useState<Safra[]>([]);
   const [filtroImovel, setFiltroImovel] = useState<string>('');
@@ -142,6 +151,7 @@ export default function AgriculturaPage() {
           >
             <span>+</span> Nova Safra
           </button>
+          <button onClick={() => setModalImportar(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid #c8d8c0", background: "#f0f8ea", color: "#2a5a2a", fontSize: 13, fontWeight: 600, cursor: "pointer", marginLeft: 8 }}>📂 Importar planilha</button>
         </div>
       </div>
 

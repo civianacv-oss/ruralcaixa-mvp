@@ -1,6 +1,7 @@
 "use client";
 import { apiFetch } from "@/lib/api";
 // v2 - bovino leite e corte - fix nome
+import ImportarModal from "@/components/ImportarModal";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -107,6 +108,7 @@ const TABS_CORTE = ["Confinamento", "Tipificação", "Custo Produção"] as cons
 type Tab = typeof TABS_BASE[number] | typeof TABS_LEITE[number] | typeof TABS_CORTE[number] | "Leite";
 
 export default function BovinoPage() {
+  const [modalImportar, setModalImportar] = useState(false);
   const [tab, setTab] = useState<Tab>("Rebanho");
   const [tipoBovino, setTipoBovino] = useState<"leite" | "corte" | "misto">("corte");
   const [animais, setAnimais] = useState<Animal[]>([]);
@@ -346,6 +348,7 @@ export default function BovinoPage() {
           style={{ background: "white", color: green, border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
           + Cadastrar Animal
         </button>
+          <button onClick={() => setModalImportar(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid #c8d8c0", background: "#f0f8ea", color: "#2a5a2a", fontSize: 13, fontWeight: 600, cursor: "pointer", marginLeft: 8 }}>📂 Importar planilha</button>
       </div>
 
       {/* Dashboard Cards */}
@@ -898,6 +901,13 @@ export default function BovinoPage() {
 
       </div>
     </div>
+      {modalImportar && (
+        <ImportarModal
+          modulo="bovino"
+          onClose={() => setModalImportar(false)}
+          onSuccess={(qtd) => { setModalImportar(false); }}
+        />
+      )}
   );
 }
 
