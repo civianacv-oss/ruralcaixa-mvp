@@ -321,7 +321,10 @@ def processar_resposta_campo(campo: str, texto: str, dados: dict) -> tuple[dict,
 
 def _parse_data(texto: str) -> Optional[str]:
     """Tenta converter texto em data YYYY-MM-DD."""
-    # DD/MM/AAAA
+    if not texto:
+        return None
+    texto = str(texto).strip()
+    # DD/MM/AAAA ou DD-MM-AAAA
     m = re.match(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})", texto)
     if m:
         return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
@@ -375,11 +378,31 @@ async def criar_contrato_api(dados: dict, produtor_id: Optional[int] = None) -> 
                 "telefone": dados.get("outorgado_tel"),
             }
 
+    # Busca token do produtor para autenticar
+    _token = None
+    try:
+        from app.db import get_db
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                if produtor_id:
+                    cur.execute("SELECT api_token FROM produtores WHERE id=%s", (produtor_id,))
+                else:
+                    cur.execute("SELECT api_token FROM produtores ORDER BY id LIMIT 1")
+                row = cur.fetchone()
+                if row:
+                    _token = row["api_token"] if isinstance(row, dict) else row[0]
+    except Exception as _e:
+        import logging; logging.getLogger(__name__).error(f"token lookup: {_e}")
+
+    _headers = {"Content-Type": "application/json"}
+    if _token:
+        _headers["Authorization"] = f"Bearer {_token}"
+
     async with httpx.AsyncClient(timeout=30) as client:
         # Criar contrato
         r = await client.post(
             f"{API_BASE}/contratos/",
-            headers={"Content-Type": "application/json"},
+            headers=_headers,
             json=body,
         )
         r.raise_for_status()
@@ -411,7 +434,7 @@ async def criar_contrato_api(dados: dict, produtor_id: Optional[int] = None) -> 
                 )
 
         # Enviar para assinatura
-        r2 = await client.post(f"{API_BASE}/contratos/{contrato_id}/enviar")
+        r2 = await client.post(f"{API_BASE}/contratos/{contrato_id}/enviar", headers=_headers)
         envio = r2.json() if r2.status_code == 200 else {}
         partes = envio.get("partes_notificadas", [])
 
