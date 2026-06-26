@@ -117,7 +117,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
     if is_contrato_ativo(sessoes, key):
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
-            ok, resp = await confirmar_contrato(sessoes, key)
+            ok, resp = await confirmar_contrato(sessoes, key, msg.numero)
             return resp
         elif texto_up in ("NAO", "N", "CANCELA"):
             sessoes.pop(key, None)
