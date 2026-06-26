@@ -158,11 +158,14 @@ if apuracao_pj_router: app.include_router(apuracao_pj_router)
 importacao_router = None
 try:
     from app.routers.importacao import router as importacao_router
+from app.routers.insumos import router as insumos_router
     print("IMPORTACAO ROUTER LOADED OK")
 except Exception as e:
     print(f"IMPORTACAO ROUTER FAILED: {e}")
 if importacao_router:
     app.include_router(importacao_router)
+app.include_router(insumos_router)
+print("INSUMOS ROUTER LOADED OK")
 
 # Cron alertas ovinos
 try:
