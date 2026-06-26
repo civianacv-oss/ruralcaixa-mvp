@@ -204,6 +204,7 @@ except Exception as e:
     print(f"PISCICULTURA CRON FAILED: {e}")
     processar_alertas_piscicultura = None
 
+# CORS primeiro (executa por último na pilha)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -211,6 +212,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Auth depois (executa primeiro na pilha)
+from app.middleware.auth_middleware import AuthMiddleware
+app.add_middleware(AuthMiddleware)
 app.include_router(contratos_router)
 app.include_router(lanc_router)
 from app.propriedades import router as propriedades_router
