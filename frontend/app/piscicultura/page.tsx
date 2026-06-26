@@ -1,6 +1,6 @@
+"use client";
 import { apiFetch } from "@/lib/api";
 // page.tsx — Piscicultura
-"use client";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";

@@ -1,6 +1,6 @@
+"use client";
 import { apiFetch } from "@/lib/api";
 
-"use client";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 

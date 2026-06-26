@@ -1,8 +1,8 @@
+"use client";
 import { apiFetch } from "@/lib/api";
 // app/agricultura/page.tsx  (ou pages/agricultura/index.tsx)
 // Menu "Agricultura" no sidebar -- lista todas as safras por imovel
 
-'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';

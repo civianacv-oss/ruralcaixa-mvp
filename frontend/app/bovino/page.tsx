@@ -1,6 +1,6 @@
+"use client";
 import { apiFetch } from "@/lib/api";
 // v2 - bovino leite e corte - fix nome
-"use client";
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";

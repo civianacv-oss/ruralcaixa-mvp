@@ -1,6 +1,6 @@
+"use client";
 import { apiFetch } from "@/lib/api";
 // app/agricultura/safras/[safra_id]/page.tsx
-'use client';
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
