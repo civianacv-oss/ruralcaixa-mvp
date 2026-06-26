@@ -68,37 +68,8 @@ class ContratoCreate(BaseModel):
     frequencia_pagamento: str = "safra"
     area_parceria_hectares: Optional[float] = None
 
-    @validator("tipo")
-    def tipo_valido(cls, v):
-        tipos = ["agricola", "pecuaria", "agroindustrial", "extrativa", "condominio"]
-        if v not in tipos:
-            raise ValueError(f"tipo deve ser um de: {tipos}")
-        return v
 
-    @validator("percentual_outorgado", always=True)
-    def percentuais_validos(cls, v, values):
-        tipo = values.get("tipo", "")
-        if tipo == "condominio":
-            return v  # condominio nao usa percentuais de outorgante/outorgado
-        total = values.get("percentual_outorgante", 0) + v
-        if total != 100:
-            raise ValueError(f"percentual_outorgante + percentual_outorgado deve ser 100")
-        return v
     clausulas_adicionais: Optional[dict] = {}
-
-    @validator("tipo")
-    def tipo_valido(cls, v):
-        validos = ["agricola", "pecuaria", "agroindustrial", "extrativa"]
-        if v not in validos:
-            raise ValueError(f"tipo deve ser um de: {validos}")
-        return v
-
-    @validator("percentual_outorgado")
-    def percentuais_somam_100(cls, v, values):
-        ote = values.get("percentual_outorgante", 0)
-        if round(ote + v, 2) != 100.0:
-            raise ValueError("percentual_outorgante + percentual_outorgado deve ser 100")
-        return v
 
 class AssinarRequest(BaseModel):
     papel: str      # outorgante | outorgado
