@@ -104,7 +104,7 @@ type ReproducaoRecord = {
 const TABS_BASE = ["Rebanho", "Lotes", "Pesagens", "Sanitário", "Reprodução", "Abates"] as const;
 const TABS_LEITE = ["Ordenha", "IATF", "Dieta Transição"] as const;
 const TABS_CORTE = ["Confinamento", "Tipificação", "Custo Produção"] as const;
-type Tab = typeof TABS_BASE[number] | typeof TABS_LEITE[number] | typeof TABS_CORTE[number];
+type Tab = typeof TABS_BASE[number] | typeof TABS_LEITE[number] | typeof TABS_CORTE[number] | "Leite";
 
 export default function BovinoPage() {
   const [tab, setTab] = useState<Tab>("Rebanho");
