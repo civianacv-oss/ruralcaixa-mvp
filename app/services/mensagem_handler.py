@@ -125,12 +125,95 @@ async def processar_mensagem(msg: MsgIn) -> str:
         else:
             return await processar_etapa_contrato(sessoes, key, texto)
 
+    # Fluxo de insumo
+    if key in sessoes and sessoes[key].get("_tipo") == "aguard_insumo":
+        sess_ins = sessoes[key]
+        if texto_up in ("SIM", "S", "1"):
+            try:
+                import httpx as _hx
+                _api = __import__("os").getenv("API_BASE_URL","https://ruralcaixa-mvp-production.up.railway.app")
+                _r = _hx.get(f"{_api}/insumos/", timeout=5)
+                _ins = _r.json().get("data",[]) if _r.status_code==200 else []
+                if _ins:
+                    _lista = "\n".join([f"{i+1}. {x["nome"]} ({x["estoque_atual"]} {x["unidade"]})" for i,x in enumerate(_ins[:8])])
+                    sessoes[key] = {"_tipo":"aguard_qual_insumo","_lancamento_id":sess_ins["_lancamento_id"],"_insumos":_ins[:8]}
+                    return f"📦 Qual insumo?\n\n{_lista}\n\nResponda com o número."
+                else:
+                    sessoes.pop(key,None)
+                    return "📦 Nenhum insumo cadastrado. Acesse /insumos para cadastrar."
+            except Exception as _e:
+                sessoes.pop(key,None)
+                return "⚠️ Erro ao buscar insumos."
+        elif texto_up in ("NAO","N","0","2","NAO"):
+            sessoes.pop(key,None)
+            return f"✅ Lançamento #{sess_ins["_lancamento_id"]} gravado sem vincular ao estoque."
+        else:
+            return "📦 Essa compra é um insumo?\n1️⃣ Sim\n2️⃣ Não"
+
+    if key in sessoes and sessoes[key].get("_tipo") == "aguard_qual_insumo":
+        sess_ins = sessoes[key]
+        _insumos = sess_ins.get("_insumos",[])
+        _sel = None
+        if texto_up.isdigit():
+            _idx = int(texto_up)-1
+            if 0<=_idx<len(_insumos): _sel=_insumos[_idx]
+        else:
+            for _x in _insumos:
+                if texto_up.lower() in _x["nome"].lower(): _sel=_x; break
+        if not _sel:
+            return f"Não encontrei. Responda com o número (1 a {len(_insumos)})."
+        sessoes[key]={"_tipo":"aguard_qtd_insumo","_lancamento_id":sess_ins["_lancamento_id"],"_insumo":_sel}
+        return f"📦 {_sel["nome"]}\nQuantidade recebida? (em {_sel["unidade"]})"
+
+    if key in sessoes and sessoes[key].get("_tipo") == "aguard_qtd_insumo":
+        sess_ins = sessoes[key]
+        _ins = sess_ins["_insumo"]
+        try: _qtd = float(texto.replace(",","."))
+        except: return "Quantidade inválida. Use número (ex: 10)"
+        try:
+            import httpx as _hx
+            _api = __import__("os").getenv("API_BASE_URL","https://ruralcaixa-mvp-production.up.railway.app")
+            from app.db import get_db as _gdb
+            _token = None
+            with _gdb() as _c:
+                with _c.cursor() as _cu:
+                    _cu.execute("SELECT api_token FROM produtores WHERE telefone LIKE %s LIMIT 1",(f"%{msg.numero[-8:]}",))
+                    _row=_cu.fetchone()
+                    if _row: _token=_row["api_token"] if isinstance(_row,dict) else _row[0]
+            _hdrs={"Content-Type":"application/json"}
+            if _token: _hdrs["Authorization"]=f"Bearer {_token}"
+            _r=_hx.post(f"{_api}/insumos/{_ins["id"]}/movimentar",
+                json={"tipo":"compra","quantidade":_qtd,"observacao":f"Lancamento #{sess_ins["_lancamento_id"]}"},
+                headers=_hdrs,timeout=10)
+            sessoes.pop(key,None)
+            if _r.status_code==201:
+                _novo=_ins["estoque_atual"]+_qtd
+                return f"✅ Entrada registrada!\n📦 {_ins["nome"]}\n+{_qtd} {_ins["unidade"]}\nEstoque: {_ins["estoque_atual"]} → {_novo} {_ins["unidade"]}"
+            else:
+                return f"⚠️ Erro: {_r.text[:80]}"
+        except Exception as _e:
+            sessoes.pop(key,None)
+            return f"⚠️ Erro ao atualizar estoque: {str(_e)[:80]}"
+
     # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "contrato"):
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
             lancamento_id = gravar_lancamento(sess)
+
+            # Detecta se pode ser insumo
+            tipo_lanc = sess.get("tipo", "")
+            desc_lanc = (sess.get("descricao") or sess.get("conta") or "").lower()
+            palavras_insumo = ["comprei","compra","racao","semente","adubo",
+                "fertilizante","defensivo","vacina","medicamento","sal mineral",
+                "combustivel","diesel","gasolina","insumo","fardo","saco"]
+            eh_possivel_insumo = (
+                tipo_lanc == "despesa" and
+                any(p in desc_lanc for p in palavras_insumo)
+            )
+            if eh_possivel_insumo:
+                sessoes[key] = {"_tipo": "aguard_insumo", "_lancamento_id": lancamento_id}
 
             # Upload de documento se houver mídia na sessão
             if "_midia" in sess:
@@ -151,14 +234,16 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
-            return (
+            msg_base = (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"Tipo: {sess.get('tipo','').upper()}\n"
                 f"Conta: {sess.get('conta','')}\n"
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
-                f"Data: {sess.get('data','')}\n\n"
-                f"Envie a foto ou PDF do comprovante para vincular."
+                f"Data: {sess.get('data','')}\n"
             )
+            if eh_possivel_insumo:
+                return msg_base + "\n📦 Essa compra é um insumo?\n1️⃣ Sim — dar entrada no estoque\n2️⃣ Não — só lançamento"
+            return msg_base + "\nEnvie a foto ou PDF do comprovante para vincular."
         elif texto_up in ("NAO", "N", "CANCELA"):
             sessoes.pop(key, None)
             return "Cancelado. Pode mandar de novo quando quiser."
