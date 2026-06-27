@@ -565,7 +565,7 @@ def criar_ordem_producao(body: OrdemProducaoCreate, request: Request):
                 ins = cur.fetchone()
                 if not ins:
                     raise HTTPException(404, f"Insumo {ic.insumo_id} nao encontrado")
-                custo_unit = ins.get("preco_estimado") or ins.get("custo_producao") or 0
+                custo_unit = float(ins.get("preco_estimado") or ins.get("custo_producao") or 0)
                 custo_total_item = custo_unit * ic.quantidade
                 custo_insumos += custo_total_item
                 insumos_detalhes.append({
