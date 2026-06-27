@@ -1,0 +1,273 @@
+app\acai\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\acai\page.tsx:132:        apiFetch(`${API}/acai/talhoes?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\acai\page.tsx:133:        apiFetch(`${API}/acai/safras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\acai\page.tsx:134:        apiFetch(`${API}/acai/insumos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\acai\page.tsx:135:        apiFetch(`${API}/acai/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\acai\page.tsx:136:        apiFetch(`${API}/acai/produtividade/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\acai\page.tsx:137:        apiFetch(`${API}/acai/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\acai\page.tsx:158:      const r = await apiFetch(`${API}/acai/talhoes`, {
+app\acai\page.tsx:186:      const r = await apiFetch(`${API}/acai/safras`, {
+app\acai\page.tsx:212:      const r = await apiFetch(`${API}/acai/insumos`, {
+app\agricultura\page.tsx:1:import { apiFetch } from "@/lib/api";
+app\agricultura\page.tsx:79:    const res = await apiFetch(`${API}/imoveis/buscar?q=`);
+app\agricultura\page.tsx:91:        const res = await apiFetch(`${API}/agricultura/imoveis/${filtroImovel}/safras?${params}`);
+app\agricultura\page.tsx:102:          const res = await apiFetch(`${API}/agricultura/imoveis/${im.id}/safras?${params}`);
+app\agricultura\page.tsx:350:    apiFetch(`${API}/agricultura/culturas`)
+app\agricultura\page.tsx:368:      const res = await apiFetch(`${API}/agricultura/imoveis/${form.imovel_id}/safras`, {
+app\agricultura\safras\[safra_id]\page.tsx:1:import { apiFetch } from "@/lib/api";
+app\agricultura\safras\[safra_id]\page.tsx:167:    apiFetch(`${API}/agricultura/safras/${safraId}/lancamentos`)
+app\agricultura\safras\[safra_id]\page.tsx:259:    apiFetch(`${API}/agricultura/safras/${safraId}/producao`)
+app\agricultura\safras\[safra_id]\page.tsx:344:            apiFetch(`${API}/agricultura/safras/${safraId}/producao`)
+app\agricultura\safras\[safra_id]\page.tsx:385:      const res = await apiFetch(`${API}/agricultura/safras/${safraId}/producao`, {
+app\agricultura\safras\[safra_id]\page.tsx:559:      const res = await apiFetch(`${API}/lancamentos`, {
+app\agricultura\safras\[safra_id]\page.tsx:692:      const res = await apiFetch(`${API}/lancamentos/${lancamento.id}`, {
+app\agricultura\safras\[safra_id]\page.tsx:699:        const res2 = await apiFetch(`${API}/lancamentos/${lancamento.id}/classificacao`, {
+app\agricultura\safras\[safra_id]\page.tsx:715:      const res = await apiFetch(`${API}/lancamentos/${lancamento.id}`, { method: 'DELETE' });
+app\agricultura\safras\[safra_id]\page.tsx:789:      apiFetch(`${API}/agricultura/safras/${safraId}`),
+app\agricultura\safras\[safra_id]\page.tsx:790:      apiFetch(`${API}/agricultura/safras/${safraId}/dre`),
+app\apuracao-pj\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\apuracao-pj\page.tsx:76:    const r = await apiFetch(`${API}/apuracao-pj/config/${imovelId}/${anoBase}`);
+app\apuracao-pj\page.tsx:81:    const r = await apiFetch(`${API}/apuracao-pj/lancamentos/${imovelId}/${anoBase}`);
+app\apuracao-pj\page.tsx:86:    const r = await apiFetch(`${API}/apuracao-pj/apuracoes/${imovelId}/${anoBase}`);
+app\apuracao-pj\page.tsx:91:    const r = await apiFetch(`${API}/apuracao-pj/creditos-pis-cofins/${imovelId}/${anoBase}`);
+app\apuracao-pj\page.tsx:96:    const r = await apiFetch(`${API}/apuracao-pj/resumo-anual/${imovelId}/${anoBase}`);
+app\apuracao-pj\page.tsx:105:    const r = await apiFetch(`${API}/apuracao-pj/config`, {
+app\apuracao-pj\page.tsx:113:    const r = await apiFetch(`${API}/apuracao-pj/lancamento`, {
+app\apuracao-pj\page.tsx:122:    const r = await apiFetch(`${API}/apuracao-pj/apurar/${imovelId}/${anoBase}/${trim}`, {method:"POST"});
+app\apuracao-pj\page.tsx:129:    await apiFetch(`${API}/apuracao-pj/apuracoes/${id}/pagar`, {
+app\apuracao-pj\page.tsx:137:    const r = await apiFetch(`${API}/apuracao-pj/credito-pis-cofins`, {
+app\assinar\page.tsx:2:import { apiFetch } from "@/lib/api";
+app\assinar\page.tsx:58:    apiFetch(`${API}/contratos/`)
+app\assinar\page.tsx:66:    apiFetch(`${API}/produtores`).then(r => r.json())
+app\assinar\page.tsx:91:      const r = await apiFetch(`${API}/contratos/`, {
+app\bovino\page.tsx:1:import { apiFetch } from "@/lib/api";
+app\bovino\page.tsx:187:      const tipoRes = await apiFetch(`${API}/bovino/tipo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null);
+app\bovino\page.tsx:190:        apiFetch(`${API}/bovino/animais/${IMOVEL_ID}?status=ativo`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:191:        apiFetch(`${API}/bovino/lotes/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:192:        apiFetch(`${API}/bovino/racas`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:193:        apiFetch(`${API}/bovino/dashboard/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\bovino\page.tsx:194:        apiFetch(`${API}/bovino/abates/${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:195:        apiFetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=90`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:196:        apiFetch(`${API}/bovino/sanitario/${IMOVEL_ID}/proximos?dias=30`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:197:        apiFetch(`${API}/bovino/reproducao/${IMOVEL_ID}/prenhas`).then(r => r.json()).catch(() => []),
+app\bovino\page.tsx:226:      const res = await apiFetch(`${API}/bovino/animais`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+app\bovino\page.tsx:242:    const res = await apiFetch(`${API}/bovino/pesagens/${animal.id}`).then(r => r.json()).catch(() => []);
+app\bovino\page.tsx:248:    const res = await apiFetch(`${API}/bovino/pesagens`, {
+app\bovino\page.tsx:269:    const res = await apiFetch(`${API}/bovino/abates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+app\bovino\page.tsx:287:    const res = await apiFetch(`${API}/bovino/sanitario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+app\bovino\page.tsx:305:    const res = await apiFetch(`${API}/bovino/reproducao`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+app\bovino\page.tsx:378:            apiFetch(`${API}/bovino/tipo/${IMOVEL_ID}`, {
+app\cadastro\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\cadastro\page.tsx:30:    apiFetch(`${API}/produtores`)
+app\cadastro\page.tsx:38:        return apiFetch(`${API}/produtor/imoveis?cpf=${p?.cpf?.replace(/\D/g,"") || ""}`);
+app\cadastro\page.tsx:62:        const res = await apiFetch(`${API}/produtores/${produtorId}`, {
+app\cadastro\page.tsx:235:                  const res = await apiFetch(`${API}/produtor/imoveis?cpf=${cpf}`);
+app\cadastro\page.tsx:237:                  const todos = await apiFetch(`${API}/imoveis/buscar?q=`).then(r => r.json()).catch(() => []);
+app\caprino\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\caprino\page.tsx:204:        apiFetch(`${API}/caprino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
+app\caprino\page.tsx:205:        apiFetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
+app\caprino\page.tsx:206:        apiFetch(`${API}/caprino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
+app\caprino\page.tsx:207:        apiFetch(`${API}/caprino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
+app\caprino\page.tsx:208:        apiFetch(`${API}/caprino/sanitario/insumos`).then(r => r.json()).catch(() => []),
+app\caprino\page.tsx:209:        apiFetch(`${API}/caprino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\caprino\page.tsx:210:        apiFetch(`${API}/caprino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\caprino\page.tsx:211:        apiFetch(`${API}/caprino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
+app\caprino\page.tsx:212:        apiFetch(`${API}/caprino/pastagem/alertas/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\caprino\page.tsx:213:        apiFetch(`${API}/caprino/sazonalidade/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\caprino\page.tsx:214:        apiFetch(`${API}/caprino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\caprino\page.tsx:215:        apiFetch(`${API}/caprino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+app\caprino\page.tsx:216:        apiFetch(`${API}/caprino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
+app\caprino\page.tsx:217:        apiFetch(`${API}/caprino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\caprino\page.tsx:243:      const r = await apiFetch(`${API}/caprino/animais/${editando.id}`, {
+app\caprino\page.tsx:258:          await apiFetch(`${API}/caprino/pesagens`, {
+app\caprino\page.tsx:283:      const r = await apiFetch(`${API}/caprino/animais/reclassificar?imovel_id=${IMOVEL_ID}`, {
+app\caprino\page.tsx:301:      const r = await apiFetch(`${API}/caprino/animais`, {
+app\caprino\page.tsx:538:                const r = await apiFetch(`${API}/caprino/pastagem/piquetes`, {
+app\caprino\page.tsx:671:                const ar = await apiFetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+app\caprino\page.tsx:674:                const r = await apiFetch(`${API}/caprino/mortalidade`, {
+app\caprino\page.tsx:785:                await apiFetch(`${API}/caprino/racao/config/${IMOVEL_ID}`, {
+app\caprino\page.tsx:1097:                              await apiFetch(`${API}/caprino/tarefas/${t.id}/concluir?executado_por=usuario`, {method:"POST"});
+app\caprino\page.tsx:1164:                  const ar = await apiFetch(`${API}/caprino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+app\caprino\page.tsx:1168:                const r = await apiFetch(`${API}/caprino/sanitario/aplicar`, {
+app\caprino\page.tsx:1270:                            await apiFetch(`${API}/caprino/alertas/${a.id}/status?novo_status=concluido`, {method:"PATCH"});
+app\compravenda\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\compravenda\page.tsx:148:        apiFetch(`${API}/compravenda/produtos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\compravenda\page.tsx:149:        apiFetch(`${API}/compravenda/compras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\compravenda\page.tsx:150:        apiFetch(`${API}/compravenda/vendas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\compravenda\page.tsx:151:        apiFetch(`${API}/compravenda/fluxo-caixa/${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\compravenda\page.tsx:152:        apiFetch(`${API}/compravenda/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\compravenda\page.tsx:153:        apiFetch(`${API}/compravenda/dre/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\compravenda\page.tsx:154:        apiFetch(`${API}/compravenda/despesas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\compravenda\page.tsx:155:        apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`).then(r => r.ok ? r.json() : null),
+app\compravenda\page.tsx:167:        const ar = await apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`);
+app\compravenda\page.tsx:183:      const r = await apiFetch(`${API}/compravenda/produtos`, {
+app\compravenda\page.tsx:204:      const r = await apiFetch(`${API}/compravenda/compras`, {
+app\compravenda\page.tsx:227:      const r = await apiFetch(`${API}/compravenda/vendas`, {
+app\compravenda\page.tsx:250:      const r = await apiFetch(`${API}/compravenda/despesas`, {
+app\contador\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\contador\page.tsx:184:    apiFetch(`${API}/produtores`)
+app\contador\page.tsx:194:      apiFetch(`${API}/produtores/${selecionado}/lancamentos`).then(r => r.json()),
+app\contador\page.tsx:195:      apiFetch(`${API}/produtor/imoveis?cpf=${produtores.find(p => p.id === selecionado)?.cpf?.replace(/\D/g,"") || ""}`).then(r => r.json()).catch(() => []),
+app\contador\page.tsx:201:        apiFetch(`${API}/imoveis/${im.id}/terceiros/validacao`).then(r => r.json()).catch(() => null)
+app\contador\page.tsx:262:    await apiFetch(`${API}/produtores/${selecionado}/fechar-mes`, { method: "POST" });
+app\contador\page.tsx:263:    const updated = await apiFetch(`${API}/produtores`).then(r => r.json());
+app\contador\page.tsx:493:                      await apiFetch(`${API}/produtores/${produtor.id}`, { method: "DELETE" });
+app\contador\page.tsx:495:                      const updated = await apiFetch(`${API}/produtores`).then(r => r.json());
+app\contratos\acerto\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\contratos\acerto\page.tsx:148:        const r = await apiFetch(`${API}/acertos-contrato/preview-calculo?${params}`);
+app\contratos\acerto\page.tsx:206:      const r = await apiFetch(`${API}/acertos-contrato/`, {
+app\contratos\acerto\page.tsx:226:    await apiFetch(`${API}/acertos-contrato/${id}`, {
+app\contratos\acerto\page.tsx:236:    const r = await apiFetch(`${API}/acertos-contrato/${id}`, { method: "DELETE" });
+app\contratos\acertos\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\contratos\acertos\page.tsx:53:      const r = await apiFetch(`${API}/acertos-contrato?${params}`);
+app\contratos\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\contratos\page.tsx:137:        apiFetch(`${API}/contratos/?fazenda_id=${FAZENDA_ID}`).then(r => r.json()).catch(() => ({ data: [] })),
+app\contratos\page.tsx:138:        apiFetch(`${API}/produtores`).then(r => r.json()).catch(() => []),
+app\contratos\page.tsx:200:      const r = await apiFetch(`${API}/contratos/`, {
+app\contratos\page.tsx:213:          await apiFetch(`${API}/contratos/${contratoId}/condominos`, {
+app\contratos\page.tsx:229:      const r = await apiFetch(`${API}/contratos/${id}/enviar`, { method: "POST" });
+app\contratos\page.tsx:241:    await apiFetch(`${API}/contratos/${id}`, { method: "DELETE" });
+app\dctfweb\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\dctfweb\page.tsx:98:      const r = await apiFetch(`${API}/dctfweb/painel/${IMOVEL_ID}?competencia_inicio=${filtroAno}-01&competencia_fim=${filtroAno}-12`);
+app\dctfweb\page.tsx:108:    const r = await apiFetch(`${API}/dctfweb/declaracoes/${IMOVEL_ID}?ano=${filtroAno}`);
+app\dctfweb\page.tsx:113:    const r = await apiFetch(`${API}/dctfweb/creditos/${IMOVEL_ID}`);
+app\dctfweb\page.tsx:118:    const r = await apiFetch(`${API}/dctfweb/perdcomp/${IMOVEL_ID}`);
+app\dctfweb\page.tsx:153:    const r = await apiFetch(`${API}/dctfweb/declaracoes`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+app\dctfweb\page.tsx:167:    const r = await apiFetch(`${API}/dctfweb/creditos`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+app\dctfweb\page.tsx:177:    const r = await apiFetch(`${API}/dctfweb/declaracoes/${id}`, {
+app\dirpf\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\dirpf\page.tsx:91:      const r = await apiFetch(`${API}/dirpf/apuracao/${IMOVEL_ID}/${ano}?regime=${regime}`);
+app\dirpf\page.tsx:98:    try { setDespesas(await apiFetch(`${API}/dirpf/despesas/${IMOVEL_ID}/${ano}`).then(r => r.json())); }
+app\dirpf\page.tsx:103:    try { setBens(await apiFetch(`${API}/dirpf/bens/${IMOVEL_ID}?ano_base=${ano}`).then(r => r.json())); }
+app\dirpf\page.tsx:108:    try { setPrejuizos(await apiFetch(`${API}/dirpf/prejuizo/${IMOVEL_ID}`).then(r => r.json())); }
+app\dirpf\page.tsx:114:      const c = await apiFetch(`${API}/dirpf/config/${IMOVEL_ID}/${ano}`).then(r => r.json());
+app\dirpf\page.tsx:141:    const r = await apiFetch(`${API}/dirpf/despesas`, {
+app\dirpf\page.tsx:151:    await apiFetch(`${API}/dirpf/despesas/${id}`, { method: "DELETE" });
+app\dirpf\page.tsx:157:    const r = await apiFetch(`${API}/dirpf/bens`, {
+app\dirpf\page.tsx:168:    await apiFetch(`${API}/dirpf/bens/${id}/baixa`, {
+app\dirpf\page.tsx:176:    const r = await apiFetch(`${API}/dirpf/config`, {
+app\efdreinf\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\efdreinf\page.tsx:133:        apiFetch(`${API}/efdreinf/dashboard/${IMOVEL_ID}`).then(r => r.json()),
+app\efdreinf\page.tsx:134:        apiFetch(`${API}/efdreinf/r2055/${IMOVEL_ID}`).then(r => r.json()),
+app\efdreinf\page.tsx:135:        apiFetch(`${API}/efdreinf/r2010/${IMOVEL_ID}`).then(r => r.json()),
+app\efdreinf\page.tsx:136:        apiFetch(`${API}/efdreinf/apuracao/${IMOVEL_ID}`).then(r => r.json()),
+app\efdreinf\page.tsx:137:        apiFetch(`${API}/efdreinf/xml-lotes/${IMOVEL_ID}`).then(r => r.json()),
+app\efdreinf\page.tsx:138:        apiFetch(`${API}/efdreinf/aliquotas`).then(r => r.json()),
+app\efdreinf\page.tsx:178:    const res = await apiFetch(`${API}/efdreinf/r2055`, {
+app\efdreinf\page.tsx:200:    const res = await apiFetch(`${API}/efdreinf/r2010`, {
+app\efdreinf\page.tsx:218:    const res = await apiFetch(`${API}/efdreinf/r2055/from-acerto/${acertoId}`, { method: "POST" });
+app\efdreinf\page.tsx:229:    const res = await apiFetch(`${API}/efdreinf/r2055/${id}`, { method: "DELETE" });
+app\efdreinf\page.tsx:235:    const res = await apiFetch(`${API}/efdreinf/r2010/${id}`, { method: "DELETE" });
+app\esocial\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\esocial\page.tsx:55:      apiFetch(`${API}/produtores/${produtorId}/esocial/resumo`).then(r => r.json()),
+app\esocial\page.tsx:56:      apiFetch(`${API}/produtores/${produtorId}/esocial/s1260`).then(r => r.json()),
+app\esocial\page.tsx:57:      apiFetch(`${API}/produtores/${produtorId}/esocial/s1200`).then(r => r.json()),
+app\esocial\page.tsx:58:      apiFetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`).then(r => r.json()),
+app\esocial\page.tsx:59:      apiFetch(`${API}/produtores/${produtorId}/esocial/config`).then(r => r.json()),
+app\esocial\page.tsx:72:    await apiFetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`, {
+app\esocial\page.tsx:77:    const trab = await apiFetch(`${API}/produtores/${produtorId}/esocial/trabalhadores`).then(r => r.json());
+app\importacao\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\importacao\page.tsx:56:      const r = await apiFetch(`${API}/importacao/preview`, { method: "POST", body: form });
+app\importacao\page.tsx:89:      const r = await apiFetch(`${API}${endpoint}`, { method: "POST", body: form });
+app\lancamentos\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\lancamentos\page.tsx:246:    apiFetch(`${API}/produtores/${PRODUTOR_ID}/lancamentos${q}`)
+app\lancamentos\page.tsx:263:      const res = await apiFetch(`${API}/lancamentos`, {
+app\lancamentos\page.tsx:304:      const res = await apiFetch(`${API}/lancamentos/${editando.id}`, {
+app\lancamentos\page.tsx:331:      const res = await apiFetch(`${API}/lancamentos/${lancamentoId}/documento`, {
+app\livro-caixa\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\livro-caixa\page.tsx:56:      const r = await apiFetch(`${API}/livro-caixa/${IMOVEL_ID}?${params}`);
+app\livro-caixa\page.tsx:64:      const r = await apiFetch(`${API}/livro-caixa/${IMOVEL_ID}/apuracao/${anoBase}`);
+app\livro-caixa\page.tsx:82:    const r = await apiFetch(`${API}/livro-caixa/`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+app\livro-caixa\page.tsx:93:    await apiFetch(`${API}/livro-caixa/${id}`, { method:"DELETE" });
+app\nfe\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\nfe\page.tsx:84:      apiFetch(`${API}/produtores/${produtorId}/nfe/config`).then(r => r.json()),
+app\nfe\page.tsx:85:      apiFetch(`${API}/produtores/${produtorId}/nfe/produtos`).then(r => r.json()),
+app\nfe\page.tsx:86:      apiFetch(`${API}/produtores/${produtorId}/nfe/destinatarios`).then(r => r.json()),
+app\nfe\page.tsx:87:      apiFetch(`${API}/produtores/${produtorId}/nfe/notas`).then(r => r.json()),
+app\nfe\page.tsx:109:    await apiFetch(`${API}/produtores/${produtorId}/nfe/config`, {
+app\nfe\page.tsx:120:    const res = await apiFetch(`${API}/produtores/${produtorId}/nfe/destinatarios`, {
+app\nfe\page.tsx:126:    const dests = await apiFetch(`${API}/produtores/${produtorId}/nfe/destinatarios`).then(r => r.json());
+app\nfe\page.tsx:166:      const res = await apiFetch(`${API}/produtores/${produtorId}/nfe/notas`, {
+app\nfe\page.tsx:192:      apiFetch(`${API}/produtores/${produtorId}/nfe/notas`).then(r => r.json()).then(setNotas);
+app\nfe\page.tsx:203:      const res = await apiFetch(`${API}/nfe/notas/${notaId}/pdf`);
+app\ovino\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\ovino\page.tsx:204:        apiFetch(`${API}/ovino/dashboard/${IMOVEL_ID}`).then(r => r.json()),
+app\ovino\page.tsx:205:        apiFetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()),
+app\ovino\page.tsx:206:        apiFetch(`${API}/ovino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.json()),
+app\ovino\page.tsx:207:        apiFetch(`${API}/ovino/alertas?imovel_id=${IMOVEL_ID}&dias_proximos=14`).then(r => r.json()),
+app\ovino\page.tsx:208:        apiFetch(`${API}/ovino/sanitario/insumos`).then(r => r.json()).catch(() => []),
+app\ovino\page.tsx:209:        apiFetch(`${API}/ovino/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\ovino\page.tsx:210:        apiFetch(`${API}/ovino/racao/previsao/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\ovino\page.tsx:211:        apiFetch(`${API}/ovino/mortalidade/${IMOVEL_ID}?dias=90`).then(r => r.json()).catch(() => []),
+app\ovino\page.tsx:212:        apiFetch(`${API}/ovino/pastagem/alertas/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\ovino\page.tsx:213:        apiFetch(`${API}/ovino/sazonalidade/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\ovino\page.tsx:214:        apiFetch(`${API}/ovino/mortalidade/indicadores/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\ovino\page.tsx:215:        apiFetch(`${API}/ovino/sanitario/carencias?imovel_id=${IMOVEL_ID}`).then(r => r.json()).catch(() => []),
+app\ovino\page.tsx:216:        apiFetch(`${API}/ovino/tarefas?imovel_id=${IMOVEL_ID}&dias_proximos=30`).then(r => r.json()).catch(() => []),
+app\ovino\page.tsx:217:        apiFetch(`${API}/ovino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
+app\ovino\page.tsx:243:      const r = await apiFetch(`${API}/ovino/animais/${editando.id}`, {
+app\ovino\page.tsx:258:          await apiFetch(`${API}/ovino/pesagens`, {
+app\ovino\page.tsx:283:      const r = await apiFetch(`${API}/ovino/animais/reclassificar?imovel_id=${IMOVEL_ID}`, {
+app\ovino\page.tsx:301:      const r = await apiFetch(`${API}/ovino/animais`, {
+app\ovino\page.tsx:547:                const r = await apiFetch(`${API}/ovino/pastagem/piquetes`, {
+app\ovino\page.tsx:680:                const ar = await apiFetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+app\ovino\page.tsx:683:                const r = await apiFetch(`${API}/ovino/mortalidade`, {
+app\ovino\page.tsx:794:                await apiFetch(`${API}/ovino/racao/config/${IMOVEL_ID}`, {
+app\ovino\page.tsx:1106:                              await apiFetch(`${API}/ovino/tarefas/${t.id}/concluir?executado_por=usuario`, {method:"POST"});
+app\ovino\page.tsx:1173:                  const ar = await apiFetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}`).then(r=>r.json());
+app\ovino\page.tsx:1177:                const r = await apiFetch(`${API}/ovino/sanitario/aplicar`, {
+app\ovino\page.tsx:1279:                            await apiFetch(`${API}/ovino/alertas/${a.id}/status?novo_status=concluido`, {method:"PATCH"});
+app\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\page.tsx:69:        apiFetch(`${API}/produtores/1/lancamentos`).then(r => r.json()).catch(() => []),
+app\page.tsx:70:        apiFetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()).catch(() => []),
+app\page.tsx:78:      apiFetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
+app\page.tsx:86:      const resSafras = await apiFetch(`${API}/agricultura/imoveis/1/safras/resumo`);
+app\piscicultura\page.tsx:1:import { apiFetch } from "@/lib/api";
+app\piscicultura\page.tsx:160:      const r = await apiFetch(`${API}/piscicultura/ciclos?imovel_id=${IMOVEL_ID}`);
+app\piscicultura\page.tsx:170:        apiFetch(`${API}/piscicultura/dashboard/${cicloId}`).then(r => r.json()),
+app\piscicultura\page.tsx:171:        apiFetch(`${API}/piscicultura/registros-diarios/${cicloId}`).then(r => r.json()),
+app\piscicultura\page.tsx:172:        apiFetch(`${API}/piscicultura/biometrias/${cicloId}`).then(r => r.json()),
+app\piscicultura\page.tsx:184:    apiFetch(`${API}/piscicultura/preco-medio-racao/${c.id}`)
+app\piscicultura\page.tsx:199:      const r = await apiFetch(`${API}/piscicultura/ciclos`, {
+app\piscicultura\page.tsx:233:      const r = await apiFetch(`${API}/piscicultura/registros-diarios`, {
+app\piscicultura\page.tsx:264:      const r = await apiFetch(`${API}/piscicultura/biometrias`, {
+app\piscicultura\page.tsx:287:      const r = await apiFetch(`${API}/piscicultura/compras-insumos`, {
+app\piscicultura\page.tsx:314:      const r = await apiFetch(`${API}/piscicultura/despescas`, {
+app\rebanho\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\rebanho\page.tsx:99:        const r = await apiFetch(`${API}${e.fetchUrl}`);
+app\relatorio\page.tsx:1:import { apiFetch } from "@/lib/api";
+app\relatorio\page.tsx:40:      apiFetch(`${API}/produtores/${pid}/lancamentos?atividade=rural`).then(r => r.json()),
+app\relatorio\page.tsx:41:      apiFetch(`${API}/produtores`).then(r => r.json()),
+app\simulador-regime\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\simulador-regime\page.tsx:116:      const r = await apiFetch(`${API}/simulador-regime/lancamentos/${IMOVEL_ID}`);
+app\simulador-regime\page.tsx:129:      const r = await apiFetch(`${API}/simulador-regime/simulacao`, {
+app\simulador-regime\page.tsx:149:      const r = await apiFetch(`${API}/simulador-regime/lancamento`, {
+app\simulador-regime\page.tsx:175:    await apiFetch(`${API}/simulador-regime/lancamento/${IMOVEL_ID}/${comp}`, { method: "DELETE" });
+app\suino\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\suino\page.tsx:142:        apiFetch(`${API}/suino/dashboard/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\suino\page.tsx:143:        apiFetch(`${API}/suino/animais?imovel_id=${IMOVEL_ID}&status=${filtroStatus}`).then(r => r.ok ? r.json() : []),
+app\suino\page.tsx:144:        apiFetch(`${API}/suino/lotes?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\suino\page.tsx:145:        apiFetch(`${API}/suino/alertas?imovel_id=${IMOVEL_ID}&status=pendente`).then(r => r.ok ? r.json() : []),
+app\suino\page.tsx:146:        apiFetch(`${API}/suino/indicadores/${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
+app\suino\page.tsx:147:        apiFetch(`${API}/suino/racao/previsao/${IMOVEL_ID}`).then(r => r.ok ? r.json() : null),
+app\suino\page.tsx:148:        apiFetch(`${API}/suino/sanitario/historico?imovel_id=${IMOVEL_ID}&limit=30`).then(r => r.ok ? r.json() : []),
+app\suino\page.tsx:164:    const r = await apiFetch(`${API}/suino/animais?imovel_id=${IMOVEL_ID}&status=${filtroStatus}`);
+app\suino\page.tsx:172:      const r = await apiFetch(`${API}/suino/animais`, {
+app\suino\page.tsx:204:      const r = await apiFetch(`${API}/suino/animais/${editando.id}`, {
+app\suino\page.tsx:227:      const r = await apiFetch(`${API}/suino/lotes`, {
+app\suino\page.tsx:259:      const r = await apiFetch(`${API}/suino/saude`, {
+app\suino\page.tsx:280:    await apiFetch(`${API}/suino/alertas/${id}/status`, {
+app\terceiros\page.tsx:3:import { apiFetch } from "@/lib/api";
+app\terceiros\page.tsx:129:    apiFetch(`${API}/imoveis/${imovelId}/terceiros`)
+app\terceiros\page.tsx:135:      apiFetch(`${API}/produtores`)
+app\terceiros\page.tsx:140:          apiFetch(`${API}/produtor/imoveis?cpf=${p.cpf?.replace(/\D/g, "")}`)
+app\terceiros\page.tsx:160:        const res = await apiFetch(`${API}/produtores`);
+app\terceiros\page.tsx:172:      await apiFetch(`${API}/imoveis/${imovelId}/tipo-exploracao?tipo=${tipoExploracao}&participacao=${minhaParticipacao}`, { method: "PUT" });
+app\terceiros\page.tsx:177:        await apiFetch(`${API}/imoveis/${imovelId}/participacoes`, {
+app\terceiros\page.tsx:227:        await apiFetch(`${API}/terceiros/${id}`, {
+app\terceiros\page.tsx:237:      const terc = await apiFetch(`${API}/imoveis/${imovelId}/terceiros`).then(r => r.json());
+app\terceiros\page.tsx:260:      const res = await apiFetch(`${API}/imoveis/${imovelId}/terceiros`, {
+app\terceiros\page.tsx:273:      await apiFetch(`${API}/terceiros/${id}`, {
+app\terceiros\page.tsx:291:    await apiFetch(`${API}/terceiros/${id}`, { method: "DELETE" });
+app\votar\[lancamento_id]\page.tsx:2:import { apiFetch } from "@/lib/api";
+app\votar\[lancamento_id]\page.tsx:93:    apiFetch(`${API}/contratos/${contratoId}/lancamentos?status=em_votacao`)

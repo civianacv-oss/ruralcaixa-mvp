@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-const WHATSAPP_BOT = "+55 (98) 3022-3992";
+const WHATSAPP_BOT = "+55 (98) 99200-2705";
 
 type Tab = "telegram" | "importacao";
 

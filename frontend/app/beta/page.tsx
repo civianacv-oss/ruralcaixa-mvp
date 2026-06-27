@@ -3,7 +3,7 @@ import React from "react";
 // frontend/app/beta/page.tsx — RuralCaixa MVP
 // Página pública de apresentação para testadores.
 
-const WHATSAPP_NUM = "5598930223992";
+const WHATSAPP_NUM = "5598992002705";
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUM}`;
 const APP_URL = "https://ruralcaixa-mvp.vercel.app";
 
@@ -146,7 +146,7 @@ export default function BetaPage() {
             background: "#25D366", color: "#fff", textDecoration: "none",
             padding: "12px 24px", borderRadius: 10, fontWeight: 700, fontSize: 14,
           }}>
-            <span>📲</span> Abrir WhatsApp — +55 (98) 3022-3992
+            <span>📲</span> Abrir WhatsApp — +55 (98) 99200-2705
           </a>
         </div>
       </Section>
