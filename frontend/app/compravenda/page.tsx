@@ -136,6 +136,9 @@ export default function CompraVendaPage() {
   const [novaDespesa, setNovaDespesa] = useState({ descricao: "", categoria: "operacional", valor: "", data_lancamento: new Date().toISOString().slice(0, 10) });
 
   const [salvando, setSalvando] = useState(false);
+  const [modalImport, setModalImport] = useState<'compras'|'vendas'|null>(null);
+  const [importando, setImportando] = useState(false);
+  const [importResult, setImportResult] = useState<{importados:number;erros:any[];total_linhas:number}|null>(null);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => { carregarTudo(); }, []);
@@ -194,6 +197,20 @@ export default function CompraVendaPage() {
       } else { const e = await r.json(); showMsg(e.detail || "Erro.", false); }
     } catch { showMsg("Erro de conexão.", false); }
     setSalvando(false);
+  }
+
+  async function importarCV(file: File, tipo: 'compras'|'vendas') {
+    setImportando(true);
+    const fd = new FormData();
+    fd.append('arquivo', file);
+    const ep = tipo === 'compras' ? 'compravenda-compras' : 'compravenda-vendas';
+    try {
+      const r = await apiFetch(`${API}/importacao/${ep}`, { method:'POST', body:fd });
+      const data = await r.json();
+      setImportResult(data);
+      if (data.importados > 0) carregarTudo();
+    } catch { alert('Erro ao importar'); }
+    setImportando(false);
   }
 
   async function registrarCompra() {
@@ -367,7 +384,11 @@ export default function CompraVendaPage() {
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#fff", borderRadius: 10, padding: 6, border: "1px solid #e5e7eb", overflowX: "auto" }}>
           {abas.map(a => (
-            <button key={a.id} onClick={() => setAba(a.id)}
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <button onClick={() => setModalImport("compras")} style={{padding:"6px 12px",borderRadius:6,border:"1px solid #2a4a8a",background:"#e8eef8",color:"#2a4a8a",fontSize:12,fontWeight:600,cursor:"pointer"}}>📂 Importar compras</button>
+            <button onClick={() => setModalImport("vendas")} style={{padding:"6px 12px",borderRadius:6,border:"1px solid #2a5a2a",background:"#e8f5e8",color:"#2a5a2a",fontSize:12,fontWeight:600,cursor:"pointer"}}>📂 Importar vendas</button>
+          </div>
+          <button key={a.id} onClick={() => setAba(a.id)}
               style={{ padding: "8px 16px", borderRadius: 7, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
                 background: aba === a.id ? COR : "transparent",
                 color: aba === a.id ? "#fff" : "#6b7280",
@@ -972,5 +993,41 @@ export default function CompraVendaPage() {
 
       </div>
     </div>
+      {modalImport && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+          onClick={e => { if (e.target===e.currentTarget) { setModalImport(null); setImportResult(null); } }}>
+          <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:440,padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontSize:16,fontWeight:700,color:'#1a2e1a'}}>📂 Importar {modalImport === 'compras' ? 'Compras' : 'Vendas'}</div>
+              <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{background:'none',border:'none',fontSize:22,cursor:'pointer'}}>×</button>
+            </div>
+            {!importResult ? (
+              <>
+                <div style={{background:'#f0f8ea',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#2a5a2a'}}>
+                  <strong>Colunas esperadas:</strong><br/>
+                  {modalImport==='compras' ? 'produto, quantidade, valor_unitario, data_compra, fornecedor, nota_fiscal, regime' : 'produto, quantidade, valor_unitario, data_venda, comprador, nota_fiscal'}
+                </div>
+                <div style={{border:'2px dashed #c8d8c0',borderRadius:10,padding:28,textAlign:'center',cursor:'pointer',background:'#faf8f4'}}
+                  onClick={() => document.getElementById('imp-cv-input')?.click()}>
+                  <div style={{fontSize:32,marginBottom:8}}>📄</div>
+                  <div style={{fontSize:14,fontWeight:600,color:'#2a5a2a'}}>{importando ? 'Importando...' : 'Clique para selecionar'}</div>
+                  <div style={{fontSize:12,color:'#8a9a8a'}}>Excel (.xlsx) ou CSV</div>
+                  <input id='imp-cv-input' type='file' accept='.xlsx,.xls,.csv' style={{display:'none'}}
+                    onChange={e => { if (e.target.files?.[0] && modalImport) importarCV(e.target.files[0], modalImport); }} />
+                </div>
+              </>
+            ) : (
+              <div style={{textAlign:'center',padding:'16px 0'}}>
+                <div style={{fontSize:44,marginBottom:12}}>{importResult.erros.length===0?'✅':'⚠️'}</div>
+                <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{importResult.importados} registros importados</div>
+                <div style={{fontSize:13,color:'#6a7a6a',marginBottom:12}}>de {importResult.total_linhas} linhas · {importResult.erros.length} erros</div>
+                {importResult.erros.slice(0,3).map((e:any,i:number) => <div key={i} style={{fontSize:12,color:'#8a2a2a',marginBottom:4}}>Linha {e.linha}: {e.msg}</div>)}
+                <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{marginTop:12,padding:'9px 20px',borderRadius:10,border:'none',background:'#2a5a2a',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer'}}>Fechar</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
   );
 }

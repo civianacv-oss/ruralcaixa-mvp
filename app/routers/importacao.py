@@ -582,3 +582,195 @@ async def importar_fornecedores(
         "erros": erros,
         "total_linhas": len(linhas),
     }
+
+# ── Importação de compras e vendas ──────────────────────────────────
+
+MAPA_CV_PRODUTO = ["produto","animal","item","nome","product","name"]
+MAPA_CV_QTD     = ["quantidade","qtd","quant","qty","cabecas","unidades"]
+MAPA_CV_VALOR   = ["valor_unitario","valor","preco","price","value","vlr_unit","vl_unit"]
+MAPA_CV_DATA    = ["data","date","dt","data_compra","data_venda","data_lancamento"]
+MAPA_CV_FORN    = ["fornecedor","supplier","vendedor","origem","procedencia"]
+MAPA_CV_COMP    = ["comprador","buyer","destino","cliente"]
+MAPA_CV_NF      = ["nota_fiscal","nf","nota","invoice","nfe","numero_nf"]
+MAPA_CV_REGIME  = ["regime","condicao","tipo","sistema","criacao"]
+MAPA_CV_ESP     = ["especie","species","tipo_animal","animal"]
+
+def mapear_colunas_cv(headers):
+    mapa = {}
+    for h in headers:
+        if fuzzy_match(h, MAPA_CV_PRODUTO) and "prod" not in mapa: mapa["prod"] = h
+        elif fuzzy_match(h, MAPA_CV_QTD)  and "qtd"  not in mapa: mapa["qtd"]  = h
+        elif fuzzy_match(h, MAPA_CV_VALOR) and "vlr" not in mapa: mapa["vlr"]  = h
+        elif fuzzy_match(h, MAPA_CV_DATA)  and "data" not in mapa: mapa["data"] = h
+        elif fuzzy_match(h, MAPA_CV_FORN)  and "forn" not in mapa: mapa["forn"] = h
+        elif fuzzy_match(h, MAPA_CV_COMP)  and "comp" not in mapa: mapa["comp"] = h
+        elif fuzzy_match(h, MAPA_CV_NF)    and "nf"   not in mapa: mapa["nf"]   = h
+        elif fuzzy_match(h, MAPA_CV_REGIME)and "reg"  not in mapa: mapa["reg"]  = h
+        elif fuzzy_match(h, MAPA_CV_ESP)   and "esp"  not in mapa: mapa["esp"]  = h
+    return mapa
+
+def parse_num_cv(v):
+    try: return float(str(v).replace(",",".").replace(" ","").replace("R$","").replace("$",""))
+    except: return 0.0
+
+def detectar_regime(val):
+    v = str(val).lower()
+    if any(x in v for x in ["confi","estab","baia","sist"]): return "confinamento"
+    return "pasto"
+
+def detectar_especie(val):
+    v = str(val).lower()
+    if any(x in v for x in ["bov","gado","nelore","angus","zebu"]): return "bovino"
+    if any(x in v for x in ["suino","porco","leit"]): return "suino"
+    if any(x in v for x in ["ovin","ovelho"]): return "ovino"
+    if any(x in v for x in ["caprin","cabra","bode"]): return "caprino"
+    if any(x in v for x in ["aves","frango","galinha"]): return "aves"
+    return "bovino"
+
+@router.post("/importacao/compravenda-compras")
+async def importar_compras(
+    arquivo: UploadFile = File(...),
+    imovel_id: int = 1,
+    request: Request = None,
+):
+    conteudo = await arquivo.read()
+    nome_arq = arquivo.filename or ""
+    try:
+        if nome_arq.endswith(".csv"):
+            import io, csv
+            linhas = list(csv.DictReader(io.StringIO(conteudo.decode("utf-8","replace"))))
+            headers = list(linhas[0].keys()) if linhas else []
+        else:
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(conteudo), data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            headers = [str(h or "").strip() for h in rows[0]]
+            linhas = [dict(zip(headers,[str(v or "").strip() for v in r])) for r in rows[1:] if any(v for v in r)]
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao ler arquivo: {e}")
+
+    mapa = mapear_colunas_cv(headers)
+    if "prod" not in mapa:
+        raise HTTPException(400, f"Coluna produto/animal nao encontrada. Colunas: {headers}")
+
+    from app.db import get_db
+    importados = 0
+    erros = []
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for i, row in enumerate(linhas, start=2):
+                prod_nome = row.get(mapa.get("prod",""),"").strip()
+                if not prod_nome: continue
+                try:
+                    qtd   = parse_num_cv(row.get(mapa.get("qtd",""),"1") or "1")
+                    vlr   = parse_num_cv(row.get(mapa.get("vlr",""),"0") or "0")
+                    data  = parse_data(row.get(mapa.get("data",""),"")) or str(date.today())
+                    forn  = row.get(mapa.get("forn",""),"") or None
+                    nf    = row.get(mapa.get("nf",""),"") or None
+                    reg   = detectar_regime(row.get(mapa.get("reg",""),"pasto"))
+                    esp   = detectar_especie(row.get(mapa.get("esp",""), prod_nome))
+
+                    # Busca ou cria produto
+                    cur.execute(
+                        "SELECT id FROM compravenda_produtos WHERE imovel_id=%s AND lower(nome)=lower(%s) LIMIT 1",
+                        (imovel_id, prod_nome)
+                    )
+                    prod = cur.fetchone()
+                    if prod:
+                        prod_id = prod["id"] if isinstance(prod,dict) else prod[0]
+                    else:
+                        cur.execute(
+                            "INSERT INTO compravenda_produtos (imovel_id,nome,especie,unidade)"
+                            " VALUES (%s,%s,%s,'cabeca') RETURNING id",
+                            (imovel_id, prod_nome, esp)
+                        )
+                        prod_id = cur.fetchone()["id"]
+
+                    cur.execute(
+                        "INSERT INTO compravenda_compras"
+                        " (imovel_id,produto_id,quantidade,valor_unitario,valor_total,data_compra,fornecedor,nota_fiscal,regime)"
+                        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (imovel_id,prod_id,qtd,vlr,vlr*qtd,data,forn,nf,reg)
+                    )
+                    importados += 1
+                except Exception as e:
+                    erros.append({"linha":i,"msg":str(e)})
+            conn.commit()
+
+    return {"importados": importados, "erros": erros, "total_linhas": len(linhas)}
+
+
+@router.post("/importacao/compravenda-vendas")
+async def importar_vendas(
+    arquivo: UploadFile = File(...),
+    imovel_id: int = 1,
+    request: Request = None,
+):
+    conteudo = await arquivo.read()
+    nome_arq = arquivo.filename or ""
+    try:
+        if nome_arq.endswith(".csv"):
+            import io, csv
+            linhas = list(csv.DictReader(io.StringIO(conteudo.decode("utf-8","replace"))))
+            headers = list(linhas[0].keys()) if linhas else []
+        else:
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(conteudo), data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            headers = [str(h or "").strip() for h in rows[0]]
+            linhas = [dict(zip(headers,[str(v or "").strip() for v in r])) for r in rows[1:] if any(v for v in r)]
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao ler arquivo: {e}")
+
+    mapa = mapear_colunas_cv(headers)
+    if "prod" not in mapa:
+        raise HTTPException(400, f"Coluna produto/animal nao encontrada. Colunas: {headers}")
+
+    from app.db import get_db
+    importados = 0
+    erros = []
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for i, row in enumerate(linhas, start=2):
+                prod_nome = row.get(mapa.get("prod",""),"").strip()
+                if not prod_nome: continue
+                try:
+                    qtd   = parse_num_cv(row.get(mapa.get("qtd",""),"1") or "1")
+                    vlr   = parse_num_cv(row.get(mapa.get("vlr",""),"0") or "0")
+                    data  = parse_data(row.get(mapa.get("data",""),"")) or str(date.today())
+                    comp  = row.get(mapa.get("comp",""),"") or None
+                    nf    = row.get(mapa.get("nf",""),"") or None
+
+                    # Busca produto
+                    cur.execute(
+                        "SELECT id FROM compravenda_produtos WHERE imovel_id=%s AND lower(nome)=lower(%s) LIMIT 1",
+                        (imovel_id, prod_nome)
+                    )
+                    prod = cur.fetchone()
+                    if not prod:
+                        erros.append({"linha":i,"msg":f"Produto '{prod_nome}' nao encontrado — importe as compras primeiro"})
+                        continue
+                    prod_id = prod["id"] if isinstance(prod,dict) else prod[0]
+
+                    # Custo médio
+                    cur.execute("SELECT custo_medio FROM compravenda_produtos WHERE id=%s",(prod_id,))
+                    p = cur.fetchone()
+                    custo_unit = float(p["custo_medio"] or 0) if p else 0
+                    custo_total = custo_unit * qtd
+                    lucro = (vlr - custo_unit) * qtd
+                    margem = (lucro / (vlr*qtd) * 100) if vlr*qtd > 0 else 0
+
+                    cur.execute(
+                        "INSERT INTO compravenda_vendas"
+                        " (imovel_id,produto_id,quantidade,valor_unitario,valor_total,custo_total,lucro_bruto,margem_pct,data_venda,comprador,nota_fiscal)"
+                        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (imovel_id,prod_id,qtd,vlr,vlr*qtd,custo_total,lucro,margem,data,comp,nf)
+                    )
+                    importados += 1
+                except Exception as e:
+                    erros.append({"linha":i,"msg":str(e)})
+            conn.commit()
+
+    return {"importados": importados, "erros": erros, "total_linhas": len(linhas)}
