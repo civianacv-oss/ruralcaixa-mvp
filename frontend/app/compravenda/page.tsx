@@ -157,10 +157,9 @@ export default function CompraVendaPage() {
       if (Array.isArray(compRes)) setCompras(compRes);
       if (Array.isArray(vendRes)) setVendas(vendRes);
       if (Array.isArray(fluxRes)) setFluxo(fluxRes);
-      if (dashRes && typeof dashRes === "object") setDashboard(dashRes);
-      if (dreRes && typeof dreRes === "object") setDre(dreRes);
+      if (dashRes && typeof dashRes === "object" && !Array.isArray(dashRes)) setDashboard(dashRes as Dashboard);
+      if (dreRes && typeof dreRes === "object" && !Array.isArray(dreRes)) setDre(dreRes as any);
       if (Array.isArray(despRes)) setDespesas(despRes);
-      const alertRes = [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes][7] as PromiseSettledResult<AlertasResponse | null> | undefined;
       // fetch alertas separately since it's the 8th item
       try {
         const ar = await apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`);
