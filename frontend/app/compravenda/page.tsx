@@ -153,13 +153,13 @@ export default function CompraVendaPage() {
         apiFetch(`${API}/compravenda/despesas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
         apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`).then(r => r.ok ? r.json() : null),
       ]);
-      if (prodRes.status === "fulfilled") setProdutos(prodRes.value || []);
-      if (compRes.status === "fulfilled") setCompras(compRes.value || []);
-      if (vendRes.status === "fulfilled") setVendas(vendRes.value || []);
-      if (fluxRes.status === "fulfilled") setFluxo(fluxRes.value || []);
-      if (dashRes.status === "fulfilled") setDashboard(dashRes.value);
-      if (dreRes.status === "fulfilled") setDre(dreRes.value);
-      if (despRes.status === "fulfilled") setDespesas(despRes.value || []);
+      if (Array.isArray(prodRes)) setProdutos(prodRes);
+      if (Array.isArray(compRes)) setCompras(compRes);
+      if (Array.isArray(vendRes)) setVendas(vendRes);
+      if (Array.isArray(fluxRes)) setFluxo(fluxRes);
+      if (dashRes && typeof dashRes === "object") setDashboard(dashRes);
+      if (dreRes && typeof dreRes === "object") setDre(dreRes);
+      if (Array.isArray(despRes)) setDespesas(despRes);
       const alertRes = [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes][7] as PromiseSettledResult<AlertasResponse | null> | undefined;
       // fetch alertas separately since it's the 8th item
       try {
