@@ -457,61 +457,53 @@ async def importar_rebanho(
         "erros": erros[:20],
     }
 
-# ── Importação de insumos ────────────────────────────────────────────
+# ── Importação de fornecedores ───────────────────────────────────────
 
-MAPA_INSUMO_NOME   = ["nome","name","insumo","produto","descricao","item"]
-MAPA_INSUMO_CAT    = ["categoria","category","cat","tipo","type"]
-MAPA_INSUMO_UNID   = ["unidade","unit","un","und","medida"]
-MAPA_INSUMO_ORIG   = ["origem","origin","fonte","source"]
-MAPA_INSUMO_EST    = ["estoque_atual","estoque","stock","quantidade","qtd","saldo"]
-MAPA_INSUMO_MIN    = ["estoque_minimo","minimo","min","estoque_min","qtd_min"]
-MAPA_INSUMO_IDEAL  = ["estoque_ideal","ideal","estoque_max","qtd_ideal"]
-MAPA_INSUMO_PRECO  = ["preco_estimado","preco","price","valor","custo","vlr"]
+MAPA_FORN_NOME  = ["nome","name","fornecedor","razao_social","empresa","supplier"]
+MAPA_FORN_CNPJ  = ["cnpj","cpf","cnpj_cpf","documento","doc","cgc"]
+MAPA_FORN_WPP   = ["whatsapp","wpp","celular","telefone","fone","phone","contato"]
+MAPA_FORN_TEL   = ["telegram","tg","telegram_id"]
+MAPA_FORN_EMAIL = ["email","e-mail","mail","correio"]
+MAPA_FORN_END   = ["endereco","endereço","address","logradouro","cidade","municipio"]
+MAPA_FORN_PRAZO = ["prazo","prazo_entrega","lead_time","dias","delivery"]
+MAPA_FORN_PGTO  = ["pagamento","forma_pagamento","payment","condicao"]
+MAPA_FORN_OBS   = ["observacao","observações","obs","notas","notes","comentario"]
 
-CAT_ALIASES = {
-    "sement":"sementes","adubo":"adubos","fertiliz":"adubos","defensiv":"defensivos",
-    "racao":"racao","rac":"racao","sal":"sal_mineral","vacin":"vacinas",
-    "medic":"medicamentos","combustiv":"combustivel","diesel":"combustivel",
-    "peca":"pecas_maquinas","maquina":"pecas_maquinas","silag":"silagem","feno":"feno",
+PGTO_ALIASES = {
+    "vista":"a_vista","avista":"a_vista","30":"30_dias","60":"60_dias","90":"90_dias",
+    "consig":"consignacao","prazo":"30_dias",
 }
 
-def detectar_categoria(val: str) -> str:
-    v = val.lower().strip()
-    for k, cat in CAT_ALIASES.items():
+def detectar_pagamento(val: str) -> str:
+    v = val.lower().strip().replace(" ","").replace("/","")
+    for k, pgto in PGTO_ALIASES.items():
         if k in v:
-            return cat
-    return "outros"
+            return pgto
+    return "a_vista"
 
-def detectar_origem(val: str) -> str:
-    v = val.lower().strip()
-    if any(x in v for x in ["prop","prod","fazend","propri"]):
-        return "proprio"
-    if any(x in v for x in ["doa","troc","grant"]):
-        return "doacao"
-    return "comprado"
-
-def mapear_colunas_insumo(headers: list) -> dict:
+def mapear_colunas_forn(headers: list) -> dict:
     mapa = {}
     for h in headers:
-        if fuzzy_match(h, MAPA_INSUMO_NOME)  and "nome"   not in mapa: mapa["nome"]   = h
-        elif fuzzy_match(h, MAPA_INSUMO_CAT) and "cat"    not in mapa: mapa["cat"]    = h
-        elif fuzzy_match(h, MAPA_INSUMO_UNID)and "unid"   not in mapa: mapa["unid"]   = h
-        elif fuzzy_match(h, MAPA_INSUMO_ORIG)and "orig"   not in mapa: mapa["orig"]   = h
-        elif fuzzy_match(h, MAPA_INSUMO_EST) and "est"    not in mapa: mapa["est"]    = h
-        elif fuzzy_match(h, MAPA_INSUMO_MIN) and "min"    not in mapa: mapa["min"]    = h
-        elif fuzzy_match(h, MAPA_INSUMO_IDEAL)and"ideal"  not in mapa: mapa["ideal"]  = h
-        elif fuzzy_match(h, MAPA_INSUMO_PRECO)and"preco"  not in mapa: mapa["preco"]  = h
+        if fuzzy_match(h, MAPA_FORN_NOME)  and "nome"  not in mapa: mapa["nome"]  = h
+        elif fuzzy_match(h, MAPA_FORN_CNPJ) and "cnpj" not in mapa: mapa["cnpj"]  = h
+        elif fuzzy_match(h, MAPA_FORN_WPP)  and "wpp"  not in mapa: mapa["wpp"]   = h
+        elif fuzzy_match(h, MAPA_FORN_TEL)  and "tg"   not in mapa: mapa["tg"]    = h
+        elif fuzzy_match(h, MAPA_FORN_EMAIL)and "email" not in mapa: mapa["email"] = h
+        elif fuzzy_match(h, MAPA_FORN_END)  and "end"  not in mapa: mapa["end"]   = h
+        elif fuzzy_match(h, MAPA_FORN_PRAZO)and "prazo" not in mapa:mapa["prazo"] = h
+        elif fuzzy_match(h, MAPA_FORN_PGTO) and "pgto" not in mapa: mapa["pgto"]  = h
+        elif fuzzy_match(h, MAPA_FORN_OBS)  and "obs"  not in mapa: mapa["obs"]   = h
     return mapa
 
-@router.post("/importacao/insumos")
-async def importar_insumos(
+@router.post("/importacao/fornecedores")
+async def importar_fornecedores(
     arquivo: UploadFile = File(...),
     request: Request = None,
 ):
     conteudo = await arquivo.read()
-    nome = arquivo.filename or ""
+    nome_arq = arquivo.filename or ""
     try:
-        if nome.endswith(".csv"):
+        if nome_arq.endswith(".csv"):
             import io, csv
             linhas = list(csv.DictReader(io.StringIO(conteudo.decode("utf-8", errors="replace"))))
             headers = list(linhas[0].keys()) if linhas else []
@@ -525,7 +517,7 @@ async def importar_insumos(
     except Exception as e:
         raise HTTPException(400, f"Erro ao ler arquivo: {e}")
 
-    mapa = mapear_colunas_insumo(headers)
+    mapa = mapear_colunas_forn(headers)
     if "nome" not in mapa:
         raise HTTPException(400, f"Coluna 'nome' nao encontrada. Colunas: {headers}")
 
@@ -535,51 +527,49 @@ async def importar_insumos(
     with get_db() as conn:
         with conn.cursor() as cur:
             for i, row in enumerate(linhas, start=2):
-                nome_ins = row.get(mapa.get("nome",""), "").strip()
-                if not nome_ins:
+                nome_forn = row.get(mapa.get("nome",""), "").strip()
+                if not nome_forn:
                     continue
                 try:
-                    cat_raw  = row.get(mapa.get("cat",""),  "outros")
-                    unid_raw = row.get(mapa.get("unid",""), "unidade")
-                    orig_raw = row.get(mapa.get("orig",""), "comprado")
-                    est_raw  = row.get(mapa.get("est",""),  "0")
-                    min_raw  = row.get(mapa.get("min",""),  "0")
-                    ideal_raw= row.get(mapa.get("ideal",""),"0")
-                    preco_raw= row.get(mapa.get("preco",""),"")
+                    cnpj  = row.get(mapa.get("cnpj",""),  "") or None
+                    wpp   = row.get(mapa.get("wpp",""),   "") or None
+                    tg    = row.get(mapa.get("tg",""),    "") or None
+                    email = row.get(mapa.get("email",""), "") or None
+                    end   = row.get(mapa.get("end",""),   "") or None
+                    obs   = row.get(mapa.get("obs",""),   "") or None
+                    pgto_raw  = row.get(mapa.get("pgto",""),  "a_vista")
+                    prazo_raw = row.get(mapa.get("prazo",""), "7")
 
-                    categoria = detectar_categoria(cat_raw) if cat_raw else "outros"
-                    unidade   = unid_raw.lower().strip() or "unidade"
-                    origem    = detectar_origem(orig_raw) if orig_raw else "comprado"
+                    pgto = detectar_pagamento(pgto_raw) if pgto_raw else "a_vista"
+                    try: prazo = int(float(prazo_raw)) if prazo_raw else 7
+                    except: prazo = 7
 
-                    def parse_num(v):
-                        try: return float(str(v).replace(",",".").replace(" ",""))
-                        except: return 0.0
-
-                    estoque_atual = parse_num(est_raw)
-                    estoque_min   = parse_num(min_raw)
-                    estoque_ideal = parse_num(ideal_raw)
-                    preco = parse_num(preco_raw) if preco_raw else None
+                    # Limpa WhatsApp — só números
+                    if wpp:
+                        wpp = re.sub(r"\D", "", wpp)
+                        if not wpp.startswith("55") and len(wpp) <= 11:
+                            wpp = "55" + wpp
 
                     # Verifica se já existe
                     cur.execute(
-                        "SELECT id FROM insumos WHERE fazenda_id=1 AND lower(nome)=lower(%s) LIMIT 1",
-                        (nome_ins,)
+                        "SELECT id FROM fornecedores WHERE fazenda_id=1 AND lower(nome)=lower(%s) LIMIT 1",
+                        (nome_forn,)
                     )
                     existente = cur.fetchone()
                     if existente:
+                        eid = existente["id"] if isinstance(existente, dict) else existente[0]
                         cur.execute(
-                            "UPDATE insumos SET categoria=%s,unidade=%s,origem=%s,"
-                            "estoque_minimo=%s,estoque_ideal=%s,preco_estimado=%s,atualizado_em=NOW()"
-                            " WHERE id=%s",
-                            (categoria,unidade,origem,estoque_min,estoque_ideal,preco,
-                             existente["id"] if isinstance(existente,dict) else existente[0])
+                            "UPDATE fornecedores SET cnpj_cpf=%s,whatsapp=%s,telegram=%s,"
+                            "email=%s,endereco=%s,forma_pagamento=%s,prazo_entrega_dias=%s,"
+                            "observacoes=%s,atualizado_em=NOW() WHERE id=%s",
+                            (cnpj,wpp,tg,email,end,pgto,prazo,obs,eid)
                         )
                     else:
                         cur.execute(
-                            "INSERT INTO insumos (fazenda_id,nome,categoria,unidade,origem,"
-                            "estoque_atual,estoque_minimo,estoque_ideal,preco_estimado,reposicao_modo)"
-                            " VALUES (1,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
-                            (nome_ins,categoria,unidade,origem,estoque_atual,estoque_min,estoque_ideal,preco)
+                            "INSERT INTO fornecedores (fazenda_id,nome,cnpj_cpf,whatsapp,telegram,"
+                            "email,endereco,forma_pagamento,prazo_entrega_dias,observacoes)"
+                            " VALUES (1,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            (nome_forn,cnpj,wpp,tg,email,end,pgto,prazo,obs)
                         )
                     importados += 1
                 except Exception as e:
