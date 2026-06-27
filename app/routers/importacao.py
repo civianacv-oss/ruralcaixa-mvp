@@ -456,3 +456,139 @@ async def importar_rebanho(
         "ignorados": len(erros),
         "erros": erros[:20],
     }
+
+# ── Importação de insumos ────────────────────────────────────────────
+
+MAPA_INSUMO_NOME   = ["nome","name","insumo","produto","descricao","item"]
+MAPA_INSUMO_CAT    = ["categoria","category","cat","tipo","type"]
+MAPA_INSUMO_UNID   = ["unidade","unit","un","und","medida"]
+MAPA_INSUMO_ORIG   = ["origem","origin","fonte","source"]
+MAPA_INSUMO_EST    = ["estoque_atual","estoque","stock","quantidade","qtd","saldo"]
+MAPA_INSUMO_MIN    = ["estoque_minimo","minimo","min","estoque_min","qtd_min"]
+MAPA_INSUMO_IDEAL  = ["estoque_ideal","ideal","estoque_max","qtd_ideal"]
+MAPA_INSUMO_PRECO  = ["preco_estimado","preco","price","valor","custo","vlr"]
+
+CAT_ALIASES = {
+    "sement":"sementes","adubo":"adubos","fertiliz":"adubos","defensiv":"defensivos",
+    "racao":"racao","rac":"racao","sal":"sal_mineral","vacin":"vacinas",
+    "medic":"medicamentos","combustiv":"combustivel","diesel":"combustivel",
+    "peca":"pecas_maquinas","maquina":"pecas_maquinas","silag":"silagem","feno":"feno",
+}
+
+def detectar_categoria(val: str) -> str:
+    v = val.lower().strip()
+    for k, cat in CAT_ALIASES.items():
+        if k in v:
+            return cat
+    return "outros"
+
+def detectar_origem(val: str) -> str:
+    v = val.lower().strip()
+    if any(x in v for x in ["prop","prod","fazend","propri"]):
+        return "proprio"
+    if any(x in v for x in ["doa","troc","grant"]):
+        return "doacao"
+    return "comprado"
+
+def mapear_colunas_insumo(headers: list) -> dict:
+    mapa = {}
+    for h in headers:
+        if fuzzy_match(h, MAPA_INSUMO_NOME)  and "nome"   not in mapa: mapa["nome"]   = h
+        elif fuzzy_match(h, MAPA_INSUMO_CAT) and "cat"    not in mapa: mapa["cat"]    = h
+        elif fuzzy_match(h, MAPA_INSUMO_UNID)and "unid"   not in mapa: mapa["unid"]   = h
+        elif fuzzy_match(h, MAPA_INSUMO_ORIG)and "orig"   not in mapa: mapa["orig"]   = h
+        elif fuzzy_match(h, MAPA_INSUMO_EST) and "est"    not in mapa: mapa["est"]    = h
+        elif fuzzy_match(h, MAPA_INSUMO_MIN) and "min"    not in mapa: mapa["min"]    = h
+        elif fuzzy_match(h, MAPA_INSUMO_IDEAL)and"ideal"  not in mapa: mapa["ideal"]  = h
+        elif fuzzy_match(h, MAPA_INSUMO_PRECO)and"preco"  not in mapa: mapa["preco"]  = h
+    return mapa
+
+@router.post("/importacao/insumos")
+async def importar_insumos(
+    arquivo: UploadFile = File(...),
+    request: Request = None,
+):
+    conteudo = await arquivo.read()
+    nome = arquivo.filename or ""
+    try:
+        if nome.endswith(".csv"):
+            import io, csv
+            linhas = list(csv.DictReader(io.StringIO(conteudo.decode("utf-8", errors="replace"))))
+            headers = list(linhas[0].keys()) if linhas else []
+        else:
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(conteudo), data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            headers = [str(h or "").strip() for h in rows[0]]
+            linhas = [dict(zip(headers, [str(v or "").strip() for v in r])) for r in rows[1:] if any(v for v in r)]
+    except Exception as e:
+        raise HTTPException(400, f"Erro ao ler arquivo: {e}")
+
+    mapa = mapear_colunas_insumo(headers)
+    if "nome" not in mapa:
+        raise HTTPException(400, f"Coluna 'nome' nao encontrada. Colunas: {headers}")
+
+    from app.db import get_db
+    importados = 0
+    erros = []
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for i, row in enumerate(linhas, start=2):
+                nome_ins = row.get(mapa.get("nome",""), "").strip()
+                if not nome_ins:
+                    continue
+                try:
+                    cat_raw  = row.get(mapa.get("cat",""),  "outros")
+                    unid_raw = row.get(mapa.get("unid",""), "unidade")
+                    orig_raw = row.get(mapa.get("orig",""), "comprado")
+                    est_raw  = row.get(mapa.get("est",""),  "0")
+                    min_raw  = row.get(mapa.get("min",""),  "0")
+                    ideal_raw= row.get(mapa.get("ideal",""),"0")
+                    preco_raw= row.get(mapa.get("preco",""),"")
+
+                    categoria = detectar_categoria(cat_raw) if cat_raw else "outros"
+                    unidade   = unid_raw.lower().strip() or "unidade"
+                    origem    = detectar_origem(orig_raw) if orig_raw else "comprado"
+
+                    def parse_num(v):
+                        try: return float(str(v).replace(",",".").replace(" ",""))
+                        except: return 0.0
+
+                    estoque_atual = parse_num(est_raw)
+                    estoque_min   = parse_num(min_raw)
+                    estoque_ideal = parse_num(ideal_raw)
+                    preco = parse_num(preco_raw) if preco_raw else None
+
+                    # Verifica se já existe
+                    cur.execute(
+                        "SELECT id FROM insumos WHERE fazenda_id=1 AND lower(nome)=lower(%s) LIMIT 1",
+                        (nome_ins,)
+                    )
+                    existente = cur.fetchone()
+                    if existente:
+                        cur.execute(
+                            "UPDATE insumos SET categoria=%s,unidade=%s,origem=%s,"
+                            "estoque_minimo=%s,estoque_ideal=%s,preco_estimado=%s,atualizado_em=NOW()"
+                            " WHERE id=%s",
+                            (categoria,unidade,origem,estoque_min,estoque_ideal,preco,
+                             existente["id"] if isinstance(existente,dict) else existente[0])
+                        )
+                    else:
+                        cur.execute(
+                            "INSERT INTO insumos (fazenda_id,nome,categoria,unidade,origem,"
+                            "estoque_atual,estoque_minimo,estoque_ideal,preco_estimado,reposicao_modo)"
+                            " VALUES (1,%s,%s,%s,%s,%s,%s,%s,%s,'manual')",
+                            (nome_ins,categoria,unidade,origem,estoque_atual,estoque_min,estoque_ideal,preco)
+                        )
+                    importados += 1
+                except Exception as e:
+                    erros.append({"linha": i, "msg": str(e)})
+
+            conn.commit()
+
+    return {
+        "importados": importados,
+        "erros": erros,
+        "total_linhas": len(linhas),
+    }

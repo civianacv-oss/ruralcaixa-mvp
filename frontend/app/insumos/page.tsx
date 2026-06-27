@@ -72,6 +72,9 @@ export default function InsumosPage() {
   const [form, setForm]               = useState(emptyForm);
   const [movForm, setMovForm]         = useState({ tipo:"uso", quantidade:"", observacao:"" });
   const [salvando, setSalvando]       = useState(false);
+  const [modalImport, setModalImport] = useState(false);
+  const [importando, setImportando]   = useState(false);
+  const [importResult, setImportResult] = useState<{importados:number;erros:any[];total_linhas:number}|null>(null);
   const [filtro, setFiltro]           = useState("todos");
   const [busca, setBusca]             = useState("");
 
@@ -88,6 +91,19 @@ export default function InsumosPage() {
     setFornecedores(forn.data || []);
     setAlertas(al.data || []);
     setLoading(false);
+  }
+
+  async function importarInsumos(file: File) {
+    setImportando(true);
+    const fd = new FormData();
+    fd.append('arquivo', file);
+    try {
+      const r = await apiFetch(`${API}/importacao/insumos`, { method:'POST', body:fd });
+      const data = await r.json();
+      setImportResult(data);
+      if (data.importados > 0) carregar();
+    } catch { alert('Erro ao importar'); }
+    setImportando(false);
   }
 
   async function salvarInsumo() {
@@ -160,7 +176,10 @@ export default function InsumosPage() {
           <h1 style={s.h1}>📦 Gestão de Insumos</h1>
           <div style={{ fontSize:13, color:"#6a7a6a" }}>{insumos.length} insumos cadastrados · {alertas.length} alertas</div>
         </div>
-        <button style={s.btnPrimary} onClick={() => setModal(true)}>+ Novo insumo</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={() => setModalImport(true)} style={{...s.btnPrimary, background:"#2a4a8a"}}>📂 Importar planilha</button>
+          <button style={s.btnPrimary} onClick={() => setModal(true)}>+ Novo insumo</button>
+        </div>
       </div>
 
       {/* Alertas */}
@@ -241,6 +260,48 @@ export default function InsumosPage() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal importação */}
+      {modalImport && (
+        <div style={s.overlay} onClick={e => { if (e.target===e.currentTarget) { setModalImport(false); setImportResult(null); } }}>
+          <div style={{...s.modal, maxWidth:440}}>
+            <div style={{padding:'20px 24px 0',display:'flex',justifyContent:'space-between'}}>
+              <div style={{fontSize:16,fontWeight:700,color:'#1a2e1a'}}>📂 Importar insumos</div>
+              <button onClick={() => {setModalImport(false);setImportResult(null);}} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#8a9a8a'}}>×</button>
+            </div>
+            <div style={{padding:'16px 24px 24px'}}>
+              {!importResult ? (
+                <>
+                  <div style={{background:'#f0f8ea',borderRadius:8,padding:'12px 14px',marginBottom:16,fontSize:13,color:'#2a5a2a'}}>
+                    <strong>Colunas esperadas:</strong><br/>
+                    nome, categoria, unidade, origem, estoque_atual, estoque_minimo, estoque_ideal, preco_estimado
+                  </div>
+                  <div style={{border:'2px dashed #c8d8c0',borderRadius:10,padding:28,textAlign:'center',cursor:'pointer',background:'#faf8f4'}}
+                    onClick={() => document.getElementById('imp-ins-input')?.click()}>
+                    <div style={{fontSize:32,marginBottom:8}}>📄</div>
+                    <div style={{fontSize:14,fontWeight:600,color:'#2a5a2a',marginBottom:4}}>
+                      {importando ? 'Importando...' : 'Clique para selecionar'}
+                    </div>
+                    <div style={{fontSize:12,color:'#8a9a8a'}}>Excel (.xlsx) ou CSV</div>
+                    <input id='imp-ins-input' type='file' accept='.xlsx,.xls,.csv' style={{display:'none'}}
+                      onChange={e => { if (e.target.files?.[0]) importarInsumos(e.target.files[0]); }} />
+                  </div>
+                </>
+              ) : (
+                <div style={{textAlign:'center',padding:'16px 0'}}>
+                  <div style={{fontSize:44,marginBottom:12}}>{importResult.erros.length===0 ? '✅' : '⚠️'}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:'#1a2e1a',marginBottom:4}}>{importResult.importados} insumos importados</div>
+                  <div style={{fontSize:13,color:'#6a7a6a',marginBottom:16}}>de {importResult.total_linhas} linhas · {importResult.erros.length} erros</div>
+                  {importResult.erros.length > 0 && importResult.erros.slice(0,3).map((e:any,i:number) => (
+                    <div key={i} style={{fontSize:12,color:'#8a2a2a',marginBottom:4}}>Linha {e.linha}: {e.msg}</div>
+                  ))}
+                  <button onClick={() => {setModalImport(false);setImportResult(null);}} style={{marginTop:12,padding:'9px 20px',borderRadius:10,border:'none',background:'#2a5a2a',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer'}}>Fechar</button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
