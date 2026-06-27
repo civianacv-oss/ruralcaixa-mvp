@@ -47,7 +47,6 @@ const Icons = {
 // ── componente principal ──────────────────────────────────────
 export default function Dashboard() {
   const [activeMenu, setActiveMenu] = useState("dashboard");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [animaisAtivos, setAnimaisAtivos] = useState(0);
   const [showEspecieModal, setShowEspecieModal] = useState(false);
@@ -93,35 +92,6 @@ export default function Dashboard() {
     setLoading(false);
   }
 
-  // ── sidebar nav ──────────────────────────────────────────────
-  const navGestao = [
-    {id:"dashboard",   label:"Painel Principal",        icon:Icons.dashboard,  href:"/"},
-    {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
-    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
-    {id:"acerto-contrato",label:"Acerto de Contrato",icon:Icons.financial,  href:"/contratos/acerto"},
-    {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
-    {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/rebanho"},
-    {id:"agricultura", label:"Agricultura",        icon:Icons.crops,      href:"/agricultura"},
-    {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/bovino"},
-    {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/bovino"},
-    {id:"financeiro",  label:"Financeiro",        icon:Icons.financial,  href:"/relatorio"},
-    {id:"relatorios",  label:"Relatórios",        icon:Icons.reports,    href:"/relatorio"},
-    {id:"nfe",         label:"NF-e Produtor",      icon:Icons.financial,  href:"/nfe"},
-    {id:"esocial",     label:"eSocial Rural",      icon:Icons.users,      href:"/esocial"},
-    {id:"compravenda", label:"Compra e Venda",       icon:Icons.financial,  href:"/compravenda"},
-    {id:"acai",         label:"Cultivo de Açaí",       icon:Icons.plant,      href:"/acai"},
-    {id:"efdreinf",       label:"EFD-Reinf / DARF",         icon:Icons.document,   href:"/efdreinf"},
-    {id:"dctfweb",         label:"DCTFWeb",                   icon:Icons.document,   href:"/dctfweb"},
-    {id:"livro-caixa",     label:"Livro Caixa Rural",         icon:Icons.financial,  href:"/livro-caixa"},
-    {id:"dirpf",           label:"DIRPF Atividade Rural",     icon:Icons.document,   href:"/dirpf"},
-    {id:"apuracao-pj",    label:"Apuração PJ",                icon:Icons.calculator, href:"/apuracao-pj"},
-    {id:"acertos-lista",   label:"Acertos (Histórico)",       icon:Icons.financial,  href:"/contratos/acertos"},
-    {id:"simulador-regime",label:"Simulador Tributário",      icon:Icons.calculator, href:"/simulador-regime"},
-  ];
-  const navAdmin = [
-    {id:"usuarios",     label:"Usuários",        icon:Icons.users,     href:"/terceiros"},
-    {id:"configuracoes",label:"Configurações",   icon:Icons.settings,  href:"/"},
-  ];
 
   const especieBar = [
     {label:"Bovinos",  key:"bovino",  color:"#7c9e6b", icon:"🐄"},
@@ -135,73 +105,6 @@ export default function Dashboard() {
     <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#f5f0e8",overflow:"hidden"}}>
       <GuiaInicio />
 
-      {/* ── SIDEBAR ──────────────────────────────────────────── */}
-      <aside style={{
-        width: sidebarOpen ? 220 : 0,
-        minWidth: sidebarOpen ? 220 : 0,
-        background:"#1a2e1a",
-        color:"#e8e0d0",
-        display:"flex",
-        flexDirection:"column",
-        transition:"all 0.3s ease",
-        overflow:"hidden",
-        flexShrink:0,
-      }}>
-        {/* logo */}
-        <div style={{padding:"20px 20px 8px",borderBottom:"1px solid #2d4a2d"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{background:"#5a8a3a",borderRadius:8,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🌿</div>
-            <div>
-              <div style={{fontWeight:700,fontSize:15,color:"#e8e0d0",letterSpacing:"-0.3px"}}>RuralCaixa</div>
-              <div style={{fontSize:10,color:"#7a9a6a",letterSpacing:"2px",textTransform:"uppercase"}}>Rural</div>
-            </div>
-          </div>
-        </div>
-
-        {/* nav gestão */}
-        <div style={{padding:"16px 8px 8px",flex:1,overflowY:"auto"}}>
-          <div style={{fontSize:10,color:"#5a7a5a",letterSpacing:"2px",textTransform:"uppercase",padding:"0 12px",marginBottom:8}}>Gestão</div>
-          {navGestao.map(item => (
-            <a key={item.id} href={item.href || "#"}
-              onClick={() => setActiveMenu(item.id)}
-              style={{
-                display:"flex",alignItems:"center",gap:10,
-                padding:"9px 12px",borderRadius:8,marginBottom:2,
-                color: activeMenu===item.id ? "#c8e6b0" : "#a0b890",
-                background: activeMenu===item.id ? "#2d4a2d" : "transparent",
-                textDecoration:"none",fontSize:13.5,fontWeight:activeMenu===item.id?600:400,
-                cursor:"pointer",transition:"all 0.15s",
-              }}>
-              <span style={{opacity:activeMenu===item.id?1:0.7}}>{item.icon}</span>
-              {item.label}
-              {activeMenu===item.id && <div style={{marginLeft:"auto",width:6,height:6,borderRadius:"50%",background:"#7ac05a"}}/>}
-            </a>
-          ))}
-
-          <div style={{fontSize:10,color:"#5a7a5a",letterSpacing:"2px",textTransform:"uppercase",padding:"16px 12px 8px",marginTop:8}}>Administração</div>
-          {navAdmin.map(item => (
-            <a key={item.id} href="#"
-              onClick={e => {e.preventDefault();setActiveMenu(item.id);}}
-              style={{
-                display:"flex",alignItems:"center",gap:10,
-                padding:"9px 12px",borderRadius:8,marginBottom:2,
-                color: activeMenu===item.id ? "#c8e6b0" : "#a0b890",
-                background: activeMenu===item.id ? "#2d4a2d" : "transparent",
-                textDecoration:"none",fontSize:13.5,cursor:"pointer",transition:"all 0.15s",
-              }}>
-              <span style={{opacity:0.7}}>{item.icon}</span>
-              {item.label}
-            </a>
-          ))}
-        </div>
-
-        {/* fazenda */}
-        <div style={{padding:"12px 16px",borderTop:"1px solid #2d4a2d",fontSize:12,color:"#7a9a6a"}}>
-          <div style={{fontWeight:600,color:"#a8c890",marginBottom:2}}>Fazenda Boa Esperança</div>
-          <div>Imóvel #1 · Maranhão</div>
-        </div>
-      </aside>
-
       {/* ── MAIN ─────────────────────────────────────────────── */}
       <main style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column"}}>
 
@@ -213,10 +116,6 @@ export default function Dashboard() {
           display:"flex",alignItems:"center",gap:16,
           position:"sticky",top:0,zIndex:10,
         }}>
-          <button onClick={()=>setSidebarOpen(!sidebarOpen)}
-            style={{background:"none",border:"none",cursor:"pointer",color:"#4a6a3a",padding:4}}>
-            {Icons.menu}
-          </button>
           <div>
             <h1 style={{margin:0,fontSize:22,fontWeight:700,color:"#1a2e1a",letterSpacing:"-0.5px"}}>Painel Principal</h1>
             <p style={{margin:0,fontSize:13,color:"#7a8a6a"}}>Visão geral da sua operação agropecuária</p>
