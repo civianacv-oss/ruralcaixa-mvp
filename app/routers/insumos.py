@@ -512,6 +512,229 @@ async def receber_pedido(pid: int, request: Request, quantidade_recebida: Option
 
 
 
+
+# ── ORDENS DE PRODUÇÃO ────────────────────────────────────────────────
+
+class InsumoConsumo(BaseModel):
+    insumo_id: int
+    quantidade: float
+
+class OrdemProducaoCreate(BaseModel):
+    insumo_produto_id: int
+    quantidade_produzida: float
+    custo_mao_obra: float = 0
+    insumos_consumidos: list[InsumoConsumo] = []
+    data_inicio: Optional[date] = None
+    observacao: Optional[str] = None
+
+
+@router.get("/ordens-producao/")
+def listar_ordens(request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT o.*, i.nome AS produto_nome, i.unidade AS produto_unidade"
+                " FROM ordens_producao o"
+                " JOIN insumos i ON i.id = o.insumo_produto_id"
+                " WHERE o.fazenda_id=%s ORDER BY o.criado_em DESC",
+                (fazenda_id,)
+            )
+            return {"data": cur.fetchall()}
+
+
+@router.post("/ordens-producao/", status_code=201)
+def criar_ordem_producao(body: OrdemProducaoCreate, request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Valida insumo produto
+            cur.execute(
+                "SELECT * FROM insumos WHERE id=%s AND fazenda_id=%s",
+                (body.insumo_produto_id, fazenda_id)
+            )
+            produto = cur.fetchone()
+            if not produto:
+                raise HTTPException(404, "Insumo produto nao encontrado")
+
+            # Calcula custo dos insumos consumidos
+            custo_insumos = 0.0
+            insumos_detalhes = []
+            for ic in body.insumos_consumidos:
+                cur.execute("SELECT * FROM insumos WHERE id=%s AND fazenda_id=%s", (ic.insumo_id, fazenda_id))
+                ins = cur.fetchone()
+                if not ins:
+                    raise HTTPException(404, f"Insumo {ic.insumo_id} nao encontrado")
+                custo_unit = ins.get("preco_estimado") or ins.get("custo_producao") or 0
+                custo_total_item = custo_unit * ic.quantidade
+                custo_insumos += custo_total_item
+                insumos_detalhes.append({
+                    "insumo_id": ic.insumo_id,
+                    "nome": ins["nome"],
+                    "quantidade": ic.quantidade,
+                    "custo_unitario": custo_unit,
+                    "custo_total": custo_total_item,
+                    "unidade": ins["unidade"],
+                    "estoque_atual": ins["estoque_atual"],
+                })
+
+            custo_total = custo_insumos + body.custo_mao_obra
+            custo_unitario = custo_total / body.quantidade_produzida if body.quantidade_produzida > 0 else 0
+
+            # Cria ordem
+            cur.execute(
+                "INSERT INTO ordens_producao"
+                " (fazenda_id, insumo_produto_id, quantidade_produzida, custo_mao_obra,"
+                " custo_insumos, custo_total, custo_unitario, status, data_inicio, observacao)"
+                " VALUES (%s,%s,%s,%s,%s,%s,%s,'planejada',%s,%s) RETURNING *",
+                (fazenda_id, body.insumo_produto_id, body.quantidade_produzida,
+                 body.custo_mao_obra, custo_insumos, custo_total, custo_unitario,
+                 body.data_inicio or date.today(), body.observacao)
+            )
+            ordem = cur.fetchone()
+
+            # Insere insumos consumidos
+            for det in insumos_detalhes:
+                cur.execute(
+                    "INSERT INTO ordens_producao_insumos"
+                    " (ordem_producao_id, insumo_id, quantidade, custo_unitario, custo_total)"
+                    " VALUES (%s,%s,%s,%s,%s)",
+                    (ordem["id"], det["insumo_id"], det["quantidade"],
+                     det["custo_unitario"], det["custo_total"])
+                )
+
+            conn.commit()
+            return {
+                "data": ordem,
+                "insumos_consumidos": insumos_detalhes,
+                "custo_unitario": custo_unitario,
+            }
+
+
+@router.get("/ordens-producao/{oid}")
+def obter_ordem(oid: int, request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT o.*, i.nome AS produto_nome, i.unidade AS produto_unidade"
+                " FROM ordens_producao o JOIN insumos i ON i.id=o.insumo_produto_id"
+                " WHERE o.id=%s AND o.fazenda_id=%s",
+                (oid, fazenda_id)
+            )
+            ordem = cur.fetchone()
+            if not ordem:
+                raise HTTPException(404, "Ordem nao encontrada")
+            cur.execute(
+                "SELECT opi.*, i.nome AS insumo_nome, i.unidade"
+                " FROM ordens_producao_insumos opi"
+                " JOIN insumos i ON i.id=opi.insumo_id"
+                " WHERE opi.ordem_producao_id=%s",
+                (oid,)
+            )
+            ordem["insumos_consumidos"] = cur.fetchall()
+            return {"data": ordem}
+
+
+@router.post("/ordens-producao/{oid}/executar")
+def executar_ordem(oid: int, request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT o.*, i.nome AS produto_nome FROM ordens_producao o"
+                " JOIN insumos i ON i.id=o.insumo_produto_id"
+                " WHERE o.id=%s AND o.fazenda_id=%s",
+                (oid, fazenda_id)
+            )
+            ordem = cur.fetchone()
+            if not ordem:
+                raise HTTPException(404, "Ordem nao encontrada")
+            if ordem["status"] not in ("planejada", "em_andamento"):
+                raise HTTPException(400, f"Ordem ja esta {ordem['status']}")
+
+            # Busca insumos consumidos
+            cur.execute(
+                "SELECT * FROM ordens_producao_insumos WHERE ordem_producao_id=%s",
+                (oid,)
+            )
+            consumidos = cur.fetchall()
+
+            # Valida estoque de cada insumo
+            erros = []
+            for c in consumidos:
+                cur.execute("SELECT nome, estoque_atual, unidade FROM insumos WHERE id=%s", (c["insumo_id"],))
+                ins = cur.fetchone()
+                if ins and ins["estoque_atual"] < c["quantidade"]:
+                    erros.append(f"{ins['nome']}: estoque {ins['estoque_atual']} < necessario {c['quantidade']} {ins['unidade']}")
+            if erros:
+                raise HTTPException(400, f"Estoque insuficiente: {'; '.join(erros)}")
+
+            # Dá saída nos insumos consumidos
+            for c in consumidos:
+                cur.execute(
+                    "INSERT INTO movimentacoes_insumo"
+                    " (insumo_id, fazenda_id, tipo, quantidade, custo_unitario, custo_total,"
+                    " observacao, data_movim, ordem_producao_id)"
+                    " VALUES (%s,%s,'uso',%s,%s,%s,%s,CURRENT_DATE,%s)",
+                    (c["insumo_id"], fazenda_id, c["quantidade"],
+                     c.get("custo_unitario"), c.get("custo_total"),
+                     f"Consumo ordem producao #{oid}", oid)
+                )
+
+            # Dá entrada no produto produzido
+            cur.execute(
+                "INSERT INTO movimentacoes_insumo"
+                " (insumo_id, fazenda_id, tipo, quantidade, custo_unitario, custo_total,"
+                " observacao, data_movim, ordem_producao_id)"
+                " VALUES (%s,%s,'producao_propria',%s,%s,%s,%s,CURRENT_DATE,%s)",
+                (ordem["insumo_produto_id"], fazenda_id, ordem["quantidade_produzida"],
+                 ordem["custo_unitario"], ordem["custo_total"],
+                 f"Producao ordem #{oid}", oid)
+            )
+
+            # Atualiza custo_producao do insumo produto
+            cur.execute(
+                "UPDATE insumos SET custo_producao=%s, atualizado_em=NOW() WHERE id=%s",
+                (ordem["custo_unitario"], ordem["insumo_produto_id"])
+            )
+
+            # Conclui a ordem
+            cur.execute(
+                "UPDATE ordens_producao SET status='concluida', data_conclusao=CURRENT_DATE,"
+                " atualizado_em=NOW() WHERE id=%s RETURNING *",
+                (oid,)
+            )
+            conn.commit()
+            resultado = cur.fetchone()
+
+            return {
+                "ok": True,
+                "ordem": resultado,
+                "produto": ordem["produto_nome"],
+                "quantidade_produzida": ordem["quantidade_produzida"],
+                "custo_unitario": ordem["custo_unitario"],
+                "insumos_baixados": len(consumidos),
+            }
+
+
+@router.delete("/ordens-producao/{oid}")
+def cancelar_ordem(oid: int, request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE ordens_producao SET status='cancelada', atualizado_em=NOW()"
+                " WHERE id=%s AND fazenda_id=%s AND status IN ('planejada','em_andamento')"
+                " RETURNING id",
+                (oid, fazenda_id)
+            )
+            conn.commit()
+            if not cur.fetchone():
+                raise HTTPException(400, "Ordem nao pode ser cancelada")
+            return {"ok": True}
+
+
 # ── FUNÇÃO INTERNA: reposição automática ─────────────────────────────
 
 def _verificar_reposicao_automatica(insumo: dict, alerta: dict, fazenda_id: int, cur, conn):
