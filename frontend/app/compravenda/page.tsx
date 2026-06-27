@@ -160,10 +160,9 @@ export default function CompraVendaPage() {
       if (Array.isArray(compRes)) setCompras(compRes);
       if (Array.isArray(vendRes)) setVendas(vendRes);
       if (Array.isArray(fluxRes)) setFluxo(fluxRes);
-      if (dashRes && typeof dashRes === "object") setDashboard(dashRes);
-      if (dreRes && typeof dreRes === "object") setDre(dreRes);
+      if (dashRes && typeof dashRes === "object" && !Array.isArray(dashRes)) setDashboard(dashRes as Dashboard);
+      if (dreRes && typeof dreRes === "object" && !Array.isArray(dreRes)) setDre(dreRes as any);
       if (Array.isArray(despRes)) setDespesas(despRes);
-      const alertRes = [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes][7] as PromiseSettledResult<AlertasResponse | null> | undefined;
       // fetch alertas separately since it's the 8th item
       try {
         const ar = await apiFetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`);
@@ -383,12 +382,12 @@ export default function CompraVendaPage() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#fff", borderRadius: 10, padding: 6, border: "1px solid #e5e7eb", overflowX: "auto" }}>
-          {abas.map(a => (
-            <div style={{display:"flex",gap:8,marginBottom:8}}>
-            <button onClick={() => setModalImport("compras")} style={{padding:"6px 12px",borderRadius:6,border:"1px solid #2a4a8a",background:"#e8eef8",color:"#2a4a8a",fontSize:12,fontWeight:600,cursor:"pointer"}}>📂 Importar compras</button>
-            <button onClick={() => setModalImport("vendas")} style={{padding:"6px 12px",borderRadius:6,border:"1px solid #2a5a2a",background:"#e8f5e8",color:"#2a5a2a",fontSize:12,fontWeight:600,cursor:"pointer"}}>📂 Importar vendas</button>
-          </div>
-          <button key={a.id} onClick={() => setAba(a.id)}
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <button onClick={() => setModalImport('compras')} style={{padding:'6px 12px',borderRadius:6,border:'1px solid #2a4a8a',background:'#e8eef8',color:'#2a4a8a',fontSize:12,fontWeight:600,cursor:'pointer'}}>ð Importar compras</button>
+              <button onClick={() => setModalImport('vendas')} style={{padding:'6px 12px',borderRadius:6,border:'1px solid #2a5a2a',background:'#e8f5e8',color:'#2a5a2a',fontSize:12,fontWeight:600,cursor:'pointer'}}>ð Importar vendas</button>
+            </div>
+            {abas.map(a => (
+            <button key={a.id} onClick={() => setAba(a.id)}
               style={{ padding: "8px 16px", borderRadius: 7, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
                 background: aba === a.id ? COR : "transparent",
                 color: aba === a.id ? "#fff" : "#6b7280",
