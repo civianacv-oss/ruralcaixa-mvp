@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -98,30 +98,3 @@ async def get_analytics(produtor_id: int):
             {"mes": "2026-02", "tipo": "despesa", "total": 12000},
         ]
     }
-
-# --- ENDPOINT NFE (Para o seu NFe page.tsx) ---
-class ItemNFe(BaseModel):
-    descricao: str
-    quantidade: float
-    valor_unitario: float
-
-class NFeRequest(BaseModel):
-    natureza_operacao: str
-    itens: List[ItemNFe]
-
-@app.post("/produtores/{produtor_id}/nfe/notas")
-async def emitir_nfe(produtor_id: int, request: NFeRequest):
-    return {
-        "id": 1001,
-        "status": "Autorizada",
-        "numero": 452,
-        "data_emissao": datetime.now().isoformat()
-    }
-
-@app.get("/produtores")
-async def list_produtores():
-    return [{"id": 1, "nome": "Joao Batista Neves"}]
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
