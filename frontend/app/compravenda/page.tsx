@@ -143,7 +143,7 @@ export default function CompraVendaPage() {
   async function carregarTudo() {
     setLoading(true);
     try {
-      const [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes] = await Promise.allSettled([
+      const [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes, _alertRes] = await Promise.allSettled([
         apiFetch(`${API}/compravenda/produtos?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
         apiFetch(`${API}/compravenda/compras?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
         apiFetch(`${API}/compravenda/vendas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
