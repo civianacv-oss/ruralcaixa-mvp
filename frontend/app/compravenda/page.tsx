@@ -535,6 +535,40 @@ export default function CompraVendaPage() {
                       </div>
                     );
                   })}
+      {modalImport && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+          onClick={(e) => { if (e.target===e.currentTarget) { setModalImport(null); setImportResult(null); } }}>
+          <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:440,padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontSize:16,fontWeight:700,color:'#1a2e1a'}}>Importar {modalImport === 'compras' ? 'Compras' : 'Vendas'}</div>
+              <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{background:'none',border:'none',fontSize:22,cursor:'pointer'}}>x</button>
+            </div>
+            {!importResult ? (
+              <>
+                <div style={{background:'#f0f8ea',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#2a5a2a'}}>
+                  <strong>Colunas esperadas:</strong><br/>
+                  {modalImport==='compras' ? 'produto, quantidade, valor_unitario, data_compra, fornecedor, regime' : 'produto, quantidade, valor_unitario, data_venda, comprador'}
+                </div>
+                <div style={{border:'2px dashed #c8d8c0',borderRadius:10,padding:28,textAlign:'center',cursor:'pointer',background:'#faf8f4'}}
+                  onClick={() => document.getElementById('imp-cv-input')?.click()}>
+                  <div style={{fontSize:32,marginBottom:8}}>📄</div>
+                  <div style={{fontSize:14,fontWeight:600,color:'#2a5a2a'}}>{importando ? 'Importando...' : 'Clique para selecionar'}</div>
+                  <div style={{fontSize:12,color:'#8a9a8a'}}>Excel (.xlsx) ou CSV</div>
+                  <input id="imp-cv-input" type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}}
+                    onChange={(e) => { if (e.target.files?.[0] && modalImport) importarCV(e.target.files[0], modalImport); }} />
+                </div>
+              </>
+            ) : (
+              <div style={{textAlign:'center',padding:'16px 0'}}>
+                <div style={{fontSize:44,marginBottom:12}}>{importResult.erros.length===0 ? '✅' : '⚠️'}</div>
+                <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{importResult.importados} registros importados</div>
+                <div style={{fontSize:13,color:'#6a7a6a',marginBottom:12}}>de {importResult.total_linhas} linhas</div>
+                {importResult.erros.slice(0,3).map((e: {linha:number;msg:string}, i:number) => (
+                  <div key={i} style={{fontSize:12,color:'#8a2a2a',marginBottom:4}}>Linha {e.linha}: {e.msg}</div>
+                ))}
+                <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{marginTop:12,padding:'9px 20px',borderRadius:10,border:'none',background:'#2a5a2a',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer'}}>Fechar</button>
+              </div>
+            )}
                 </div>
               );
             })()}
@@ -992,76 +1026,7 @@ export default function CompraVendaPage() {
 
       </div>
     </div>
-      {modalImport && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-          onClick={e => { if (e.target===e.currentTarget) { setModalImport(null); setImportResult(null); } }}>
-          <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:440,padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <div style={{fontSize:16,fontWeight:700,color:'#1a2e1a'}}>📂 Importar {modalImport === 'compras' ? 'Compras' : 'Vendas'}</div>
-              <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{background:'none',border:'none',fontSize:22,cursor:'pointer'}}>×</button>
-            </div>
-            {!importResult ? (
-              <>
-                <div style={{background:'#f0f8ea',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#2a5a2a'}}>
-                  <strong>Colunas esperadas:</strong><br/>
-                  {modalImport==='compras' ? 'produto, quantidade, valor_unitario, data_compra, fornecedor, nota_fiscal, regime' : 'produto, quantidade, valor_unitario, data_venda, comprador, nota_fiscal'}
-                </div>
-                <div style={{border:'2px dashed #c8d8c0',borderRadius:10,padding:28,textAlign:'center',cursor:'pointer',background:'#faf8f4'}}
-                  onClick={() => document.getElementById('imp-cv-input')?.click()}>
-                  <div style={{fontSize:32,marginBottom:8}}>📄</div>
-                  <div style={{fontSize:14,fontWeight:600,color:'#2a5a2a'}}>{importando ? 'Importando...' : 'Clique para selecionar'}</div>
-                  <div style={{fontSize:12,color:'#8a9a8a'}}>Excel (.xlsx) ou CSV</div>
-                  <input id='imp-cv-input' type='file' accept='.xlsx,.xls,.csv' style={{display:'none'}}
-                    onChange={e => { if (e.target.files?.[0] && modalImport) importarCV(e.target.files[0], modalImport); }} />
-                </div>
-              </>
-            ) : (
-              <div style={{textAlign:'center',padding:'16px 0'}}>
-                <div style={{fontSize:44,marginBottom:12}}>{importResult.erros.length===0?'✅':'⚠️'}</div>
-                <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{importResult.importados} registros importados</div>
-                <div style={{fontSize:13,color:'#6a7a6a',marginBottom:12}}>de {importResult.total_linhas} linhas · {importResult.erros.length} erros</div>
-                {importResult.erros.slice(0,3).map((e:any,i:number) => <div key={i} style={{fontSize:12,color:'#8a2a2a',marginBottom:4}}>Linha {e.linha}: {e.msg}</div>)}
-                <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{marginTop:12,padding:'9px 20px',borderRadius:10,border:'none',background:'#2a5a2a',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer'}}>Fechar</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {modalImport && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-          onClick={(e) => { if (e.target===e.currentTarget) { setModalImport(null); setImportResult(null); } }}>
-          <div style={{background:'#fff',borderRadius:16,width:'100%',maxWidth:440,padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <div style={{fontSize:16,fontWeight:700,color:'#1a2e1a'}}>Importar {modalImport === 'compras' ? 'Compras' : 'Vendas'}</div>
-              <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{background:'none',border:'none',fontSize:22,cursor:'pointer'}}>x</button>
-            </div>
-            {!importResult ? (
-              <>
-                <div style={{background:'#f0f8ea',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#2a5a2a'}}>
-                  <strong>Colunas esperadas:</strong><br/>
-                  {modalImport==='compras' ? 'produto, quantidade, valor_unitario, data_compra, fornecedor, regime' : 'produto, quantidade, valor_unitario, data_venda, comprador'}
-                </div>
-                <div style={{border:'2px dashed #c8d8c0',borderRadius:10,padding:28,textAlign:'center',cursor:'pointer',background:'#faf8f4'}}
-                  onClick={() => document.getElementById('imp-cv-input')?.click()}>
-                  <div style={{fontSize:32,marginBottom:8}}>📄</div>
-                  <div style={{fontSize:14,fontWeight:600,color:'#2a5a2a'}}>{importando ? 'Importando...' : 'Clique para selecionar'}</div>
-                  <div style={{fontSize:12,color:'#8a9a8a'}}>Excel (.xlsx) ou CSV</div>
-                  <input id="imp-cv-input" type="file" accept=".xlsx,.xls,.csv" style={{display:'none'}}
-                    onChange={(e) => { if (e.target.files?.[0] && modalImport) importarCV(e.target.files[0], modalImport); }} />
-                </div>
-              </>
-            ) : (
-              <div style={{textAlign:'center',padding:'16px 0'}}>
-                <div style={{fontSize:44,marginBottom:12}}>{importResult.erros.length===0 ? '✅' : '⚠️'}</div>
-                <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{importResult.importados} registros importados</div>
-                <div style={{fontSize:13,color:'#6a7a6a',marginBottom:12}}>de {importResult.total_linhas} linhas</div>
-                {importResult.erros.slice(0,3).map((e: {linha:number;msg:string}, i:number) => (
-                  <div key={i} style={{fontSize:12,color:'#8a2a2a',marginBottom:4}}>Linha {e.linha}: {e.msg}</div>
-                ))}
-                <button onClick={() => {setModalImport(null);setImportResult(null);}} style={{marginTop:12,padding:'9px 20px',borderRadius:10,border:'none',background:'#2a5a2a',color:'#fff',fontSize:13,fontWeight:600,cursor:'pointer'}}>Fechar</button>
-              </div>
-            )}
           </div>
         </div>
       )}
