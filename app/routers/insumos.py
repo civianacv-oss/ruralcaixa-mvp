@@ -379,72 +379,137 @@ def aprovar_pedido(pid: int, request: Request):
 
 @router.post("/pedidos-compra/{pid}/enviar")
 async def enviar_pedido(pid: int, request: Request):
-    """Envia pedido de compra por WhatsApp/Telegram para o fornecedor."""
     fazenda_id = _auth(request)
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT p.*, i.nome AS insumo_nome, i.unidade,
-                    f.nome AS fornecedor_nome, f.whatsapp, f.telegram
-                FROM pedidos_compra p
-                JOIN insumos i ON i.id = p.insumo_id
-                LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
-                WHERE p.id=%s AND p.fazenda_id=%s
-            """, (pid, fazenda_id))
+            cur.execute(
+                "SELECT p.*, i.nome AS insumo_nome, i.unidade,"
+                " f.nome AS fornecedor_nome, f.whatsapp, f.telegram"
+                " FROM pedidos_compra p"
+                " JOIN insumos i ON i.id = p.insumo_id"
+                " LEFT JOIN fornecedores f ON f.id = p.fornecedor_id"
+                " WHERE p.id=%s AND p.fazenda_id=%s",
+                (pid, fazenda_id)
+            )
             pedido = cur.fetchone()
-            if not pedido: raise HTTPException(404, "Pedido não encontrado")
+            if not pedido:
+                raise HTTPException(404, "Pedido nao encontrado")
 
-            # Monta mensagem
             valor_str = f"R$ {pedido['valor_total_estimado']:.2f}" if pedido.get("valor_total_estimado") else "a confirmar"
             entrega_str = pedido["data_entrega_desejada"].strftime("%d/%m/%Y") if pedido.get("data_entrega_desejada") else "a combinar"
 
-            msg = (
-                f"🌾 *Pedido de Compra — RuralCaixa*\n\n"
-                f"Olá, {pedido.get('fornecedor_nome', 'Fornecedor')}!\n\n"
-                f"📦 Produto: {pedido['insumo_nome']}\n"
-                f"📊 Quantidade: {pedido['quantidade']} {pedido['unidade']}\n"
-                f"💰 Valor estimado: {valor_str}\n"
-                f"📅 Entrega desejada: {entrega_str}\n\n"
+            msg_fornecedor = (
+                f"Ola, {pedido.get('fornecedor_nome', 'Fornecedor')}!\n\n"
+                f"Pedido de Compra - RuralCaixa\n\n"
+                f"Produto: {pedido['insumo_nome']}\n"
+                f"Quantidade: {pedido['quantidade']} {pedido['unidade']}\n"
+                f"Valor estimado: {valor_str}\n"
+                f"Entrega desejada: {entrega_str}\n\n"
                 f"Confirma disponibilidade e prazo?"
             )
+            msg_grupo = (
+                f"Pedido de compra enviado\n\n"
+                f"Produto: {pedido['insumo_nome']} - {pedido['quantidade']} {pedido['unidade']}\n"
+                f"Valor: {valor_str}\n"
+                f"Fornecedor: {pedido.get('fornecedor_nome','?')}\n"
+                f"WhatsApp: {pedido.get('whatsapp','nao cadastrado')}\n"
+                f"Entrega: {entrega_str}"
+            )
 
-            enviado = False
+            enviado_wpp = False
+            enviado_tg  = False
 
-            # Tenta Telegram primeiro
+            # WhatsApp direto para o fornecedor
+            if pedido.get("whatsapp"):
+                try:
+                    from app.services.whatsapp_service import enviar_whatsapp
+                    numero = pedido["whatsapp"].replace("+","").replace(" ","").replace("-","")
+                    result = enviar_whatsapp(numero, msg_fornecedor)
+                    enviado_wpp = bool(result)
+                    logger.info(f"[Pedido] WhatsApp {numero}: {enviado_wpp}")
+                except Exception as e:
+                    logger.error(f"[Pedido] WhatsApp error: {e}")
+
+            # Telegram para o fornecedor se tiver
             if pedido.get("telegram") and TELEGRAM_BOT_TOKEN:
                 try:
                     async with httpx.AsyncClient(timeout=10) as client:
                         r = await client.post(
                             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                            json={"chat_id": pedido["telegram"], "text": msg, "parse_mode": "Markdown"},
+                            json={"chat_id": pedido["telegram"], "text": msg_fornecedor},
                         )
                         if r.status_code == 200:
-                            enviado = True
+                            enviado_tg = True
                 except Exception as e:
-                    logger.error(f"Telegram envio pedido: {e}")
+                    logger.error(f"[Pedido] Telegram fornecedor error: {e}")
 
-            # Fallback: notifica o grupo interno com o pedido
-            if not enviado and TELEGRAM_BOT_TOKEN:
+            # Notifica grupo interno sempre
+            if TELEGRAM_BOT_TOKEN:
                 try:
-                    msg_grupo = f"📋 *Pedido de compra gerado*\n{msg}\n\nFornecedor: {pedido.get('fornecedor_nome','?')}\nWhatsApp: {pedido.get('whatsapp','?')}"
                     async with httpx.AsyncClient(timeout=10) as client:
                         await client.post(
                             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                            json={"chat_id": TELEGRAM_GROUP_ID, "text": msg_grupo, "parse_mode": "Markdown"},
+                            json={"chat_id": TELEGRAM_GROUP_ID, "text": msg_grupo},
                         )
-                    enviado = True
                 except Exception as e:
-                    logger.error(f"Telegram grupo pedido: {e}")
+                    logger.error(f"[Pedido] Telegram grupo error: {e}")
 
-            # Atualiza status do pedido
-            cur.execute("""
-                UPDATE pedidos_compra
-                SET status='enviado', mensagem_enviada=%s, data_confirmacao=NOW(), atualizado_em=NOW()
-                WHERE id=%s RETURNING *
-            """, (msg, pid))
+            cur.execute(
+                "UPDATE pedidos_compra SET status='enviado', mensagem_enviada=%s,"
+                " data_confirmacao=NOW(), atualizado_em=NOW() WHERE id=%s RETURNING *",
+                (msg_fornecedor, pid)
+            )
             conn.commit()
+            return {"ok": True, "enviado_whatsapp": enviado_wpp, "enviado_telegram": enviado_tg}
 
-            return {"ok": True, "enviado_telegram": enviado, "mensagem": msg}
+
+@router.post("/pedidos-compra/{pid}/confirmar")
+async def confirmar_pedido(pid: int, request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE pedidos_compra SET status='confirmado', atualizado_em=NOW()"
+                " WHERE id=%s AND fazenda_id=%s RETURNING *",
+                (pid, fazenda_id)
+            )
+            conn.commit()
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, "Pedido nao encontrado")
+            return {"data": row}
+
+
+@router.post("/pedidos-compra/{pid}/receber")
+async def receber_pedido(pid: int, request: Request, quantidade_recebida: Optional[float] = None):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT p.*, i.preco_estimado FROM pedidos_compra p"
+                " JOIN insumos i ON i.id = p.insumo_id"
+                " WHERE p.id=%s AND p.fazenda_id=%s",
+                (pid, fazenda_id)
+            )
+            pedido = cur.fetchone()
+            if not pedido:
+                raise HTTPException(404, "Pedido nao encontrado")
+            qtd = quantidade_recebida or pedido["quantidade"]
+            cur.execute(
+                "INSERT INTO movimentacoes_insumo"
+                " (insumo_id, fazenda_id, tipo, quantidade, custo_unitario, observacao, data_movim, pedido_compra_id)"
+                " VALUES (%s, %s, 'compra', %s, %s, %s, CURRENT_DATE, %s)",
+                (pedido["insumo_id"], fazenda_id, qtd, pedido.get("preco_estimado"),
+                 f"Recebimento pedido #{pid}", pid)
+            )
+            cur.execute(
+                "UPDATE pedidos_compra SET status='entregue', data_entrega_real=CURRENT_DATE,"
+                " atualizado_em=NOW() WHERE id=%s RETURNING *",
+                (pid,)
+            )
+            conn.commit()
+            return {"ok": True, "quantidade_recebida": qtd}
+
 
 
 # ── FUNÇÃO INTERNA: reposição automática ─────────────────────────────
