@@ -172,6 +172,14 @@ try:
 except Exception as e:
     print(f"INSUMOS ROUTER FAILED: {e}")
 
+# Cron alertas insumos
+try:
+    from app.services.insumo_cron import verificar_alertas_insumo
+    print('INSUMO CRON LOADED OK')
+except Exception as _e:
+    verificar_alertas_insumo = None
+    print(f'INSUMO CRON FAILED: {_e}')
+
 # Cron alertas ovinos
 try:
     from app.services.ovino_cron import processar_alertas_ovinos
