@@ -157,7 +157,7 @@ export default function CompraVendaPage() {
       if (Array.isArray(compRes)) setCompras(compRes);
       if (Array.isArray(vendRes)) setVendas(vendRes);
       if (Array.isArray(fluxRes)) setFluxo(fluxRes);
-      if (dashRes && typeof dashRes === "object" && !Array.isArray(dashRes)) setDashboard(dashRes as Dashboard);
+      if (dashRes && typeof dashRes === "object" && !Array.isArray(dashRes)) setDashboard(dashRes as unknown as Dashboard);
       if (dreRes && typeof dreRes === "object" && !Array.isArray(dreRes)) setDre(dreRes as any);
       if (Array.isArray(despRes)) setDespesas(despRes);
       // fetch alertas separately since it's the 8th item
