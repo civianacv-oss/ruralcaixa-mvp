@@ -83,8 +83,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not produtor:
             return JSONResponse(
                 status_code=401,
-                content={"error": "Token inválido ou expirado."},
-                headers={"WWW-Authenticate": "Bearer"},
+                content={"error": "Token invalido ou expirado."},
+                headers={"WWW-Authenticate": "Bearer", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"},
             )
 
         # Injeta produtor no request state para uso nos endpoints
