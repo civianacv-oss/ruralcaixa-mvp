@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { TrendingUp, TrendingDown, DollarSign, Search, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Search, Plus, Pencil, Trash2, Loader2, Lock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +156,7 @@ export default function Financeiro() {
   const [showCreate, setShowCreate] = useState(false);
   const [editLancamento, setEditLancamento] = useState<Lancamento | null>(null);
   const [deleteLancamento, setDeleteLancamento] = useState<Lancamento | null>(null);
+  const [showFecharDialog, setShowFecharDialog] = useState(false);
 
   const enabled = Boolean(produtorId);
   const produtorIdSafe = produtorId ?? 0;
@@ -174,6 +175,16 @@ export default function Financeiro() {
       utils.railway.lancamentos.invalidate();
       utils.railway.produtorResumo.invalidate();
       setDeleteLancamento(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const fecharCompetenciaMutation = trpc.railway.fecharCompetencia.useMutation({
+    onSuccess: () => {
+      toast.success("Competência fechada com sucesso!");
+      utils.railway.lancamentos.invalidate();
+      utils.railway.produtorResumo.invalidate();
+      setShowFecharDialog(false);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -217,9 +228,19 @@ export default function Financeiro() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Receitas, despesas e resultado da propriedade</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-2 text-white" style={{ background: "oklch(0.45 0.14 145)" }}>
-          <Plus className="w-4 h-4" /> Novo lançamento
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowFecharDialog(true)}
+            className="gap-2"
+            style={{ borderColor: "oklch(0.82 0.06 25)", color: "oklch(0.45 0.18 25)" }}
+          >
+            <Lock className="w-4 h-4" /> Fechar Competência
+          </Button>
+          <Button onClick={() => setShowCreate(true)} className="gap-2 text-white" style={{ background: "oklch(0.45 0.14 145)" }}>
+            <Plus className="w-4 h-4" /> Novo lançamento
+          </Button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -371,6 +392,30 @@ export default function Financeiro() {
       {editLancamento && produtorId && (
         <LancamentoModal open onClose={() => setEditLancamento(null)} produtorId={produtorId} lancamento={editLancamento} onSuccess={() => utils.railway.lancamentos.invalidate()} />
       )}
+
+      {/* Dialog: Fechar Competência */}
+      <AlertDialog open={showFecharDialog} onOpenChange={(v) => !v && setShowFecharDialog(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fechar Competência</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação irá fechar o mês atual do produtor, consolidando todos os lançamentos. Lançamentos pendentes serão marcados como fechados. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="text-white"
+              style={{ background: "oklch(0.45 0.18 25)" }}
+              disabled={fecharCompetenciaMutation.isPending}
+              onClick={() => produtorId && fecharCompetenciaMutation.mutate({ produtorId })}
+            >
+              {fecharCompetenciaMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Fechar Competência
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteLancamento} onOpenChange={(v) => !v && setDeleteLancamento(null)}>
         <AlertDialogContent>

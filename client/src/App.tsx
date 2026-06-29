@@ -31,16 +31,21 @@ import EFDReinf from "./pages/EFDReinf";
 import DCTFWeb from "./pages/DCTFWeb";
 import Insumos from "./pages/Insumos";
 import SimuladorTributacao from "./pages/SimuladorTributacao";
+import ProcuracaoGate from "./pages/ProcuracaoGate";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { isAuthenticated } from "./lib/api";
+import { isAuthenticated, getRole } from "./lib/api";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const [, navigate] = useLocation();
+  const role = getRole();
   useEffect(() => {
     if (!isAuthenticated()) navigate("/login");
-  }, [navigate]);
+    // Procurador deve passar pelo gate de procuração antes de acessar o sistema
+    else if (role === "procurador") navigate("/procuracao-gate");
+  }, [navigate, role]);
   if (!isAuthenticated()) return null;
+  if (role === "procurador") return null;
   return (
     <RuralLayout>
       <Component />
@@ -67,6 +72,9 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/selecionar-imovel">
         {() => <SelecionarImovel />}
+      </Route>
+      <Route path="/procuracao-gate">
+        {() => <ProcuracaoGate />}
       </Route>
 
       {/* Painel */}

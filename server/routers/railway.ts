@@ -1030,4 +1030,14 @@ export const railwayRouter = router({
       });
       return res;
     }),
+
+  // ── Fechar Competência ────────────────────────────────────────────────────
+  fecharCompetencia: publicProcedure
+    .input(z.object({ produtorId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertProdutor(claims, input.produtorId);
+      const res = await railwayMutate<unknown>(`/produtores/${input.produtorId}/fechar-mes`, "POST");
+      return res;
+    }),
 });

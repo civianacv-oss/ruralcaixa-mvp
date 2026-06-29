@@ -224,3 +224,17 @@
 - [x] Item "Simulador Tributário" no menu Fiscal do RuralLayout (TrendingDown icon)
 - [x] Rota /simulador-tributario no App.tsx
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 28: Fluxo de Procurador com procuração obrigatória
+- [x] Página ProcuracaoGate.tsx: tela dedicada para procuradores verificarem status da procuração (pendente/aprovado/rejeitado/sem procuração)
+- [x] Guard no App.tsx: ProtectedRoute redireciona procuradores para /procuracao-gate
+- [x] Login.tsx: procurador com role="procurador" é redirecionado para /procuracao-gate
+- [x] Rota /procuracao-gate registrada no App.tsx
+- [x] Fluxo completo: upload de procuração → aguardo → aprovado → acesso ao sistema
+
+## Fase 29: Fechar Competência no módulo Financeiro
+- [x] Endpoint tRPC railway.fecharCompetencia: chama POST /produtores/{id}/fechar-mes na API Railway
+- [x] Botão "Fechar Competência" no módulo Financeiro (header, ao lado de Novo lançamento)
+- [x] AlertDialog de confirmação antes de fechar a competência
+- [x] Feedback de sucesso/erro via toast
+- [x] Invalidação automática das queries após fechar

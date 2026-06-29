@@ -106,7 +106,8 @@ export default function Login() {
     try {
       const result = await verifyOtp.mutateAsync({ cpf: cpf.replace(/\D/g, ""), code: fullCode });
       setSession(result.produtorId, result.produtorNome ?? "", result.imovelId ?? undefined, cpf.replace(/\D/g, ""));
-      setRole(result.role ?? "user");
+      const resolvedRole = result.role ?? "user";
+      setRole(resolvedRole);
       if (result.rcClaimsToken) setRcToken(result.rcClaimsToken);
 
       if (result.imovelCount === 1 && result.imovelId) {
