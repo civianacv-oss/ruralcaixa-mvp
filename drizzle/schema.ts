@@ -203,3 +203,34 @@ export const procuracoes = mysqlTable("procuracoes", {
 
 export type Procuracao = typeof procuracoes.$inferSelect;
 export type InsertProcuracao = typeof procuracoes.$inferInsert;
+
+// ─── Catálogo de Insumos ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Catálogo local de insumos com código único por fazenda.
+ * Evita duplicatas e erros de digitação: ao importar ou cadastrar,
+ * o sistema busca pelo código ou nome normalizado e faz upsert.
+ */
+export const insumosCatalogo = mysqlTable("insumos_catalogo", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Railway imovel.id (fazenda) */
+  imovelId: int("imovelId").notNull(),
+  /**
+   * Código único por fazenda: prefixo por categoria + sequencial
+   * Ex: FAR-001 (farmácia), RAC-002 (ração), COM-003 (combustível)
+   */
+  codigo: varchar("codigo", { length: 32 }).notNull(),
+  /** Nome canônico do insumo (normalizado para busca) */
+  nome: varchar("nome", { length: 255 }).notNull(),
+  /** Nome normalizado para busca fuzzy (lowercase, sem acentos) */
+  nomeNormalizado: varchar("nomeNormalizado", { length: 255 }).notNull(),
+  categoria: varchar("categoria", { length: 64 }).notNull().default("outros"),
+  unidade: varchar("unidade", { length: 32 }).notNull().default("unidade"),
+  /** ID do insumo no Railway (null até o backend de insumos ser deployado) */
+  railwayId: int("railwayId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InsumosCatalogo = typeof insumosCatalogo.$inferSelect;
+export type InsertInsumosCatalogo = typeof insumosCatalogo.$inferInsert;

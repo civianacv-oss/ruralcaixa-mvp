@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, like, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   Animal,
@@ -11,6 +11,8 @@ import {
   InsertReproductiveRecord,
   InsertUser,
   Movement,
+  InsumosCatalogo,
+  InsertInsumosCatalogo,
   Procuracao,
   ProdutorConfig,
   ReproductiveRecord,
@@ -18,6 +20,7 @@ import {
   animals,
   financialRecords,
   healthRecords,
+  insumosCatalogo,
   movements,
   procuracoes,
   produtorConfig,
@@ -395,4 +398,138 @@ export async function updateProcuracaoStatus(
     .update(procuracoes)
     .set({ status, adminNota: adminNota ?? null })
     .where(eq(procuracoes.id, id));
+}
+
+// ─── Catálogo de Insumos ────────────────────────────────────────────────────────────────────────────────────
+
+/** Normaliza um nome de insumo para busca: lowercase, sem acentos, sem espaços extras */
+export function normalizeInsumoNome(nome: string): string {
+  return nome
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Prefixos de código por categoria */
+const CATEGORIA_PREFIX: Record<string, string> = {
+  "farmacia": "FAR",
+  "racao": "RAC",
+  "combustivel": "COM",
+  "fertilizante": "FER",
+  "defensivo": "DEF",
+  "vacina": "VAC",
+  "medicamento": "MED",
+  "lubrificante": "LUB",
+  "semente": "SEM",
+  "embalagem": "EMB",
+  "outros": "OUT",
+};
+
+function getCategoriaPrefix(categoria: string): string {
+  const norm = normalizeInsumoNome(categoria);
+  for (const [key, prefix] of Object.entries(CATEGORIA_PREFIX)) {
+    if (norm.includes(key)) return prefix;
+  }
+  return "INS";
+}
+
+/** Gera um código único para um novo insumo: PREFIX-NNN */
+export async function gerarCodigoInsumo(imovelId: number, categoria: string): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const prefix = getCategoriaPrefix(categoria);
+  // Contar quantos insumos com esse prefixo já existem nessa fazenda
+  const rows = await db
+    .select({ codigo: insumosCatalogo.codigo })
+    .from(insumosCatalogo)
+    .where(and(eq(insumosCatalogo.imovelId, imovelId), like(insumosCatalogo.codigo, `${prefix}-%`)));
+  const seq = rows.length + 1;
+  return `${prefix}-${String(seq).padStart(3, "0")}`;
+}
+
+/** Lista todos os insumos do catálogo de uma fazenda */
+export async function listInsumosCatalogo(imovelId: number): Promise<InsumosCatalogo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(insumosCatalogo)
+    .where(eq(insumosCatalogo.imovelId, imovelId))
+    .orderBy(insumosCatalogo.codigo);
+}
+
+/** Busca um insumo pelo nome normalizado (exact match) */
+export async function findInsumoByNome(imovelId: number, nome: string): Promise<InsumosCatalogo | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const nomeNorm = normalizeInsumoNome(nome);
+  const rows = await db
+    .select()
+    .from(insumosCatalogo)
+    .where(and(eq(insumosCatalogo.imovelId, imovelId), eq(insumosCatalogo.nomeNormalizado, nomeNorm)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Busca insumos pelo nome (busca parcial para autocomplete) */
+export async function searchInsumosCatalogo(imovelId: number, query: string): Promise<InsumosCatalogo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const nomeNorm = normalizeInsumoNome(query);
+  return db
+    .select()
+    .from(insumosCatalogo)
+    .where(and(eq(insumosCatalogo.imovelId, imovelId), like(insumosCatalogo.nomeNormalizado, `%${nomeNorm}%`)))
+    .orderBy(insumosCatalogo.codigo)
+    .limit(20);
+}
+
+/**
+ * Upsert de insumo no catálogo:
+ * - Se já existe pelo nome normalizado, atualiza categoria/unidade/railwayId
+ * - Se não existe, cria com código gerado automaticamente
+ * Retorna o insumo (novo ou atualizado) com o código.
+ */
+export async function upsertInsumosCatalogo(data: {
+  imovelId: number;
+  nome: string;
+  categoria?: string;
+  unidade?: string;
+  railwayId?: number;
+}): Promise<InsumosCatalogo> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const nomeNorm = normalizeInsumoNome(data.nome);
+  const categoria = data.categoria ?? "outros";
+  const unidade = data.unidade ?? "unidade";
+
+  // Verificar se já existe
+  const existing = await findInsumoByNome(data.imovelId, data.nome);
+  if (existing) {
+    // Atualizar categoria/unidade/railwayId se fornecidos
+    await db
+      .update(insumosCatalogo)
+      .set({ categoria, unidade, ...(data.railwayId ? { railwayId: data.railwayId } : {}) })
+      .where(eq(insumosCatalogo.id, existing.id));
+    return { ...existing, categoria, unidade };
+  }
+
+  // Criar novo com código gerado
+  const codigo = await gerarCodigoInsumo(data.imovelId, categoria);
+  const insert: InsertInsumosCatalogo = {
+    imovelId: data.imovelId,
+    codigo,
+    nome: data.nome.trim(),
+    nomeNormalizado: nomeNorm,
+    categoria,
+    unidade,
+    railwayId: data.railwayId ?? null,
+  };
+  const [result] = await db.insert(insumosCatalogo).values(insert);
+  const id = (result as { insertId: number }).insertId;
+  const rows = await db.select().from(insumosCatalogo).where(eq(insumosCatalogo.id, id)).limit(1);
+  return rows[0];
 }

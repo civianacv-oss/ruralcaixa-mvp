@@ -13,6 +13,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
 import {
   Package,
@@ -33,6 +35,8 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   XCircle,
+  ChevronsUpDown,
+  Hash,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -83,8 +87,27 @@ export default function Insumos() {
   const { imovelId } = useRuralAuth();
   const utils = trpc.useUtils();
 
-  // ── Queries ──────────────────────────────────────────────────────────────────
-  // retry:false para não logar erros 404 enquanto o backend de insumos não estiver deployado
+  // ── Catálogo local (sempre disponível, independente do Railway) ───────────────────────
+  const [nomeSearch, setNomeSearch] = useState("");
+  const [nomePopoverOpen, setNomePopoverOpen] = useState(false);
+  const { data: catalogSuggestions = [] } = trpc.railway.buscarCatalogInsumos.useQuery(
+    { imovelId: imovelId!, query: nomeSearch },
+    { enabled: !!imovelId && nomeSearch.length >= 2, retry: false }
+  );
+  const { data: catalogList = [] } = trpc.railway.listarCatalogInsumos.useQuery(
+    { imovelId: imovelId! },
+    { enabled: !!imovelId, retry: false }
+  );
+  const upsertCatalog = trpc.railway.upsertCatalogInsumo.useMutation({
+    onSuccess: (item) => {
+      utils.railway.listarCatalogInsumos.invalidate();
+      utils.railway.buscarCatalogInsumos.invalidate();
+      toast.success(`Insumo salvo no catálogo com código ${item.codigo}`);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // ── Queries Railway (retry:false para não logar erros 404 enquanto backend não deployado) ────────────
   const { data: insumos = [], isLoading: loadingInsumos } = trpc.railway.insumos.useQuery(
     { imovelId: imovelId! },
     { enabled: !!imovelId, retry: false }
@@ -435,7 +458,67 @@ export default function Insumos() {
                 <div className="space-y-3">
                   <div>
                     <Label>Nome *</Label>
-                    <Input value={novoInsumo.nome} onChange={e => setNovoInsumo(p => ({ ...p, nome: e.target.value }))} placeholder="Ex: Ração ovinos" />
+                    <Popover open={nomePopoverOpen} onOpenChange={setNomePopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full justify-between font-normal"
+                        >
+                          {novoInsumo.nome || "Buscar ou criar insumo..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command>
+                          <CommandInput
+                            placeholder="Pesquisar insumo..."
+                            value={nomeSearch}
+                            onValueChange={setNomeSearch}
+                          />
+                          <CommandList>
+                            <CommandEmpty>
+                              <button
+                                className="w-full text-left px-3 py-2 text-sm text-primary hover:bg-accent"
+                                onClick={() => {
+                                  setNovoInsumo(p => ({ ...p, nome: nomeSearch }));
+                                  setNomePopoverOpen(false);
+                                }}
+                              >
+                                + Criar novo: <strong>{nomeSearch}</strong>
+                              </button>
+                            </CommandEmpty>
+                            {catalogSuggestions.length > 0 && (
+                              <CommandGroup heading="Catálogo desta fazenda">
+                                {catalogSuggestions.map((item: any) => (
+                                  <CommandItem
+                                    key={item.id}
+                                    value={item.nome}
+                                    onSelect={() => {
+                                      setNovoInsumo(p => ({
+                                        ...p,
+                                        nome: item.nome,
+                                        categoria: item.categoria ?? p.categoria,
+                                        unidade: item.unidade ?? p.unidade,
+                                      }));
+                                      setNomeSearch(item.nome);
+                                      setNomePopoverOpen(false);
+                                    }}
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <Hash className="h-3 w-3 text-muted-foreground" />
+                                      <span className="font-mono text-xs text-muted-foreground">{item.codigo}</span>
+                                      {item.nome}
+                                    </span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            )}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-xs text-muted-foreground mt-1">Digite para buscar no catálogo ou criar um novo insumo</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -533,22 +616,32 @@ export default function Insumos() {
 
                   <Button
                     className="w-full"
-                    disabled={!novoInsumo.nome || createInsumo.isPending}
-                    onClick={() => createInsumo.mutate({
-                      imovelId: imovelId!,
-                      nome: novoInsumo.nome,
-                      categoria: novoInsumo.categoria,
-                      unidade: novoInsumo.unidade,
-                      origem: novoInsumo.origem,
-                      estoque_atual: novoInsumo.estoque_atual,
-                      estoque_minimo: novoInsumo.estoque_minimo,
-                      estoque_ideal: novoInsumo.estoque_ideal,
-                      preco_estimado: novoInsumo.preco_estimado ? Number(novoInsumo.preco_estimado) : undefined,
-                      reposicao_modo: novoInsumo.reposicao_modo,
-                      lead_time_dias: novoInsumo.lead_time_dias,
-                    })}
+                    disabled={!novoInsumo.nome || createInsumo.isPending || upsertCatalog.isPending}
+                    onClick={() => {
+                      // Salvar no catálogo local primeiro (cria ou atualiza)
+                      upsertCatalog.mutate({
+                        imovelId: imovelId!,
+                        nome: novoInsumo.nome,
+                        categoria: novoInsumo.categoria,
+                        unidade: novoInsumo.unidade,
+                      });
+                      // Tentar criar na API Railway
+                      createInsumo.mutate({
+                        imovelId: imovelId!,
+                        nome: novoInsumo.nome,
+                        categoria: novoInsumo.categoria,
+                        unidade: novoInsumo.unidade,
+                        origem: novoInsumo.origem,
+                        estoque_atual: novoInsumo.estoque_atual,
+                        estoque_minimo: novoInsumo.estoque_minimo,
+                        estoque_ideal: novoInsumo.estoque_ideal,
+                        preco_estimado: novoInsumo.preco_estimado ? Number(novoInsumo.preco_estimado) : undefined,
+                        reposicao_modo: novoInsumo.reposicao_modo,
+                        lead_time_dias: novoInsumo.lead_time_dias,
+                      });
+                    }}
                   >
-                    {createInsumo.isPending ? "Salvando..." : "Cadastrar Insumo"}
+                    {createInsumo.isPending || upsertCatalog.isPending ? "Salvando..." : "Cadastrar Insumo"}
                   </Button>
                 </div>
               </DialogContent>
@@ -578,8 +671,17 @@ export default function Insumos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {insumos.map((ins: any) => (
+                  {insumos.map((ins: any) => {
+                    const catalogEntry = catalogList.find((c: any) => c.nome.toLowerCase() === ins.nome?.toLowerCase());
+                    return (
                     <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
+                      <TableCell>
+                        {catalogEntry ? (
+                          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{catalogEntry.codigo}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/50">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium">{ins.nome}</TableCell>
                       <TableCell className="capitalize text-sm text-muted-foreground">{ins.categoria}</TableCell>
                       <TableCell className={ins.status_estoque === "critico" ? "text-red-600 font-semibold" : ins.status_estoque === "baixo" ? "text-orange-600 font-medium" : ""}>
@@ -618,7 +720,8 @@ export default function Insumos() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

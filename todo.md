@@ -191,3 +191,14 @@
 - [x] Mapeamento flexível de colunas (aceita PT e EN)
 - [x] Resultado detalhado com contagem de sucesso/erro e lista de linhas com problema
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 25: Código único de insumos + upsert inteligente
+- [x] Tabela local `insumos_catalogo` no banco: id, codigo (único por fazenda), nome, nome_normalizado, categoria, unidade, railway_id, criado_em
+- [x] Helpers server/db.ts: upsertInsumosCatalogo, findInsumoByNome, searchInsumosCatalogo, listInsumosCatalogo, gerarCodigoInsumo
+- [x] Endpoints tRPC: listarCatalogInsumos, buscarCatalogInsumos, upsertCatalogInsumo
+- [x] importarInsumos: upsert local primeiro (cria ou atualiza pelo nome normalizado), depois tenta Railway
+- [x] Resultado da importação exibe código gerado e ação (criado/atualizado) por linha
+- [x] UI: autocomplete Popover+Command no campo Nome do formulário (busca no catálogo local)
+- [x] UI: código exibido na tabela de estoque (coluna Código com badge monoespaçado)
+- [x] Geração automática de código: prefixo por categoria + sequencial (FAR-001, RAC-002, etc.)
+- [x] 43 testes passando, zero erros TypeScript

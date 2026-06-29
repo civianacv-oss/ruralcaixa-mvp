@@ -20,7 +20,7 @@ import {
 } from "../railwayProxy";
 import * as XLSX from "xlsx";
 import { TRPCError } from "@trpc/server";
-import { getImoveisForProdutor } from "../db";
+import { getImoveisForProdutor, upsertInsumosCatalogo, searchInsumosCatalogo, listInsumosCatalogo } from "../db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -671,29 +671,51 @@ export const railwayRouter = router({
         return "";
       };
 
-      const results: { nome: string; ok: boolean; error?: string }[] = [];
+      const results: { nome: string; codigo?: string; ok: boolean; action?: "criado" | "atualizado"; error?: string }[] = [];
 
       for (const row of rows) {
         const nome = normalize(col(row, "nome", "name", "insumo", "produto"));
         if (!nome) { results.push({ nome: "(sem nome)", ok: false, error: "Nome obrigatório" }); continue; }
 
-        const payload = {
-          fazenda_id: input.imovelId,
-          nome,
-          categoria: normalize(col(row, "categoria", "category", "tipo", "type")) || "outros",
-          unidade: normalize(col(row, "unidade", "unit", "un")) || "unidade",
-          origem: normalize(col(row, "origem", "origin")) || "comprado",
-          estoque_atual: toNum(col(row, "estoqueatual", "estoque", "quantidade", "qty", "stock")),
-          estoque_minimo: toNum(col(row, "estoqueminimo", "minimo", "min", "stockmin")),
-          estoque_ideal: toNum(col(row, "estoqueideal", "ideal", "stockideal")),
-          preco_estimado: toNum(col(row, "precoestimado", "preco", "price", "valor")) || undefined,
-          reposicao_modo: normalize(col(row, "reposicaomodo", "reposicao", "repositionmode")) === "automatico" ? "automatico" : "manual",
-          lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
-        };
+        const categoria = normalize(col(row, "categoria", "category", "tipo", "type")) || "outros";
+        const unidade = normalize(col(row, "unidade", "unit", "un")) || "unidade";
 
         try {
-          await railwayMutate<unknown>("/insumos/", "POST", payload);
-          results.push({ nome, ok: true });
+          // 1. Upsert no catálogo local (cria ou atualiza pelo nome normalizado)
+          const catalogItem = await upsertInsumosCatalogo({
+            imovelId: input.imovelId,
+            nome,
+            categoria,
+            unidade,
+          });
+
+          // 2. Tentar enviar para a API Railway (se disponível)
+          const payload = {
+            fazenda_id: input.imovelId,
+            nome,
+            categoria,
+            unidade,
+            origem: normalize(col(row, "origem", "origin")) || "comprado",
+            estoque_atual: toNum(col(row, "estoqueatual", "estoque", "posicaofisicaatual", "posicao", "quantidade", "qty", "stock")),
+            estoque_minimo: toNum(col(row, "estoqueminimo", "minimo", "min", "stockmin")),
+            estoque_ideal: toNum(col(row, "estoqueideal", "ideal", "stockideal")),
+            preco_estimado: toNum(col(row, "precoestimado", "preco", "price", "valor", "valorunitariodaultimacompra", "valorunitario")) || undefined,
+            reposicao_modo: normalize(col(row, "reposicaomodo", "reposicao", "repositionmode")) === "automatico" ? "automatico" : "manual",
+            lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
+          };
+
+          try {
+            const railwayResult = await railwayMutate<{ id: number } | unknown>("/insumos/", "POST", payload);
+            // Atualizar railwayId no catálogo se o Railway retornou um id
+            if (railwayResult && typeof railwayResult === "object" && "id" in railwayResult) {
+              await upsertInsumosCatalogo({ imovelId: input.imovelId, nome, categoria, unidade, railwayId: (railwayResult as { id: number }).id });
+            }
+          } catch {
+            // Railway não disponível ainda — ignorar silenciosamente, catálogo local já foi salvo
+          }
+
+          const isNew = !catalogItem.railwayId;
+          results.push({ nome, codigo: catalogItem.codigo, ok: true, action: isNew ? "criado" : "atualizado" });
         } catch (e: unknown) {
           results.push({ nome, ok: false, error: e instanceof Error ? e.message : String(e) });
         }
@@ -702,5 +724,42 @@ export const railwayRouter = router({
       const success = results.filter(r => r.ok).length;
       const errors = results.filter(r => !r.ok).length;
       return { total: rows.length, success, errors, results };
+    }),
+
+  /** Lista o catálogo local de insumos de uma fazenda */
+  listarCatalogInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return listInsumosCatalogo(input.imovelId);
+    }),
+
+  /** Busca insumos no catálogo por nome (autocomplete) */
+  buscarCatalogInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number(), query: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return searchInsumosCatalogo(input.imovelId, input.query);
+    }),
+
+  /** Upsert manual de um insumo no catálogo (cadastro pelo formulário) */
+  upsertCatalogInsumo: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      nome: z.string().min(1),
+      categoria: z.string().optional(),
+      unidade: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return upsertInsumosCatalogo({
+        imovelId: input.imovelId,
+        nome: input.nome,
+        categoria: input.categoria,
+        unidade: input.unidade,
+      });
     }),
 });
