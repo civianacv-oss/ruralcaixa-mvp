@@ -7,6 +7,8 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import * as jose from "jose";
 import { ENV } from "./_core/env";
+import * as otp from "./otp";
+import { sdk } from "./_core/sdk";
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -63,6 +65,33 @@ export const appRouter = router({
         if (existing) throw new TRPCError({ code: "CONFLICT", message: "CPF já cadastrado." });
         const user = await db.createUserWithCpf({ name: input.name, cpf: input.cpf, password: input.password, role: input.role });
         return { success: true, user: { id: user.id, name: user.name, cpf: user.cpf } };
+      }),
+
+    // Step 1: Send OTP via WhatsApp/Telegram
+    sendOtp: publicProcedure
+      .input(z.object({ cpf: z.string().min(11) }))
+      .mutation(async ({ input }) => {
+        return otp.sendOtp(input.cpf);
+      }),
+
+    // Step 2: Verify OTP and create session
+    verifyOtp: publicProcedure
+      .input(z.object({ cpf: z.string().min(11), code: z.string().length(6) }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await otp.verifyOtp(input.cpf, input.code);
+        // Create a proper session token using the SDK
+        const token = await sdk.createSessionToken(result.openId, {
+          name: result.produtorNome,
+          expiresInMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+        });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
+        return {
+          success: true as const,
+          produtorId: result.produtorId,
+          produtorNome: result.produtorNome,
+          imovelId: result.imovelId,
+        };
       }),
 
     logout: publicProcedure.mutation(({ ctx }) => {

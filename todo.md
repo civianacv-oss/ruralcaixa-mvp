@@ -57,3 +57,10 @@
 - [x] Testes unitários (13 testes passando)
 - [x] Responsividade mobile (sidebar colapsável, topbar mobile)
 - [x] Checkpoint final e entrega
+
+## Fase 11: Confirmação de Segurança por Telegram/WhatsApp (OTP)
+- [x] Criar endpoint tRPC `auth.sendOtp` — gera código de 6 dígitos, armazena em memória com TTL 5min, envia via Telegram ou WhatsApp usando o telefone do produtor
+- [x] Criar endpoint tRPC `auth.verifyOtp` — valida o código, retorna token de sessão
+- [x] Construir tela de verificação de código OTP (6 dígitos com inputs individuais)
+- [x] Integrar fluxo: CPF → OTP enviado → tela de código → dashboard
+- [x] Mostrar qual canal foi usado (Telegram ou WhatsApp) e opção de reenvio
