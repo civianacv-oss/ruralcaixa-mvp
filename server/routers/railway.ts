@@ -642,9 +642,21 @@ export const railwayRouter = router({
       const workbook = XLSX.read(buffer, { type: "buffer" });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
-      if (rows.length === 0) throw new Error("Planilha vazia ou sem dados.");
+      // Detectar a linha de cabeçalho real: procurar a primeira linha que contenha "nome" ou "name"
+      // A planilha pode ter linhas de metadados antes do cabeçalho (ex: "Gerado em...", "Fazenda...", etc.)
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", header: 1 }) as unknown[][];
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+        const rowVals = rawRows[i].map(v => String(v ?? "").toLowerCase().trim());
+        if (rowVals.some(v => v === "nome" || v === "name" || v === "insumo" || v === "produto")) {
+          headerRowIndex = i;
+          break;
+        }
+      }
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", range: headerRowIndex });
+
+      if (rows.length === 0) throw new Error("Planilha vazia ou sem dados reconhecíveis. Verifique se há uma coluna chamada \"Nome\".");
       if (rows.length > 500) throw new Error("Limite de 500 linhas por importação.");
 
       // Mapear colunas flexíveis (aceita PT e EN)
