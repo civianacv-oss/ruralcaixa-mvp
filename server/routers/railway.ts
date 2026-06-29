@@ -919,4 +919,115 @@ export const railwayRouter = router({
       const errors = results.filter(r => !r.ok).length;
       return { total: input.rows.length, success, errors, results };
     }),
+
+  // ─── Simulador de Regime Tributário ───────────────────────────────────────
+
+  simulacaoAvulsa: publicProcedure
+    .input(z.object({
+      faturamento_12m: z.number(),
+      folha_12m: z.number().default(0),
+      despesas_12m: z.number().default(0),
+      tipo_producao: z.enum(["in_natura", "industrializado", "servico", "misto", "comercio", "industria"]).default("in_natura"),
+      creditos_pis_cofins: z.number().default(0),
+      jcp: z.number().default(0),
+    }))
+    .mutation(async ({ input }) => {
+      const res = await railwayFetch<unknown>("/simulador-regime/simulacao", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      return res;
+    }),
+
+  registrarCompetencia: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      competencia: z.string(), // "YYYY-MM"
+      faturamento: z.number(),
+      folha_pagamento: z.number().default(0),
+      despesas_dedutiveis: z.number().default(0),
+      tipo_producao: z.enum(["in_natura", "industrializado", "servico", "misto", "comercio", "industria"]).default("in_natura"),
+      creditos_pis_cofins: z.number().default(0),
+      jcp: z.number().default(0),
+      observacao: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const res = await railwayFetch<unknown>("/simulador-regime/lancamento", {
+        method: "POST",
+        body: JSON.stringify({
+          imovel_id: input.imovelId,
+          competencia: input.competencia,
+          faturamento: input.faturamento,
+          folha_pagamento: input.folha_pagamento,
+          despesas_dedutiveis: input.despesas_dedutiveis,
+          tipo_producao: input.tipo_producao,
+          creditos_pis_cofins: input.creditos_pis_cofins,
+          jcp: input.jcp,
+          observacao: input.observacao,
+        }),
+      });
+      return res;
+    }),
+
+  listarCompetencias: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const res = await railwayFetch<unknown[]>(`/simulador-regime/lancamentos/${input.imovelId}`);
+      return Array.isArray(res) ? res : [];
+    }),
+
+  dashboardSimulador: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const res = await railwayFetch<unknown>(`/simulador-regime/dashboard/${input.imovelId}`);
+      return res;
+    }),
+
+  deletarCompetencia: publicProcedure
+    .input(z.object({ imovelId: z.number(), competencia: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const res = await railwayFetch<unknown>(`/simulador-regime/lancamento/${input.imovelId}/${input.competencia}`, {
+        method: "DELETE",
+      });
+      return res;
+    }),
+
+  perfilSimulador: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const res = await railwayFetch<unknown>(`/simulador-regime/perfil/${input.imovelId}`);
+      return res;
+    }),
+
+  salvarPerfilSimulador: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      tipo_producao: z.string(),
+      regime_atual: z.string().optional(),
+      faturamento_estimado_anual: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const res = await railwayFetch<unknown>("/simulador-regime/perfil", {
+        method: "POST",
+        body: JSON.stringify({
+          imovel_id: input.imovelId,
+          tipo_producao: input.tipo_producao,
+          regime_atual: input.regime_atual,
+          faturamento_estimado_anual: input.faturamento_estimado_anual,
+        }),
+      });
+      return res;
+    }),
 });

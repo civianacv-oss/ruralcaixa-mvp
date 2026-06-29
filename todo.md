@@ -212,3 +212,15 @@
 - [x] UI: resultado exibe código gerado e ação (Novo/Atualizado) por linha importada
 - [x] Template CSV atualizado com as 10 colunas oficiais
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 27: Simulador de Regime Tributário
+- [x] Endpoints tRPC proxy: simulacaoAvulsa, registrarCompetencia, listarCompetencias, dashboardSimulador, deletarCompetencia, perfilSimulador, salvarPerfilSimulador
+- [x] railwayFetch atualizado para aceitar RequestInit (suporte a POST/DELETE)
+- [x] Página SimuladorTributacao.tsx com 4 abas: Simulação Rápida, Competência Mensal, Histórico, Dashboard
+- [x] Aba Simulação Rápida: formulário completo com todos os parâmetros → cards comparativos de todos os regimes
+- [x] Aba Competência Mensal: formulário de registro mensal com cálculo automático e resultado inline
+- [x] Aba Histórico: tabela com regime recomendado, economia e botão de excluir
+- [x] Aba Dashboard: cards de resumo, alertas ativos e gráfico de barras histórico (recharts)
+- [x] Item "Simulador Tributário" no menu Fiscal do RuralLayout (TrendingDown icon)
+- [x] Rota /simulador-tributario no App.tsx
+- [x] 43 testes passando, zero erros TypeScript

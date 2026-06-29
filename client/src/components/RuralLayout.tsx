@@ -21,6 +21,7 @@ import {
   Package,
   ClipboardList,
   Globe,
+  TrendingDown,
   LogOut,
   Leaf,
   ChevronRight,
@@ -79,6 +80,7 @@ const NAV_SECTIONS = [
       { icon: Users, label: "eSocial Rural", path: "/esocial-rural" },
       { icon: ClipboardList, label: "EFD-Reinf / DARF", path: "/efd-reinf" },
       { icon: Globe, label: "DCTFWeb", path: "/dctfweb" },
+      { icon: TrendingDown, label: "Simulador Tributário", path: "/simulador-tributario" },
     ],
   },
 ];

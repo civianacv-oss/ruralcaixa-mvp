@@ -30,6 +30,7 @@ import ESocialRural from "./pages/ESocialRural";
 import EFDReinf from "./pages/EFDReinf";
 import DCTFWeb from "./pages/DCTFWeb";
 import Insumos from "./pages/Insumos";
+import SimuladorTributacao from "./pages/SimuladorTributacao";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated } from "./lib/api";
@@ -97,6 +98,7 @@ function Router() {
       <Route path="/esocial-rural">{() => <ProtectedRoute component={ESocialRural} />}</Route>
       <Route path="/efd-reinf">{() => <ProtectedRoute component={EFDReinf} />}</Route>
       <Route path="/dctfweb">{() => <ProtectedRoute component={DCTFWeb} />}</Route>
+      <Route path="/simulador-tributario">{() => <ProtectedRoute component={SimuladorTributacao} />}</Route>
 
       {/* Insumos */}
       <Route path="/insumos">{() => <ProtectedRoute component={Insumos} />}</Route>

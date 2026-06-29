@@ -90,14 +90,23 @@ export function assertProdutor(claims: RcClaims, requestedProdutorId: number) {
 
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
-export async function railwayFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${RAILWAY_API}${path}`);
+export async function railwayFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options?.headers ?? {}),
+    },
+  };
+  const res = await fetch(`${RAILWAY_API}${path}`, fetchOptions);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
+      code: res.status === 404 ? "NOT_FOUND" : "INTERNAL_SERVER_ERROR",
       message: (err as { detail?: string }).detail ?? `Railway API error ${res.status}`,
     });
   }
+  // DELETE may return 204 No Content
+  if (res.status === 204) return {} as T;
   return res.json() as Promise<T>;
 }
