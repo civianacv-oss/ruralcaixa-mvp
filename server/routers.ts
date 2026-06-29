@@ -91,6 +91,8 @@ export const appRouter = router({
           produtorId: result.produtorId,
           produtorNome: result.produtorNome,
           imovelId: result.imovelId,
+          imovelCount: result.imovelCount,
+          cpf: input.cpf,
         };
       }),
 

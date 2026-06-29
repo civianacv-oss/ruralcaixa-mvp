@@ -29,6 +29,7 @@ export function clearSession() {
   localStorage.removeItem("rc_produtor_id");
   localStorage.removeItem("rc_produtor_nome");
   localStorage.removeItem("rc_imovel_id");
+  localStorage.removeItem("rc_produtor_cpf");
 }
 
 export function isAuthenticated(): boolean {

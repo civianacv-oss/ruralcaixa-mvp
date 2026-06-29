@@ -12,7 +12,9 @@ import {
   Leaf,
   ChevronRight,
   Menu,
+  Home,
 } from "lucide-react";
+import { getImovelId } from "@/lib/api";
 import { useState } from "react";
 
 const NAV_ITEMS = [
@@ -133,8 +135,20 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
+        {/* Switch property button */}
+        <div className="px-2 pb-1">
+          <button
+            onClick={() => { navigate("/selecionar-imovel"); setMobileOpen(false); }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-white/50 hover:bg-white/8 hover:text-white/90 transition-all duration-150"
+            title={!sidebarOpen ? "Trocar propriedade" : undefined}
+          >
+            <Home className="w-4 h-4 shrink-0" />
+            {sidebarOpen && <span className="truncate text-[12px]">Trocar propriedade</span>}
+          </button>
+        </div>
+
         {/* User footer */}
-        <div
+          <div
           className="px-3 py-3 border-t shrink-0"
           style={{ borderColor: "oklch(0.28 0.04 145)" }}
         >

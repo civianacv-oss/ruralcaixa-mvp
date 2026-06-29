@@ -12,6 +12,7 @@ import Reproducao from "./pages/Reproducao";
 import Financeiro from "./pages/Financeiro";
 import Movimentacoes from "./pages/Movimentacoes";
 import RuralLayout from "./components/RuralLayout";
+import SelecionarImovel from "./pages/SelecionarImovel";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated } from "./lib/api";
@@ -46,6 +47,9 @@ function Router() {
     <Switch>
       <Route path="/" component={HomeRedirect} />
       <Route path="/login" component={Login} />
+      <Route path="/selecionar-imovel">
+        {() => <SelecionarImovel />}
+      </Route>
       <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>

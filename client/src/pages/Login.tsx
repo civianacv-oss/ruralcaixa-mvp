@@ -65,8 +65,15 @@ export default function Login() {
     setErro("");
     try {
       const result = await verifyOtp.mutateAsync({ cpf: cpf.replace(/\D/g, ""), code: fullCode });
+      // Save CPF for the property selection screen
+      localStorage.setItem("rc_produtor_cpf", result.cpf);
       setSession(result.produtorId, result.produtorNome, result.imovelId);
-      navigate("/dashboard");
+      // If multiple properties, show selection screen; otherwise go straight to dashboard
+      if ((result.imovelCount ?? 1) > 1) {
+        navigate("/selecionar-imovel");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err: unknown) {
       setErro(err instanceof Error ? err.message : "Código inválido. Tente novamente.");
       // Shake and clear code on error

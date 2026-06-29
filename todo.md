@@ -64,3 +64,13 @@
 - [x] Construir tela de verificação de código OTP (6 dígitos com inputs individuais)
 - [x] Integrar fluxo: CPF → OTP enviado → tela de código → dashboard
 - [x] Mostrar qual canal foi usado (Telegram ou WhatsApp) e opção de reenvio
+
+## Fase 12: Tela de Seleção de Imóvel
+- [x] Criar página SelecionarImovel.tsx com cards elegantes por propriedade
+- [x] Exibir nome, município/UF, área (ha) e total de produtores por imóvel
+- [x] Carregar resumo de rebanho (ovinos, bovinos) por imóvel para enriquecer os cards
+- [x] Salvar imovel_id escolhido na sessão e redirecionar para /dashboard
+- [x] Integrar no fluxo: após verifyOtp → /selecionar-imovel (se >1 imóvel) ou /dashboard (se 1 imóvel)
+- [x] Adicionar rota /selecionar-imovel no App.tsx
+- [x] Botão "Trocar propriedade" no sidebar do RuralLayout
+- [x] Limpeza do CPF no clearSession

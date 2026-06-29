@@ -25,6 +25,7 @@ interface OtpEntry {
   produtorNome: string;
   telefone: string;
   imovelId?: number;
+  imovelCount: number;
   expiresAt: number;
   attempts: number;
 }
@@ -80,15 +81,24 @@ async function fetchProdutor(cpf: string): Promise<ProdutorRaw | null> {
   return list.find((p) => cleanCpf(p.cpf) === cleanCpf(cpf)) ?? null;
 }
 
-async function fetchImovelId(cpf: string): Promise<number | undefined> {
+async function fetchImoveis(cpf: string): Promise<ImovelRaw[]> {
   try {
     const res = await fetch(`${RAILWAY_API}/imoveis/buscar?cpf=${cleanCpf(cpf)}`);
-    if (!res.ok) return undefined;
-    const list: ImovelRaw[] = await res.json();
-    return list?.[0]?.id;
+    if (!res.ok) return [];
+    return await res.json();
   } catch {
-    return undefined;
+    return [];
   }
+}
+
+async function fetchImovelId(cpf: string): Promise<number | undefined> {
+  const list = await fetchImoveis(cpf);
+  return list?.[0]?.id;
+}
+
+async function fetchImovelCount(cpf: string): Promise<number> {
+  const list = await fetchImoveis(cpf);
+  return list.length;
 }
 
 async function sendWhatsApp(telefone: string, code: string): Promise<boolean> {
@@ -147,8 +157,10 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     throw new Error("CPF não encontrado. Verifique ou entre em contato.");
   }
 
-  // Get imovel
-  const imovelId = await fetchImovelId(cpfClean);
+  // Get imoveis (single fetch, reuse for both)
+  const imovelList = await fetchImoveis(cpfClean);
+  const imovelId = imovelList?.[0]?.id;
+  const imovelCount = imovelList.length;
 
   // Generate code
   const code = generateCode();
@@ -159,6 +171,7 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     produtorNome: produtor.nome,
     telefone: produtor.telefone,
     imovelId,
+    imovelCount,
     expiresAt: Date.now() + OTP_TTL_MS,
     attempts: 0,
   };
@@ -192,6 +205,7 @@ export interface VerifyOtpResult {
   produtorId: number;
   produtorNome: string;
   imovelId?: number;
+  imovelCount: number;
   openId: string; // used to create session
 }
 
@@ -230,6 +244,7 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
     produtorId: entry.produtorId,
     produtorNome: entry.produtorNome,
     imovelId: entry.imovelId,
+    imovelCount: entry.imovelCount ?? 1,
     openId,
   };
 }
