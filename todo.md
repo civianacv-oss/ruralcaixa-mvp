@@ -132,3 +132,4 @@
 - [x] Importar `setRole` em Login.tsx e salvar role após verifyOtp bem-sucedido
 - [x] RuralLayout.tsx usa `isAdmin` e `role` de useRuralAuth para mostrar link Procurações e label correto
 - [x] 43 testes passando, zero erros TypeScript
+- [x] Fix: CPF não estava sendo salvo no localStorage após OTP — setSession agora aceita parâmetro `cpf` opcional; Login.tsx passa o CPF ao chamar setSession, corrigindo o erro "Sessão expirada" na tela SelecionarImovel

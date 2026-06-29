@@ -27,10 +27,11 @@ export function setImovelNome(nome: string) {
   localStorage.setItem("rc_imovel_nome", nome);
 }
 
-export function setSession(produtorId: number, nome: string, imovelId?: number) {
+export function setSession(produtorId: number, nome: string, imovelId?: number, cpf?: string) {
   localStorage.setItem("rc_produtor_id", String(produtorId));
   localStorage.setItem("rc_produtor_nome", nome);
   if (imovelId) localStorage.setItem("rc_imovel_id", String(imovelId));
+  if (cpf) localStorage.setItem("rc_produtor_cpf", cpf.replace(/\D/g, ""));
 }
 
 export function getRole(): string {
