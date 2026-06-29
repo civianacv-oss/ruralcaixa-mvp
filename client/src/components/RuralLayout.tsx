@@ -38,7 +38,12 @@ function useInsumosAlertaCount() {
   const imovelId = getImovelId();
   const { data } = trpc.railway.insumosAlertas.useQuery(
     { imovelId: imovelId! },
-    { enabled: !!imovelId, refetchInterval: 5 * 60 * 1000, staleTime: 4 * 60 * 1000 }
+    {
+      enabled: !!imovelId,
+      retry: false, // backend de insumos ainda não deployado — suprimir erros 404
+      refetchInterval: 5 * 60 * 1000,
+      staleTime: 4 * 60 * 1000,
+    }
   );
   return Array.isArray(data) ? data.length : 0;
 }
