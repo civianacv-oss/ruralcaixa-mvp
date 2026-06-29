@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { MapPin, Ruler, Users, ChevronRight, Leaf, Loader2, LogOut } from "lucide-react";
-import { getImoveis, getOvinoDashboard, getBovinoAnimais, clearSession, getProdutorNome, getProdutorId, setSession, setImovelNome, type Imovel } from "@/lib/api";
+import { getImoveis, getOvinoDashboard, getBovinoAnimais, clearSession, getProdutorNome, getProdutorId, setSession, setImovelNome, setRcToken, type Imovel } from "@/lib/api";
 import { trpc } from "@/lib/trpc";
 
 interface ImovelEnriquecido extends Imovel {
@@ -95,7 +95,12 @@ export default function SelecionarImovel() {
     // Re-emit rc_claims cookie server-side so guards reflect the new imovelId
     switchImovelMutation.mutate(
       { imovelId: imovel.id },
-      { onSettled: () => setTimeout(() => navigate("/dashboard"), 200) }
+      {
+        onSuccess: (data) => {
+          if (data.rcClaimsToken) setRcToken(data.rcClaimsToken);
+        },
+        onSettled: () => setTimeout(() => navigate("/dashboard"), 200),
+      }
     );
   }
 

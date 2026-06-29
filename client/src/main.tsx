@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '@shared/const';
+import { getRcToken } from "@/lib/api";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -55,24 +56,31 @@ const trpcClient = trpc.createClient({
       url: "/api/trpc",
       transformer: superjson,
       headers() {
-        // Preview auto-login fallback: when the browser blocks iframe cookies
-        // (Safari ITP / private browsing / WebView), the runtime mirrors the
-        // session into sessionStorage so we can forward it as a Bearer token.
-        // The regular OAuth cookie flow keeps working and takes priority server-side.
+        const headers: Record<string, string> = {};
+
+        // 1. Manus OAuth session fallback (iframe / cookie-blocked environments)
         try {
           const raw = sessionStorage.getItem("manus-cookie");
           if (raw) {
             const prefix = `${COOKIE_NAME}=`;
             const pair = raw.split(";").find(s => s.trim().startsWith(prefix));
             const token = pair?.trim().slice(prefix.length);
-            if (token) {
-              return { Authorization: `Bearer ${token}` };
-            }
+            if (token) headers["Authorization"] = `Bearer ${token}`;
           }
         } catch {
           // sessionStorage unavailable
         }
-        return {};
+
+        // 2. Rural session token — sent when cookies are blocked cross-site
+        // Uses a separate header scheme (RcClaims) so it doesn't conflict with Bearer
+        try {
+          const rcToken = getRcToken();
+          if (rcToken) headers["X-Rc-Claims"] = rcToken;
+        } catch {
+          // localStorage unavailable
+        }
+
+        return headers;
       },
       fetch(input, init) {
         return globalThis.fetch(input, {

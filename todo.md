@@ -138,3 +138,12 @@
 - [x] Fix crítico: cookie rc_claims não era enviado pelo browser pois sameSite:none requer secure:true — cookies.ts agora usa sameSite:lax quando não é HTTPS, garantindo que o cookie seja enviado
 - [x] Fix: railwayProxy.ts usava req.cookies (não populado sem cookie-parser) — corrigido para parsear cookies do header raw igual ao sdk.ts
 - [x] Resultado: após OTP o sistema agora avança para seleção de imóvel/dashboard sem voltar para login
+
+## Fase 19: Fix definitivo — rc_claims via header X-Rc-Claims
+- [x] Servidor: getClaimsFromRequest lê header X-Rc-Claims antes do cookie (cross-site fallback)
+- [x] Servidor: verifyOtp e switchImovel retornam rcClaimsToken no body da resposta
+- [x] Cliente: Login.tsx salva rcClaimsToken no localStorage após verifyOtp
+- [x] Cliente: SelecionarImovel.tsx salva rcClaimsToken no localStorage após switchImovel
+- [x] Cliente: main.tsx envia X-Rc-Claims header em todas as requisições tRPC
+- [x] api.ts: getRcToken/setRcToken/clearRcToken helpers adicionados; clearSession limpa o token
+- [x] 43 testes passando, zero erros TypeScript

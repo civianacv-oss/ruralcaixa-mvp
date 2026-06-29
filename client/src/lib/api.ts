@@ -53,10 +53,25 @@ export function clearSession() {
   localStorage.removeItem("rc_imovel_nome");
   localStorage.removeItem("rc_produtor_cpf");
   localStorage.removeItem("rc_role");
+  localStorage.removeItem("rc_claims_token");
 }
 
 export function isAuthenticated(): boolean {
   return Boolean(getProdutorId());
+}
+
+// ─── rc_claims JWT token (sent as Authorization header when cookies are blocked) ─
+
+export function getRcToken(): string | null {
+  return localStorage.getItem("rc_claims_token");
+}
+
+export function setRcToken(token: string) {
+  localStorage.setItem("rc_claims_token", token);
+}
+
+export function clearRcToken() {
+  localStorage.removeItem("rc_claims_token");
 }
 
 // ─── Generic fetch wrapper ────────────────────────────────────────────────────

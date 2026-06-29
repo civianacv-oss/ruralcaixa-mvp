@@ -36,9 +36,16 @@ export interface RcClaims {
  */
 export async function getClaimsFromRequest(req: Request): Promise<RcClaims | null> {
   try {
-    // Parse cookies from the raw header (cookie-parser is not installed)
-    const cookies = parseCookieHeader(req.headers.cookie ?? "");
-    const raw = cookies.rc_claims;
+    // 1. Try X-Rc-Claims header (sent by client when cookies are blocked cross-site)
+    let raw: string | undefined;
+    const xRcClaims = req.headers["x-rc-claims"] as string | undefined;
+    if (xRcClaims) {
+      raw = xRcClaims;
+    } else {
+      // 2. Fall back to cookie (works in same-site / deployed environments)
+      const cookies = parseCookieHeader(req.headers.cookie ?? "");
+      raw = cookies.rc_claims;
+    }
     if (!raw) return null;
     const secret = new TextEncoder().encode(ENV.cookieSecret);
     const { payload } = await jose.jwtVerify(raw, secret);

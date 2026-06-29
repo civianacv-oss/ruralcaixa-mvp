@@ -104,6 +104,9 @@ export const appRouter = router({
           imovelCount: result.imovelCount,
           cpf: input.cpf,
           role: result.role ?? "user",
+          // Return token so client can store it in localStorage as fallback
+          // when cookies are blocked (cross-site preview environments)
+          rcClaimsToken: claimsToken,
         };
       }),
 
@@ -129,7 +132,7 @@ export const appRouter = router({
           role: claims.role ?? "user",
         });
         ctx.res.cookie("rc_claims", claimsToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
-        return { success: true, imovelId: input.imovelId };
+        return { success: true, imovelId: input.imovelId, rcClaimsToken: claimsToken };
       }),
   }),
 
