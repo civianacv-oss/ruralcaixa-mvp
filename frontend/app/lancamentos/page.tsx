@@ -606,12 +606,12 @@ export default function LancamentosPage() {
           onFechar={() => setEditando(null)}
           saving={savingEditar}
           onExcluir={handleExcluir}
-          onExcluir={handleExcluir}
         />
       )}
     </div>
   );
 }
+
 
 
 
