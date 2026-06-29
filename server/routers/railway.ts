@@ -18,6 +18,7 @@ import {
   railwayFetch,
   RAILWAY_API,
 } from "../railwayProxy";
+import * as XLSX from "xlsx";
 import { TRPCError } from "@trpc/server";
 import { getImoveisForProdutor } from "../db";
 
@@ -619,5 +620,75 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       return railwayMutate<{ ok: boolean; enviado_telegram: boolean; mensagem: string }>(`/pedidos-compra/${input.pedidoId}/enviar`, "POST");
+    }),
+
+  /**
+   * Importar insumos de planilha Excel ou CSV.
+   * O cliente envia o arquivo como base64 + mimeType.
+   * O servidor parseia, valida e cria cada insumo via API Railway.
+   */
+  importarInsumos: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      fileBase64: z.string(),
+      fileName: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      // Parse do arquivo
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+      if (rows.length === 0) throw new Error("Planilha vazia ou sem dados.");
+      if (rows.length > 500) throw new Error("Limite de 500 linhas por importação.");
+
+      // Mapear colunas flexíveis (aceita PT e EN)
+      const normalize = (v: unknown) => String(v ?? "").trim();
+      const toNum = (v: unknown) => { const n = parseFloat(String(v ?? "0").replace(",", ".")); return isNaN(n) ? 0 : n; };
+
+      const col = (row: Record<string, unknown>, ...keys: string[]) => {
+        for (const k of keys) {
+          const found = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, "") === k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+          if (found && row[found] !== "") return row[found];
+        }
+        return "";
+      };
+
+      const results: { nome: string; ok: boolean; error?: string }[] = [];
+
+      for (const row of rows) {
+        const nome = normalize(col(row, "nome", "name", "insumo", "produto"));
+        if (!nome) { results.push({ nome: "(sem nome)", ok: false, error: "Nome obrigatório" }); continue; }
+
+        const payload = {
+          fazenda_id: input.imovelId,
+          nome,
+          categoria: normalize(col(row, "categoria", "category", "tipo", "type")) || "outros",
+          unidade: normalize(col(row, "unidade", "unit", "un")) || "unidade",
+          origem: normalize(col(row, "origem", "origin")) || "comprado",
+          estoque_atual: toNum(col(row, "estoqueatual", "estoque", "quantidade", "qty", "stock")),
+          estoque_minimo: toNum(col(row, "estoqueminimo", "minimo", "min", "stockmin")),
+          estoque_ideal: toNum(col(row, "estoqueideal", "ideal", "stockideal")),
+          preco_estimado: toNum(col(row, "precoestimado", "preco", "price", "valor")) || undefined,
+          reposicao_modo: normalize(col(row, "reposicaomodo", "reposicao", "repositionmode")) === "automatico" ? "automatico" : "manual",
+          lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
+        };
+
+        try {
+          await railwayMutate<unknown>("/insumos/", "POST", payload);
+          results.push({ nome, ok: true });
+        } catch (e: unknown) {
+          results.push({ nome, ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      const success = results.filter(r => r.ok).length;
+      const errors = results.filter(r => !r.ok).length;
+      return { total: rows.length, success, errors, results };
     }),
 });

@@ -178,3 +178,16 @@
 - [x] Destaque visual da reposição automática no formulário — card verde com explicação e campo lead_time quando modo=automático
 - [x] Endpoint tRPC insumoDetalhe adicionado ao railway.ts
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 23: Bugs relatados pelo testador Bira
+- [x] Bug: aba Insumos sumiu do menu lateral — corrigido pelo próprio Cícero
+- [x] Bug: configuração estranha — resolvido
+
+## Fase 24: Importação de planilha no módulo de Insumos
+- [x] Instalar xlsx para parse de Excel/CSV
+- [x] Endpoint tRPC importarInsumos (base64 → parse → criação em lote via Railway API)
+- [x] Botão Importar Planilha na página Insumos com upload, preview e confirmação
+- [x] Template de planilha para download (modelo_insumos.csv)
+- [x] Mapeamento flexível de colunas (aceita PT e EN)
+- [x] Resultado detalhado com contagem de sucesso/erro e lista de linhas com problema
+- [x] 43 testes passando, zero erros TypeScript

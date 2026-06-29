@@ -28,6 +28,11 @@ import {
   ArrowUpCircle,
   Info,
   Zap,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -167,6 +172,43 @@ export default function Insumos() {
   const [openNovoPedido, setOpenNovoPedido] = useState(false);
   const [movimInsumoId, setMovimInsumoId] = useState<number | null>(null);
 
+  // ── Importção de planilha ────────────────────────────────────────────────────
+  const [openImport, setOpenImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResult, setImportResult] = useState<{ total: number; success: number; errors: number; results: { nome: string; ok: boolean; error?: string }[] } | null>(null);
+
+  const importarInsumos = trpc.railway.importarInsumos.useMutation({
+    onSuccess: (data) => {
+      setImportResult(data);
+      if (data.success > 0) {
+        utils.railway.insumos.invalidate();
+        utils.railway.insumosAlertas.invalidate();
+      }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleImport = async () => {
+    if (!importFile || !imovelId) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = (e.target?.result as string).split(",")[1];
+      importarInsumos.mutate({ imovelId, fileBase64: base64, fileName: importFile.name });
+    };
+    reader.readAsDataURL(importFile);
+  };
+
+  const downloadTemplate = () => {
+    const headers = ["nome", "categoria", "unidade", "origem", "estoque_atual", "estoque_minimo", "estoque_ideal", "preco_estimado", "reposicao_modo", "lead_time_dias"];
+    const example = ["Ração ovinos", "racao", "kg", "comprado", "100", "20", "150", "3.50", "manual", "7"];
+    const csv = [headers.join(","), example.join(",")].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "modelo_insumos.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Form states ──────────────────────────────────────────────────────────────
   const [novoInsumo, setNovoInsumo] = useState({
     nome: "", categoria: "outros", unidade: "unidade", origem: "comprado" as "comprado" | "proprio" | "doacao",
@@ -199,10 +241,13 @@ export default function Insumos() {
   const alertasCriticos = alertas.filter((a: any) => a.status_estoque === "critico").length;
   const alertasBaixos = alertas.filter((a: any) => a.status_estoque === "baixo").length;
 
+  // Detectar se o backend de insumos ainda não foi deployado (404 = endpoint não existe)
+  const backendPendente = !loadingInsumos && insumos.length === 0 && !loadingAlertas && alertas.length === 0;
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             Insumos
@@ -212,7 +257,127 @@ export default function Insumos() {
           </h1>
           <p className="text-sm text-muted-foreground">Gestão de estoque, fornecedores e pedidos de compra</p>
         </div>
+        <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) { setImportFile(null); setImportResult(null); } }}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Upload className="h-4 w-4 mr-1" /> Importar Planilha
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5" /> Importar Insumos de Planilha</DialogTitle></DialogHeader>
+
+            {!importResult ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-dashed p-4 text-center bg-muted/30">
+                  <FileSpreadsheet className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium mb-1">Selecione um arquivo Excel (.xlsx) ou CSV</p>
+                  <p className="text-xs text-muted-foreground mb-3">Máximo de 500 linhas por importação</p>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    id="import-file"
+                    onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                  />
+                  <label htmlFor="import-file">
+                    <Button variant="outline" size="sm" asChild>
+                      <span className="cursor-pointer"><Upload className="h-4 w-4 mr-1" /> Escolher arquivo</span>
+                    </Button>
+                  </label>
+                  {importFile && (
+                    <p className="text-sm text-emerald-700 font-medium mt-2">✓ {importFile.name}</p>
+                  )}
+                </div>
+
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <p className="text-xs font-semibold mb-2">Colunas aceitas na planilha:</p>
+                  <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
+                    <span><strong>nome</strong> (obrigatório)</span>
+                    <span>categoria</span>
+                    <span>unidade</span>
+                    <span>origem</span>
+                    <span>estoque_atual</span>
+                    <span>estoque_minimo</span>
+                    <span>estoque_ideal</span>
+                    <span>preco_estimado</span>
+                    <span>reposicao_modo</span>
+                    <span>lead_time_dias</span>
+                  </div>
+                  <Button variant="ghost" size="sm" className="mt-2 h-7 text-xs" onClick={downloadTemplate}>
+                    <Download className="h-3 w-3 mr-1" /> Baixar modelo CSV
+                  </Button>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setOpenImport(false)}>Cancelar</Button>
+                  <Button
+                    className="flex-1"
+                    disabled={!importFile || importarInsumos.isPending}
+                    onClick={handleImport}
+                  >
+                    {importarInsumos.isPending ? "Importando..." : "Importar"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Resultado */}
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-lg bg-muted/40 p-3">
+                    <p className="text-2xl font-bold">{importResult.total}</p>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                  </div>
+                  <div className="rounded-lg bg-green-50 border border-green-200 p-3">
+                    <p className="text-2xl font-bold text-green-700">{importResult.success}</p>
+                    <p className="text-xs text-green-600">Importados</p>
+                  </div>
+                  <div className={`rounded-lg p-3 ${importResult.errors > 0 ? "bg-red-50 border border-red-200" : "bg-muted/40"}`}>
+                    <p className={`text-2xl font-bold ${importResult.errors > 0 ? "text-red-700" : "text-muted-foreground"}`}>{importResult.errors}</p>
+                    <p className={`text-xs ${importResult.errors > 0 ? "text-red-600" : "text-muted-foreground"}`}>Erros</p>
+                  </div>
+                </div>
+
+                {importResult.errors > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 max-h-40 overflow-y-auto">
+                    <p className="text-xs font-semibold text-red-700 mb-2">Linhas com erro:</p>
+                    {importResult.results.filter(r => !r.ok).map((r, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs text-red-700 mb-1">
+                        <XCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                        <span><strong>{r.nome}</strong>: {r.error}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {importResult.success > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-green-700 font-medium">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {importResult.success} insumo(s) adicionados ao estoque com sucesso.
+                  </div>
+                )}
+
+                <Button className="w-full" onClick={() => { setOpenImport(false); setImportFile(null); setImportResult(null); }}>
+                  Fechar
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {/* Banner: backend pendente de deploy */}
+      {backendPendente && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 flex items-start gap-3">
+          <Info className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-blue-800 text-sm">Módulo aguardando deploy do backend</p>
+            <p className="text-xs text-blue-700 mt-1">
+              Os endpoints de insumos, fornecedores e pedidos de compra ainda não estão disponíveis na API Railway.
+              Assim que o <strong>insumos.py</strong> for deployado, este módulo funcionará automaticamente sem nenhuma alteração.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Alertas de estoque */}
       {alertas.length > 0 && (
