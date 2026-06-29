@@ -723,6 +723,20 @@ async def auth_me(request: Request):
         raise HTTPException(status_code=401, detail="Token invÃ¡lido.")
     return dict(row)
 
+
+@app.get("/produtores/me")
+def get_produtor_by_token(token: str):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT id, nome, cpf, telefone FROM produtores WHERE token = :token"
+        ), {"token": token})
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="Token invalido")
+        return {"id": row[0], "nome": row[1], "cpf": row[2], "telefone": row[3]}
+
 @app.get("/")
 def root():
     return {"status": "Rural Caixa PF online", "version": "2.0"}
