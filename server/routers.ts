@@ -9,6 +9,7 @@ import * as jose from "jose";
 import { ENV } from "./_core/env";
 import * as otp from "./otp";
 import { sdk } from "./_core/sdk";
+import { railwayRouter } from "./routers/railway";
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ const movementTypeEnum = z.enum(["entrada", "saida", "transferencia", "nasciment
 
 export const appRouter = router({
   system: systemRouter,
+  railway: railwayRouter,
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   auth: router({
@@ -79,13 +81,20 @@ export const appRouter = router({
       .input(z.object({ cpf: z.string().min(11), code: z.string().length(6) }))
       .mutation(async ({ input, ctx }) => {
         const result = await otp.verifyOtp(input.cpf, input.code);
-        // Create a proper session token using the SDK
+        // Create session token with Manus SDK (for ctx.user resolution)
         const token = await sdk.createSessionToken(result.openId, {
           name: result.produtorNome,
           expiresInMs: 30 * 24 * 60 * 60 * 1000, // 30 days
         });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
+        // Also set a signed rc_claims cookie binding produtorId + allowed imovelIds to this session
+        const claimsToken = await signJwt({
+          produtorId: result.produtorId,
+          cpf: input.cpf.replace(/\D/g, ""),
+          imovelId: result.imovelId ?? null,
+        });
+        ctx.res.cookie("rc_claims", claimsToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
         return {
           success: true as const,
           produtorId: result.produtorId,
@@ -99,6 +108,7 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie("rc_claims", { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
   }),

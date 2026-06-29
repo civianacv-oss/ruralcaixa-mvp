@@ -74,3 +74,19 @@
 - [x] Adicionar rota /selecionar-imovel no App.tsx
 - [x] Botão "Trocar propriedade" no sidebar do RuralLayout
 - [x] Limpeza do CPF no clearSession
+
+## Fase 13: Isolamento de Dados por Produtor/Imóvel
+- [x] Auditar lib/api.ts — garantir que todas as funções passam produtorId/imovelId
+- [x] Criar railwayProxy.ts — módulo server-side com assertImovel/assertProdutor guards
+- [x] Criar server/routers/railway.ts — router tRPC proxy seguro para todos os endpoints Railway
+- [x] Registrar railwayRouter no appRouter principal
+- [x] Adicionar rc_claims cookie JWT assinado no verifyOtp (produtorId + cpf + imovelId)
+- [x] Limpar rc_claims no logout
+- [x] Corrigir Dashboard.tsx — usa trpc.railway.* (proxy seguro)
+- [x] Corrigir Animais.tsx — usa trpc.railway.animais (proxy seguro)
+- [x] Corrigir Saude.tsx — usa trpc.railway.sanitario (proxy seguro)
+- [x] Corrigir Reproducao.tsx — usa trpc.railway.reproducao (proxy seguro)
+- [x] Corrigir Financeiro.tsx — usa trpc.railway.lancamentos/produtorResumo (proxy seguro)
+- [x] Corrigir Movimentacoes.tsx — usa trpc.railway.animais (proxy seguro)
+- [x] Atualizar teste de logout para verificar 2 cookies limpos
+- [x] 25 testes passando

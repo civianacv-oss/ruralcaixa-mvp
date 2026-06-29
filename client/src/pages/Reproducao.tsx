@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import { getReproducaoOvino, getReproducaoCaprino, getReproducaoBovino, type ReproducaoRecord } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 import { Baby, Calendar } from "lucide-react";
-
-interface RecordWithSpecies extends ReproducaoRecord { _species: string; }
 
 const TYPE_LABELS: Record<string, string> = {
   cobertura: "Cobertura", gestacao: "Gestação", parto: "Parto", aborto: "Aborto",
@@ -11,24 +9,23 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default function Reproducao() {
   const { imovelId } = useRuralAuth();
-  const [records, setRecords] = useState<RecordWithSpecies[]>([]);
-  const [loading, setLoading] = useState(true);
+  const enabled = Boolean(imovelId);
+  const imovelIdSafe = imovelId ?? 0;
 
-  useEffect(() => {
-    if (!imovelId) return;
-    setLoading(true);
-    Promise.all([
-      getReproducaoOvino(imovelId).catch(() => []),
-      getReproducaoCaprino(imovelId).catch(() => []),
-      getReproducaoBovino(imovelId).catch(() => []),
-    ]).then(([ovinos, caprinos, bovinos]) => {
-      setRecords([
-        ...(ovinos as ReproducaoRecord[]).map((r) => ({ ...r, _species: "ovinos" })),
-        ...(caprinos as ReproducaoRecord[]).map((r) => ({ ...r, _species: "caprinos" })),
-        ...(bovinos as ReproducaoRecord[]).map((r) => ({ ...r, _species: "bovinos" })),
-      ]);
-    }).finally(() => setLoading(false));
-  }, [imovelId]);
+  // All queries go through the secure server-side proxy
+  const ovinosQ = trpc.railway.reproducao.useQuery({ imovelId: imovelIdSafe, especie: "ovinos" }, { enabled });
+  const caprinosQ = trpc.railway.reproducao.useQuery({ imovelId: imovelIdSafe, especie: "caprinos" }, { enabled });
+  const bovinosQ = trpc.railway.reproducao.useQuery({ imovelId: imovelIdSafe, especie: "bovinos" }, { enabled });
+
+  const loading = ovinosQ.isLoading || caprinosQ.isLoading || bovinosQ.isLoading;
+
+  type ReproRecord = NonNullable<typeof ovinosQ.data>[number] & { _species: string };
+
+  const records = useMemo((): ReproRecord[] => [
+    ...(ovinosQ.data ?? []).map((r) => ({ ...r, _species: "ovinos" })),
+    ...(caprinosQ.data ?? []).map((r) => ({ ...r, _species: "caprinos" })),
+    ...(bovinosQ.data ?? []).map((r) => ({ ...r, _species: "bovinos" })),
+  ], [ovinosQ.data, caprinosQ.data, bovinosQ.data]);
 
   const speciesEmoji: Record<string, string> = { ovinos: "🐑", caprinos: "🐐", suinos: "🐷", bovinos: "🐄" };
 

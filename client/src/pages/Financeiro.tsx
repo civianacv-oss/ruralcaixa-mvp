@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import { getLancamentos, getProdutorResumo, type Lancamento, type ProdutorResumo } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 import { TrendingUp, TrendingDown, DollarSign, Search } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
@@ -17,23 +17,19 @@ const TIPO_COLORS: Record<string, string> = {
 
 export default function Financeiro() {
   const { produtorId } = useRuralAuth();
-  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
-  const [resumo, setResumo] = useState<ProdutorResumo | null>(null);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterTipo, setFilterTipo] = useState("todos");
 
-  useEffect(() => {
-    if (!produtorId) return;
-    setLoading(true);
-    Promise.all([
-      getLancamentos(produtorId).catch(() => []),
-      getProdutorResumo(produtorId).catch(() => null),
-    ]).then(([lanc, res]) => {
-      setLancamentos(lanc as Lancamento[]);
-      setResumo(res);
-    }).finally(() => setLoading(false));
-  }, [produtorId]);
+  const enabled = Boolean(produtorId);
+  const produtorIdSafe = produtorId ?? 0;
+
+  // All queries go through the secure server-side proxy
+  const lancamentosQ = trpc.railway.lancamentos.useQuery({ produtorId: produtorIdSafe }, { enabled });
+  const resumoQ = trpc.railway.produtorResumo.useQuery({ produtorId: produtorIdSafe }, { enabled });
+
+  const loading = lancamentosQ.isLoading || resumoQ.isLoading;
+  const lancamentos = lancamentosQ.data ?? [];
+  const resumo = resumoQ.data ?? null;
 
   const filtered = lancamentos.filter((l) => {
     if (filterTipo !== "todos" && l.tipo !== filterTipo) return false;

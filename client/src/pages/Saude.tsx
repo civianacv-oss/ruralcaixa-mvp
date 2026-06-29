@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import { getSanitarioOvino, getSanitarioCaprino, getSanitarioBovino, type SanitarioRecord } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 import { HeartPulse, AlertTriangle, Calendar } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -10,28 +10,23 @@ const TYPE_COLORS: Record<string, string> = {
   vacina: "oklch(0.42 0.14 145)", medicamento: "oklch(0.50 0.14 220)", exame: "oklch(0.55 0.14 60)", tratamento: "oklch(0.55 0.14 340)",
 };
 
-interface RecordWithSpecies extends SanitarioRecord { _species: string; }
-
 export default function Saude() {
   const { imovelId } = useRuralAuth();
-  const [records, setRecords] = useState<RecordWithSpecies[]>([]);
-  const [loading, setLoading] = useState(true);
+  const enabled = Boolean(imovelId);
+  const imovelIdSafe = imovelId ?? 0;
 
-  useEffect(() => {
-    if (!imovelId) return;
-    setLoading(true);
-    Promise.all([
-      getSanitarioOvino(imovelId).catch(() => []),
-      getSanitarioCaprino(imovelId).catch(() => []),
-      getSanitarioBovino(imovelId).catch(() => []),
-    ]).then(([ovinos, caprinos, bovinos]) => {
-      setRecords([
-        ...(ovinos as SanitarioRecord[]).map((r) => ({ ...r, _species: "ovinos" })),
-        ...(caprinos as SanitarioRecord[]).map((r) => ({ ...r, _species: "caprinos" })),
-        ...(bovinos as SanitarioRecord[]).map((r) => ({ ...r, _species: "bovinos" })),
-      ]);
-    }).finally(() => setLoading(false));
-  }, [imovelId]);
+  // All queries go through the secure server-side proxy
+  const ovinosQ = trpc.railway.sanitario.useQuery({ imovelId: imovelIdSafe, especie: "ovinos" }, { enabled });
+  const caprinosQ = trpc.railway.sanitario.useQuery({ imovelId: imovelIdSafe, especie: "caprinos" }, { enabled });
+  const bovinosQ = trpc.railway.sanitario.useQuery({ imovelId: imovelIdSafe, especie: "bovinos" }, { enabled });
+
+  const loading = ovinosQ.isLoading || caprinosQ.isLoading || bovinosQ.isLoading;
+
+  const records = useMemo(() => [
+    ...(ovinosQ.data ?? []).map((r) => ({ ...r, _species: "ovinos" })),
+    ...(caprinosQ.data ?? []).map((r) => ({ ...r, _species: "caprinos" })),
+    ...(bovinosQ.data ?? []).map((r) => ({ ...r, _species: "bovinos" })),
+  ], [ovinosQ.data, caprinosQ.data, bovinosQ.data]);
 
   const speciesEmoji: Record<string, string> = { ovinos: "🐑", caprinos: "🐐", suinos: "🐷", bovinos: "🐄" };
 

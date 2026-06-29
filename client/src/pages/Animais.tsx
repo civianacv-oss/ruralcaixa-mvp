@@ -1,10 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import {
-  getOvinoAnimais, getCaprinoAnimais, getSuinoAnimais, getBovinoAnimais,
-  type Animal,
-} from "@/lib/api";
-import { Search, Filter } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { Search } from "lucide-react";
 
 const SPECIES_TABS = [
   { key: "todos", label: "Todos", emoji: "🐾" },
@@ -22,36 +19,30 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 type SpeciesKey = "todos" | "ovinos" | "caprinos" | "suinos" | "bovinos";
-
-interface AnimalWithSpecies extends Animal {
-  _species: string;
-}
+type EspecieKey = "ovinos" | "caprinos" | "suinos" | "bovinos";
 
 export default function Animais() {
   const { imovelId } = useRuralAuth();
   const [activeTab, setActiveTab] = useState<SpeciesKey>("todos");
   const [search, setSearch] = useState("");
-  const [allAnimals, setAllAnimals] = useState<AnimalWithSpecies[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!imovelId) return;
-    setLoading(true);
-    Promise.all([
-      getOvinoAnimais(imovelId).catch(() => []),
-      getCaprinoAnimais(imovelId).catch(() => []),
-      getSuinoAnimais(imovelId).catch(() => []),
-      getBovinoAnimais(imovelId).catch(() => []),
-    ]).then(([ovinos, caprinos, suinos, bovinos]) => {
-      const all: AnimalWithSpecies[] = [
-        ...(ovinos as Animal[]).map((a) => ({ ...a, _species: "ovinos" })),
-        ...(caprinos as Animal[]).map((a) => ({ ...a, _species: "caprinos" })),
-        ...(suinos as Animal[]).map((a) => ({ ...a, _species: "suinos" })),
-        ...(bovinos as Animal[]).map((a) => ({ ...a, _species: "bovinos" })),
-      ];
-      setAllAnimals(all);
-    }).finally(() => setLoading(false));
-  }, [imovelId]);
+  const enabled = Boolean(imovelId);
+  const imovelIdSafe = imovelId ?? 0;
+
+  // All queries go through the secure server-side proxy
+  const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "ovinos" }, { enabled });
+  const caprinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "caprinos" }, { enabled });
+  const suinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "suinos" }, { enabled });
+  const bovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "bovinos" }, { enabled });
+
+  const loading = ovinosQ.isLoading || caprinosQ.isLoading || suinosQ.isLoading || bovinosQ.isLoading;
+
+  const allAnimals = useMemo(() => [
+    ...(ovinosQ.data ?? []).map((a) => ({ ...a, _species: "ovinos" as EspecieKey })),
+    ...(caprinosQ.data ?? []).map((a) => ({ ...a, _species: "caprinos" as EspecieKey })),
+    ...(suinosQ.data ?? []).map((a) => ({ ...a, _species: "suinos" as EspecieKey })),
+    ...(bovinosQ.data ?? []).map((a) => ({ ...a, _species: "bovinos" as EspecieKey })),
+  ], [ovinosQ.data, caprinosQ.data, suinosQ.data, bovinosQ.data]);
 
   const filtered = allAnimals.filter((a) => {
     if (activeTab !== "todos" && a._species !== activeTab) return false;
@@ -60,20 +51,23 @@ export default function Animais() {
       return (
         a.brinco?.toLowerCase().includes(q) ||
         a.nome?.toLowerCase().includes(q) ||
-        a.raca?.toLowerCase().includes(q) ||
         a.raca_nome?.toLowerCase().includes(q) ||
-        a.lote_nome?.toLowerCase().includes(q)
+        a.categoria?.toLowerCase().includes(q)
       );
     }
     return true;
   });
 
-  const speciesLabel: Record<string, string> = {
-    ovinos: "Ovino", caprinos: "Caprino", suinos: "Suíno", bovinos: "Bovino",
+  const speciesLabel: Record<EspecieKey, string> = {
+    ovinos: "Ovino",
+    caprinos: "Caprino",
+    suinos: "Suíno",
+    bovinos: "Bovino",
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "oklch(0.18 0.04 145)" }}>
           Animais
@@ -81,18 +75,18 @@ export default function Animais() {
         <p className="text-sm text-muted-foreground mt-0.5">Gestão do rebanho por espécie</p>
       </div>
 
-      {/* Tabs */}
+      {/* Species tabs */}
       <div className="flex gap-2 flex-wrap">
         {SPECIES_TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+            style={
               activeTab === tab.key
-                ? "text-white shadow-sm"
-                : "bg-white text-muted-foreground hover:bg-white/80 shadow-sm"
-            }`}
-            style={activeTab === tab.key ? { background: "oklch(0.38 0.12 145)" } : {}}
+                ? { background: "oklch(0.42 0.14 145)", color: "white" }
+                : { background: "white", color: "oklch(0.40 0.06 145)", border: "1px solid oklch(0.90 0.03 145)" }
+            }
           >
             <span>{tab.emoji}</span>
             {tab.label}
@@ -108,88 +102,70 @@ export default function Animais() {
           placeholder="Buscar por brinco, nome, raça..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm bg-white shadow-sm border border-transparent focus:outline-none focus:ring-2 transition-all"
-          style={{ "--tw-ring-color": "oklch(0.38 0.12 145 / 0.3)" } as React.CSSProperties}
+          className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
         />
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {loading ? (
+          <div className="p-8 space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <p className="text-4xl mb-3">🐾</p>
+            <p className="text-muted-foreground text-sm">Nenhum animal encontrado</p>
+          </div>
+        ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: "1px solid oklch(0.92 0.01 130)" }}>
-                {["Brinco", "Nome", "Espécie", "Raça", "Sexo", "Categoria / Lote", "Peso", "Status"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+              <tr className="border-b border-border">
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Brinco</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nome</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Espécie</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Raça</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sexo</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Categoria</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Peso (kg)</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid oklch(0.95 0.005 130)" }}>
-                    {Array.from({ length: 8 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 rounded bg-muted animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
-                    <Filter className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    Nenhum animal encontrado
+              {filtered.map((a, i) => (
+                <tr key={`${a._species}-${a.id}`} className={i % 2 === 0 ? "bg-white" : "bg-muted/30"}>
+                  <td className="px-5 py-3 font-mono font-semibold text-xs" style={{ color: "oklch(0.30 0.10 145)" }}>{a.brinco}</td>
+                  <td className="px-5 py-3 font-medium">{a.nome ?? "—"}</td>
+                  <td className="px-5 py-3">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted">
+                      {speciesLabel[a._species]}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-muted-foreground">{a.raca_nome ?? a.raca ?? "—"}</td>
+                  <td className="px-5 py-3">{a.sexo === "M" ? "♂ Macho" : "♀ Fêmea"}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{a.categoria ?? "—"}</td>
+                  <td className="px-5 py-3">{a.ultimo_peso != null ? `${a.ultimo_peso} kg` : "—"}</td>
+                  <td className="px-5 py-3">
+                    <span
+                      className="px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize"
+                      style={{
+                        color: STATUS_COLORS[a.status] ?? "oklch(0.50 0.05 145)",
+                        background: `${STATUS_COLORS[a.status] ?? "oklch(0.50 0.05 145)"}18`,
+                      }}
+                    >
+                      {a.status}
+                    </span>
                   </td>
                 </tr>
-              ) : (
-                filtered.map((animal) => (
-                  <tr
-                    key={`${animal._species}-${animal.id}`}
-                    className="hover:bg-muted/30 transition-colors"
-                    style={{ borderBottom: "1px solid oklch(0.95 0.005 130)" }}
-                  >
-                    <td className="px-4 py-3 font-mono font-semibold text-xs" style={{ color: "oklch(0.38 0.12 145)" }}>
-                      {animal.brinco}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">{animal.nome ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: "oklch(0.94 0.04 145)", color: "oklch(0.32 0.10 145)" }}>
-                        {speciesLabel[animal._species]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{animal.raca_nome ?? animal.raca ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-semibold ${animal.sexo === "M" ? "text-blue-600" : "text-pink-600"}`}>
-                        {animal.sexo === "M" ? "Macho" : "Fêmea"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{animal.categoria ?? animal.lote_nome ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {animal.ultimo_peso ? `${animal.ultimo_peso} kg` : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                        style={{
-                          color: STATUS_COLORS[animal.status] ?? "oklch(0.50 0.04 140)",
-                          background: `${STATUS_COLORS[animal.status] ?? "oklch(0.50 0.04 140)"}18`,
-                        }}
-                      >
-                        {animal.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
-        </div>
+        )}
         {!loading && filtered.length > 0 && (
-          <div className="px-4 py-3 border-t text-xs text-muted-foreground" style={{ borderColor: "oklch(0.92 0.01 130)" }}>
-            {filtered.length} animal{filtered.length !== 1 ? "is" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
+          <div className="px-5 py-3 border-t border-border text-xs text-muted-foreground">
+            {filtered.length} animal{filtered.length !== 1 ? "is" : ""} exibido{filtered.length !== 1 ? "s" : ""}
           </div>
         )}
       </div>

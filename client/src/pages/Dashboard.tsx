@@ -1,15 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import {
-  getOvinoDashboard,
-  getProdutorResumo,
-  getOvinoAnimais,
-  getCaprinoAnimais,
-  getSuinoAnimais,
-  getBovinoAnimais,
-  type OvinoDashboard,
-  type ProdutorResumo,
-} from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
@@ -47,10 +38,7 @@ function SpeciesCard({ species, count, loading }: { species: typeof SPECIES[numb
   return (
     <div className="rounded-2xl p-5 bg-white shadow-sm border border-transparent hover:shadow-md transition-shadow">
       <div className="flex items-center gap-3 mb-3">
-        <div
-          className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl"
-          style={{ background: `${species.color}15` }}
-        >
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: `${species.color}15` }}>
           {species.emoji}
         </div>
         <div>
@@ -69,35 +57,34 @@ function SpeciesCard({ species, count, loading }: { species: typeof SPECIES[numb
 
 export default function Dashboard() {
   const { produtorId, imovelId, produtorNome } = useRuralAuth();
-  const [ovinoDash, setOvinoDash] = useState<OvinoDashboard | null>(null);
-  const [resumo, setResumo] = useState<ProdutorResumo | null>(null);
-  const [counts, setCounts] = useState<Record<string, number>>({ ovinos: 0, caprinos: 0, suinos: 0, bovinos: 0 });
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!produtorId || !imovelId) return;
-    setLoading(true);
-    Promise.all([
-      getOvinoDashboard(imovelId).catch(() => null),
-      getProdutorResumo(produtorId).catch(() => null),
-      getOvinoAnimais(imovelId).catch(() => []),
-      getCaprinoAnimais(imovelId).catch(() => []),
-      getSuinoAnimais(imovelId).catch(() => []),
-      getBovinoAnimais(imovelId).catch(() => []),
-    ]).then(([dash, res, ovinos, caprinos, suinos, bovinos]) => {
-      setOvinoDash(dash);
-      setResumo(res);
-      setCounts({
-        ovinos: (ovinos as { status: string }[]).filter((a) => a.status === "ativo").length,
-        caprinos: (caprinos as { status: string }[]).filter((a) => a.status === "ativo").length,
-        suinos: (suinos as { status: string }[]).filter((a) => a.status === "ativo").length,
-        bovinos: (bovinos as { status: string }[]).filter((a) => a.status === "ativo").length,
-      });
-    }).finally(() => setLoading(false));
-  }, [produtorId, imovelId]);
+  // Stable inputs for tRPC queries (avoid infinite re-render)
+  const imovelInput = useMemo(() => ({ imovelId: imovelId ?? 0 }), [imovelId]);
+  const produtorInput = useMemo(() => ({ produtorId: produtorId ?? 0 }), [produtorId]);
+
+  const enabled = Boolean(produtorId && imovelId);
+
+  // All data goes through the secure server-side proxy
+  const ovinoDash = trpc.railway.ovinoDashboard.useQuery(imovelInput, { enabled });
+  const resumo = trpc.railway.produtorResumo.useQuery(produtorInput, { enabled });
+
+  const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "ovinos" }, { enabled });
+  const caprinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "caprinos" }, { enabled });
+  const suinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "suinos" }, { enabled });
+  const bovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "bovinos" }, { enabled });
+
+  const loading = ovinoDash.isLoading || resumo.isLoading;
+  const animaisLoading = ovinosQ.isLoading || caprinosQ.isLoading || suinosQ.isLoading || bovinosQ.isLoading;
+
+  const counts = {
+    ovinos: (ovinosQ.data ?? []).filter((a) => a.status === "ativo").length,
+    caprinos: (caprinosQ.data ?? []).filter((a) => a.status === "ativo").length,
+    suinos: (suinosQ.data ?? []).filter((a) => a.status === "ativo").length,
+    bovinos: (bovinosQ.data ?? []).filter((a) => a.status === "ativo").length,
+  };
 
   const totalAnimais = Object.values(counts).reduce((s, v) => s + v, 0);
-  const lucro = (resumo?.receita ?? 0) - (resumo?.despesa ?? 0);
+  const lucro = (resumo.data?.receita ?? 0) - (resumo.data?.despesa ?? 0);
 
   const pieData = SPECIES.filter((s) => counts[s.key] > 0).map((s) => ({
     name: s.label,
@@ -109,71 +96,64 @@ export default function Dashboard() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1
-          className="text-2xl font-bold"
-          style={{ fontFamily: "'Playfair Display', serif", color: "oklch(0.18 0.04 145)" }}
-        >
+        <h1 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "oklch(0.18 0.04 145)" }}>
           Bom dia, {produtorNome.split(" ")[0]}
         </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Visão geral da sua propriedade rural
-        </p>
+        <p className="text-sm text-muted-foreground mt-0.5">Visão geral da sua propriedade rural</p>
       </div>
 
       {/* Financial summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           label="Receitas"
-          value={fmt(resumo?.receita ?? 0)}
+          value={loading ? "..." : fmt(resumo.data?.receita ?? 0)}
           icon={TrendingUp}
           color="oklch(0.42 0.14 145)"
-          sub={`${resumo?.total_lancamentos ?? 0} lançamentos`}
+          sub={`${resumo.data?.total_lancamentos ?? 0} lançamentos`}
         />
         <StatCard
           label="Despesas"
-          value={fmt(resumo?.despesa ?? 0)}
+          value={loading ? "..." : fmt(resumo.data?.despesa ?? 0)}
           icon={TrendingDown}
           color="oklch(0.50 0.20 25)"
-          sub={`${resumo?.pendentes ?? 0} pendentes`}
+          sub={`${resumo.data?.pendentes ?? 0} pendentes`}
         />
         <StatCard
           label="Resultado"
-          value={fmt(lucro)}
+          value={loading ? "..." : fmt(lucro)}
           icon={DollarSign}
           color={lucro >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)"}
-          sub={lucro >= 0 ? "Lucro no período" : "Prejuízo no período"}
+          sub="Lucro no periodo"
         />
       </div>
 
-      {/* Herd summary */}
+      {/* Species cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {SPECIES.map((s) => (
-          <SpeciesCard key={s.key} species={s} count={counts[s.key]} loading={loading} />
+          <SpeciesCard key={s.key} species={s} count={counts[s.key]} loading={animaisLoading} />
         ))}
       </div>
 
-      {/* Bottom row: chart + ovino stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Charts + quick stats */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Pie chart */}
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-            Distribuição do Rebanho
-          </h3>
-          {loading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="w-36 h-36 rounded-full bg-muted animate-pulse" />
+        <div className="lg:col-span-1 rounded-2xl p-5 bg-white shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">Distribuição do Rebanho</p>
+          {animaisLoading ? (
+            <div className="h-48 flex items-center justify-center">
+              <div className="w-32 h-32 rounded-full bg-muted animate-pulse" />
             </div>
-          ) : pieData.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-              Nenhum animal cadastrado
+          ) : totalAnimais === 0 ? (
+            <div className="h-48 flex flex-col items-center justify-center gap-2">
+              <p className="text-sm text-muted-foreground">Nenhum animal cadastrado</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={180}>
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
                   {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip formatter={(v: number, n: string) => [`${v} animais`, n]} contentStyle={{ borderRadius: 8, border: "none", boxShadow: "0 4px 12px rgba(0,0,0,.1)" }} />
+                <Tooltip formatter={(v: number) => [`${v} animais`]} />
                 <Legend iconType="circle" iconSize={8} />
               </PieChart>
             </ResponsiveContainer>
@@ -183,54 +163,48 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Ovino highlights */}
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-2xl shadow-sm p-5">
+        {/* Quick stats */}
+        <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="rounded-2xl p-5 bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alertas (7d)</span>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alertas (7d)</p>
             </div>
-            {loading ? (
-              <div className="h-9 w-12 rounded bg-muted animate-pulse" />
-            ) : (
-              <p className="text-4xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>
-                {ovinoDash?.alertas_7d?.total_alertas ?? 0}
+            {loading ? <div className="h-8 w-12 bg-muted rounded animate-pulse" /> : (
+              <p className="text-3xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>
+                {ovinoDash.data?.alertas_7d?.total_alertas ?? 0}
               </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">Sanitários ovinos</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-5">
+          <div className="rounded-2xl p-5 bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <Baby className="w-4 h-4 text-pink-500" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Partos (30d)</span>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Partos (30d)</p>
             </div>
-            {loading ? (
-              <div className="h-9 w-12 rounded bg-muted animate-pulse" />
-            ) : (
-              <p className="text-4xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>
-                {ovinoDash?.partos_30d?.total_partos ?? 0}
+            {loading ? <div className="h-8 w-12 bg-muted rounded animate-pulse" /> : (
+              <p className="text-3xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>
+                {ovinoDash.data?.partos_30d?.total_partos ?? 0}
               </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">
-              {ovinoDash?.partos_30d?.cordeiros_vivos ?? 0} crias vivas
+              {ovinoDash.data?.partos_30d?.cordeiros_vivos ?? 0} crias vivas
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm p-5">
+          <div className="rounded-2xl p-5 bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-3">
-              <Scissors className="w-4 h-4 text-blue-500" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Abates (30d)</span>
+              <Scissors className="w-4 h-4 text-orange-500" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Abates (30d)</p>
             </div>
-            {loading ? (
-              <div className="h-9 w-12 rounded bg-muted animate-pulse" />
-            ) : (
-              <p className="text-4xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>
-                {ovinoDash?.abates_30d?.total_abatidos ?? 0}
+            {loading ? <div className="h-8 w-12 bg-muted rounded animate-pulse" /> : (
+              <p className="text-3xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>
+                {ovinoDash.data?.abates_30d?.total_abatidos ?? 0}
               </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">
-              {fmt(ovinoDash?.abates_30d?.receita_total_rs ?? 0)} receita
+              {fmt(ovinoDash.data?.abates_30d?.receita_total_rs ?? 0)} receita
             </p>
           </div>
         </div>

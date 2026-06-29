@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import { getOvinoAnimais, getCaprinoAnimais, getSuinoAnimais, getBovinoAnimais, type Animal } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 import { ArrowLeftRight, Search } from "lucide-react";
-
-interface AnimalWithSpecies extends Animal { _species: string; updated_at?: string; }
 
 const SPECIES_TABS = [
   { key: "todos", label: "Todos", emoji: "🐾" },
@@ -17,29 +15,27 @@ const STATUS_ALL = ["todos", "ativo", "vendido", "morto", "abatido"];
 
 export default function Movimentacoes() {
   const { imovelId } = useRuralAuth();
-  const [allAnimals, setAllAnimals] = useState<AnimalWithSpecies[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    if (!imovelId) return;
-    setLoading(true);
-    Promise.all([
-      getOvinoAnimais(imovelId).catch(() => []),
-      getCaprinoAnimais(imovelId).catch(() => []),
-      getSuinoAnimais(imovelId).catch(() => []),
-      getBovinoAnimais(imovelId).catch(() => []),
-    ]).then(([ovinos, caprinos, suinos, bovinos]) => {
-      setAllAnimals([
-        ...(ovinos as Animal[]).map((a) => ({ ...a, _species: "ovinos" })),
-        ...(caprinos as Animal[]).map((a) => ({ ...a, _species: "caprinos" })),
-        ...(suinos as Animal[]).map((a) => ({ ...a, _species: "suinos" })),
-        ...(bovinos as Animal[]).map((a) => ({ ...a, _species: "bovinos" })),
-      ]);
-    }).finally(() => setLoading(false));
-  }, [imovelId]);
+  const enabled = Boolean(imovelId);
+  const imovelIdSafe = imovelId ?? 0;
+
+  // All queries go through the secure server-side proxy
+  const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "ovinos" }, { enabled });
+  const caprinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "caprinos" }, { enabled });
+  const suinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "suinos" }, { enabled });
+  const bovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelIdSafe, especie: "bovinos" }, { enabled });
+
+  const loading = ovinosQ.isLoading || caprinosQ.isLoading || suinosQ.isLoading || bovinosQ.isLoading;
+
+  const allAnimals = useMemo(() => [
+    ...(ovinosQ.data ?? []).map((a) => ({ ...a, _species: "ovinos" })),
+    ...(caprinosQ.data ?? []).map((a) => ({ ...a, _species: "caprinos" })),
+    ...(suinosQ.data ?? []).map((a) => ({ ...a, _species: "suinos" })),
+    ...(bovinosQ.data ?? []).map((a) => ({ ...a, _species: "bovinos" })),
+  ], [ovinosQ.data, caprinosQ.data, suinosQ.data, bovinosQ.data]);
 
   const filtered = allAnimals.filter((a) => {
     if (activeTab !== "todos" && a._species !== activeTab) return false;
@@ -176,7 +172,7 @@ export default function Movimentacoes() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
-                      {a.updated_at ? new Date(a.updated_at).toLocaleDateString("pt-BR") : "—"}
+                      {a.data_nascimento ? new Date(a.data_nascimento).toLocaleDateString("pt-BR") : "—"}
                     </td>
                   </tr>
                 ))
