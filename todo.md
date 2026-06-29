@@ -90,3 +90,14 @@
 - [x] Corrigir Movimentacoes.tsx — usa trpc.railway.animais (proxy seguro)
 - [x] Atualizar teste de logout para verificar 2 cookies limpos
 - [x] 25 testes passando
+
+## Fase 14: Re-emissão rc_claims + CRUD + Menu Lateral
+- [x] Endpoint tRPC `auth.switchImovel` — re-emite rc_claims com novo imovelId
+- [x] SelecionarImovel.tsx — chamar switchImovel ao trocar imóvel (multi e single imóvel)
+- [x] Melhorias no menu lateral (seções agrupadas, tooltips, banner de propriedade ativa)
+- [x] CRUD Animais — botões Novo/Editar/Status/Excluir com modais elegantes
+- [x] CRUD Saúde — botão Novo registro com modal completo
+- [x] CRUD Reprodução — botão Novo registro com modal completo
+- [x] CRUD Financeiro — botões Novo/Editar/Excluir com modais e confirmação
+- [x] imovelId/produtorId injetados automaticamente pelo servidor nos endpoints POST
+- [x] 43 testes passando

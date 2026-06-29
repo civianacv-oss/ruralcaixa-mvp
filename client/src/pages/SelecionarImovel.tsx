@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { MapPin, Ruler, Users, ChevronRight, Leaf, Loader2, LogOut } from "lucide-react";
 import { getImoveis, getOvinoDashboard, getBovinoAnimais, clearSession, getProdutorNome, getProdutorId, setSession, setImovelNome, type Imovel } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 
 interface ImovelEnriquecido extends Imovel {
   totalOvinos?: number;
@@ -35,11 +36,17 @@ export default function SelecionarImovel() {
     setLoading(true);
     getImoveis(cpf)
       .then(async (list) => {
-        // If only one imóvel, skip selection and go straight to dashboard
+        // If only one imóvel, skip selection but still call switchImovel to mint rc_claims
         if (list.length === 1) {
           setSession(produtorId, produtorNome, list[0].id);
           setImovelNome(list[0].nome);
-          navigate("/dashboard");
+          // Fire-and-forget: mint rc_claims server-side, then navigate
+          fetch("/api/trpc/auth.switchImovel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ json: { imovelId: list[0].id } }),
+            credentials: "include",
+          }).finally(() => navigate("/dashboard"));
           return;
         }
 
@@ -76,14 +83,20 @@ export default function SelecionarImovel() {
       });
   }, [navigate, produtorNome]);
 
+  const switchImovelMutation = trpc.auth.switchImovel.useMutation();
+
   function handleSelect(imovel: ImovelEnriquecido) {
     if (selecting) return;
     setSelecting(imovel.id);
     const produtorId = getProdutorId()!;
+    // Update localStorage for client-side state
     setSession(produtorId, produtorNome, imovel.id);
     setImovelNome(imovel.nome);
-    // Small delay for visual feedback
-    setTimeout(() => navigate("/dashboard"), 350);
+    // Re-emit rc_claims cookie server-side so guards reflect the new imovelId
+    switchImovelMutation.mutate(
+      { imovelId: imovel.id },
+      { onSettled: () => setTimeout(() => navigate("/dashboard"), 200) }
+    );
   }
 
   function handleLogout() {

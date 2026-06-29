@@ -20,7 +20,7 @@ import {
 } from "../railwayProxy";
 import { TRPCError } from "@trpc/server";
 
-// ─── Types (mirrored from client/src/lib/api.ts) ─────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Animal {
   id: number;
@@ -99,6 +99,13 @@ interface Imovel {
   total_produtores?: number;
 }
 
+interface Raca {
+  id: number;
+  nome: string;
+  aptidao?: string;
+  ativo?: boolean;
+}
+
 // ─── Helper: require claims or throw ─────────────────────────────────────────
 
 async function requireClaims(req: Parameters<typeof getClaimsFromRequest>[0]) {
@@ -112,6 +119,39 @@ async function requireClaims(req: Parameters<typeof getClaimsFromRequest>[0]) {
   return claims;
 }
 
+// ─── Generic Railway mutation helper ─────────────────────────────────────────
+
+async function railwayMutate<T>(
+  path: string,
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  body?: unknown
+): Promise<T> {
+  const res = await fetch(`${RAILWAY_API}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: (err as { detail?: string }).detail ?? `Railway API error ${res.status}`,
+    });
+  }
+  // Some DELETE endpoints return 204 No Content
+  if (res.status === 204) return {} as T;
+  return res.json() as Promise<T>;
+}
+
+// ─── Species path map ─────────────────────────────────────────────────────────
+
+const especiePrefix: Record<string, string> = {
+  ovinos: "ovino",
+  caprinos: "caprino",
+  suinos: "suino",
+  bovinos: "bovino",
+};
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const railwayRouter = router({
@@ -123,19 +163,81 @@ export const railwayRouter = router({
     return list;
   }),
 
+  // ── Raças por espécie ──────────────────────────────────────────────────────
+  racas: publicProcedure
+    .input(z.object({ especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
+    .query(async ({ ctx, input }) => {
+      await requireClaims(ctx.req);
+      const prefix = especiePrefix[input.especie];
+      return railwayFetch<Raca[]>(`/${prefix}/racas`).catch(() => [] as Raca[]);
+    }),
+
   // ── Animals ────────────────────────────────────────────────────────────────
   animais: publicProcedure
     .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const path: Record<string, string> = {
-        ovinos: `/ovino/animais/${input.imovelId}`,
-        caprinos: `/caprino/animais/${input.imovelId}`,
-        suinos: `/suino/animais/${input.imovelId}`,
-        bovinos: `/bovino/animais/${input.imovelId}`,
-      };
-      return railwayFetch<Animal[]>(path[input.especie]);
+      const prefix = especiePrefix[input.especie];
+      return railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`);
+    }),
+
+  createAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      brinco: z.string().min(1),
+      nome: z.string().optional(),
+      raca: z.string().optional(),
+      sexo: z.enum(["M", "F"]),
+      data_nascimento: z.string().optional(),
+      peso_nascimento: z.number().optional(),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const { imovelId, especie, ...fields } = input;
+      return railwayMutate<Animal>(`/${prefix}/animais`, "POST", {
+        imovel_id: imovelId,
+        ...fields,
+      });
+    }),
+
+  updateAnimal: publicProcedure
+    .input(z.object({
+      animalId: z.number(),
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      brinco: z.string().optional(),
+      nome: z.string().optional(),
+      raca: z.string().optional(),
+      sexo: z.enum(["M", "F"]).optional(),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const { animalId, imovelId, especie, ...fields } = input;
+      return railwayMutate<Animal>(`/${prefix}/animais/${animalId}`, "PATCH", fields);
+    }),
+
+  updateAnimalStatus: publicProcedure
+    .input(z.object({
+      animalId: z.number(),
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      status: z.string(),
+      motivo: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const { animalId, imovelId, especie, ...fields } = input;
+      return railwayMutate<Animal>(`/${prefix}/animais/${animalId}/status`, "PATCH", fields);
     }),
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -164,18 +266,87 @@ export const railwayRouter = router({
       return railwayFetch<Lancamento[]>(`/produtores/${input.produtorId}/lancamentos`);
     }),
 
+  createLancamento: publicProcedure
+    .input(z.object({
+      produtorId: z.number(),
+      tipo: z.enum(["receita", "despesa"]),
+      descricao: z.string().min(1),
+      valor: z.number().positive(),
+      data_lancamento: z.string(),
+      confirmado: z.boolean().optional(),
+      atividade: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertProdutor(claims, input.produtorId);
+      const { produtorId, ...fields } = input;
+      return railwayMutate<Lancamento>(`/lancamentos`, "POST", {
+        produtor_id: produtorId,
+        ...fields,
+      });
+    }),
+
+  updateLancamento: publicProcedure
+    .input(z.object({
+      lancamentoId: z.string(),
+      produtorId: z.number(),
+      tipo: z.enum(["receita", "despesa"]).optional(),
+      descricao: z.string().optional(),
+      valor: z.number().positive().optional(),
+      data_lancamento: z.string().optional(),
+      confirmado: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertProdutor(claims, input.produtorId);
+      const { lancamentoId, produtorId, ...fields } = input;
+      return railwayMutate<Lancamento>(`/lancamentos/${lancamentoId}`, "PUT", {
+        produtor_id: produtorId,
+        ...fields,
+      });
+    }),
+
+  deleteLancamento: publicProcedure
+    .input(z.object({ produtorId: z.number(), lancamentoId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertProdutor(claims, input.produtorId);
+      await railwayMutate<unknown>(`/lancamentos/${input.lancamentoId}`, "DELETE");
+      return { success: true };
+    }),
+
   // ── Sanitary ───────────────────────────────────────────────────────────────
   sanitario: publicProcedure
     .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "bovinos"]) }))
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const path: Record<string, string> = {
-        ovinos: `/ovino/sanitario/${input.imovelId}/proximos`,
-        caprinos: `/caprino/sanitario/${input.imovelId}/proximos`,
-        bovinos: `/bovino/sanitario/${input.imovelId}/proximos`,
-      };
-      return railwayFetch<SanitarioRecord[]>(path[input.especie]);
+      const prefix = especiePrefix[input.especie];
+      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`);
+    }),
+
+  createSanitario: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      insumo_id: z.number().optional(),
+      descricao: z.string().min(1),
+      tipo: z.string(),
+      data_aplicacao: z.string(),
+      animal_id: z.number().optional(),
+      dose_ml: z.number().optional(),
+      responsavel_nome: z.string().optional(),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const { imovelId, especie, ...fields } = input;
+      return railwayMutate<SanitarioRecord>(`/${prefix}/saude`, "POST", {
+        imovel_id: imovelId,
+        ...fields,
+      });
     }),
 
   // ── Reproduction ───────────────────────────────────────────────────────────
@@ -184,46 +355,30 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const path: Record<string, string> = {
-        ovinos: `/ovino/reproducao/${input.imovelId}/prenhas`,
-        caprinos: `/caprino/reproducao/${input.imovelId}/prenhas`,
-        bovinos: `/bovino/reproducao/${input.imovelId}/prenhas`,
-      };
-      return railwayFetch<ReproducaoRecord[]>(path[input.especie]);
+      const prefix = especiePrefix[input.especie];
+      return railwayFetch<ReproducaoRecord[]>(`/${prefix}/reproducao/${input.imovelId}/prenhas`);
     }),
 
-  // ── Lancamento mutations (write through server) ────────────────────────────
-  createLancamento: publicProcedure
+  createReproducao: publicProcedure
     .input(z.object({
-      produtorId: z.number(),
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "bovinos"]),
       tipo: z.string(),
-      descricao: z.string(),
-      valor: z.number(),
-      data_lancamento: z.string(),
-      confirmado: z.boolean().optional(),
+      data_evento: z.string(),
+      matriz_id: z.number().optional(),
+      reprodutor_id: z.number().optional(),
+      cordeiros_vivos: z.number().optional(),
+      cordeiros_mortos: z.number().optional(),
+      observacoes: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
-      assertProdutor(claims, input.produtorId);
-      const res = await fetch(`${RAILWAY_API}/lancamentos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const { imovelId, especie, ...fields } = input;
+      return railwayMutate<ReproducaoRecord>(`/${prefix}/reproducao`, "POST", {
+        imovel_id: imovelId,
+        ...fields,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: (err as { detail?: string }).detail ?? "Erro ao criar lançamento" });
-      }
-      return res.json() as Promise<Lancamento>;
-    }),
-
-  deleteLancamento: publicProcedure
-    .input(z.object({ produtorId: z.number(), lancamentoId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const claims = await requireClaims(ctx.req);
-      assertProdutor(claims, input.produtorId);
-      const res = await fetch(`${RAILWAY_API}/lancamentos/${input.lancamentoId}`, { method: "DELETE" });
-      if (!res.ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao deletar lançamento" });
-      return { success: true };
     }),
 });

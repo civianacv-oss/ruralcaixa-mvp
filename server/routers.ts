@@ -111,6 +111,23 @@ export const appRouter = router({
       ctx.res.clearCookie("rc_claims", { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+
+    // Re-emit rc_claims when producer switches property
+    switchImovel: publicProcedure
+      .input(z.object({ imovelId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const { getClaimsFromRequest } = await import("./railwayProxy");
+        const claims = await getClaimsFromRequest(ctx.req);
+        if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        const claimsToken = await signJwt({
+          produtorId: claims.produtorId,
+          cpf: claims.cpf,
+          imovelId: input.imovelId,
+        });
+        ctx.res.cookie("rc_claims", claimsToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
+        return { success: true, imovelId: input.imovelId };
+      }),
   }),
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
