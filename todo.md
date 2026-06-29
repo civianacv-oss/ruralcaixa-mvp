@@ -133,3 +133,8 @@
 - [x] RuralLayout.tsx usa `isAdmin` e `role` de useRuralAuth para mostrar link Procurações e label correto
 - [x] 43 testes passando, zero erros TypeScript
 - [x] Fix: CPF não estava sendo salvo no localStorage após OTP — setSession agora aceita parâmetro `cpf` opcional; Login.tsx passa o CPF ao chamar setSession, corrigindo o erro "Sessão expirada" na tela SelecionarImovel
+
+## Fase 18: Fix — cookie rc_claims não era enviado ao browser
+- [x] Fix crítico: cookie rc_claims não era enviado pelo browser pois sameSite:none requer secure:true — cookies.ts agora usa sameSite:lax quando não é HTTPS, garantindo que o cookie seja enviado
+- [x] Fix: railwayProxy.ts usava req.cookies (não populado sem cookie-parser) — corrigido para parsear cookies do header raw igual ao sdk.ts
+- [x] Resultado: após OTP o sistema agora avança para seleção de imóvel/dashboard sem voltar para login

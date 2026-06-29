@@ -39,10 +39,13 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  const secure = isSecureRequest(req);
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
-    secure: isSecureRequest(req),
+    // sameSite:'none' requires secure:true; fall back to 'lax' for plain HTTP
+    // (dev sandbox, localhost) so the cookie is actually sent by the browser.
+    sameSite: secure ? "none" : "lax",
+    secure,
   };
 }

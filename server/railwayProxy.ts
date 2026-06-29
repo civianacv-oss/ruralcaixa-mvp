@@ -13,6 +13,7 @@
  */
 
 import * as jose from "jose";
+import { parse as parseCookieHeader } from "cookie";
 import { ENV } from "./_core/env";
 import { TRPCError } from "@trpc/server";
 import type { Request } from "express";
@@ -35,7 +36,9 @@ export interface RcClaims {
  */
 export async function getClaimsFromRequest(req: Request): Promise<RcClaims | null> {
   try {
-    const raw = req.cookies?.rc_claims as string | undefined;
+    // Parse cookies from the raw header (cookie-parser is not installed)
+    const cookies = parseCookieHeader(req.headers.cookie ?? "");
+    const raw = cookies.rc_claims;
     if (!raw) return null;
     const secret = new TextEncoder().encode(ENV.cookieSecret);
     const { payload } = await jose.jwtVerify(raw, secret);
