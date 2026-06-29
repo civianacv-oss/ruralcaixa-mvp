@@ -184,7 +184,14 @@ function ModalLancamento({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 24 }}>
+          {onExcluir && (
+            <button onClick={() => { if (window.confirm("Excluir este lancamento?")) onExcluir!(); }} style={{
+              padding: "10px 0", borderRadius: 8, border: "1.5px solid #fecaca",
+              background: "#fff5f5", color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}>Excluir lancamento</button>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onFechar} style={{
             flex: 1, padding: "10px 0", borderRadius: 8, border: "1.5px solid #e0dbd0",
             background: "#fff", color: "#5a6a5a", fontSize: 13, fontWeight: 600, cursor: "pointer",
@@ -202,6 +209,7 @@ function ModalLancamento({
           >
             {saving ? "Salvando..." : "Salvar LanÃ§amento"}
           </button>
+          </div>
         </div>
       </div>
     </div>
