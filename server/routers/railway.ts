@@ -19,6 +19,7 @@ import {
   RAILWAY_API,
 } from "../railwayProxy";
 import { TRPCError } from "@trpc/server";
+import { getImoveisForProdutor } from "../db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,8 +160,15 @@ export const railwayRouter = router({
   // ── Imóveis ────────────────────────────────────────────────────────────────
   imoveis: publicProcedure.query(async ({ ctx }) => {
     const claims = await requireClaims(ctx.req);
-    const list = await railwayFetch<Imovel[]>(`/imoveis/buscar?cpf=${claims.cpf}`);
-    return list;
+    // Fetch all imóveis from Railway for this CPF
+    const allImoveis = await railwayFetch<Imovel[]>(`/imoveis/buscar?cpf=${claims.cpf}`);
+    // Filter by local ACL table (produtor_imovel) so each produtor sees only their property
+    const allowedIds = await getImoveisForProdutor(claims.produtorId);
+    if (!allowedIds) {
+      // No ACL rows configured — return all (fallback for new producers)
+      return allImoveis;
+    }
+    return allImoveis.filter((im) => allowedIds.includes(im.id));
   }),
 
   // ── Raças por espécie ──────────────────────────────────────────────────────

@@ -155,3 +155,22 @@ export const produtorConfig = mysqlTable("produtor_config", {
 
 export type ProdutorConfig = typeof produtorConfig.$inferSelect;
 export type InsertProdutorConfig = typeof produtorConfig.$inferInsert;
+
+// ─── Produtor Imovel (access control) ────────────────────────────────────────────────────────────────────
+
+/**
+ * Maps which Railway imóveis each produtor is allowed to access.
+ * The Railway API returns all imóveis for any CPF, so we enforce
+ * per-produtor access control here.
+ */
+export const produtorImovel = mysqlTable("produtor_imovel", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Railway produtor.id */
+  produtorId: int("produtorId").notNull(),
+  /** Railway imovel.id */
+  imovelId: int("imovelId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ProdutorImovel = typeof produtorImovel.$inferSelect;
+export type InsertProdutorImovel = typeof produtorImovel.$inferInsert;

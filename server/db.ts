@@ -19,6 +19,7 @@ import {
   healthRecords,
   movements,
   produtorConfig,
+  produtorImovel,
   reproductiveRecords,
   users,
 } from "../drizzle/schema";
@@ -313,4 +314,22 @@ export async function upsertProdutorConfig(
     .insert(produtorConfig)
     .values({ produtorId, ...data })
     .onDuplicateKeyUpdate({ set: data });
+}
+
+// ─── Produtor Imovel (access control) ────────────────────────────────────────
+
+/**
+ * Returns the list of imovelIds that a given produtor is allowed to access.
+ * If no rows exist (legacy / first login), returns null so the caller can
+ * fall back to the Railway API list (all imóveis for that CPF).
+ */
+export async function getImoveisForProdutor(produtorId: number): Promise<number[] | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ imovelId: produtorImovel.imovelId })
+    .from(produtorImovel)
+    .where(eq(produtorImovel.produtorId, produtorId));
+  if (rows.length === 0) return null; // no ACL rows → fall back to Railway
+  return rows.map((r) => r.imovelId);
 }
