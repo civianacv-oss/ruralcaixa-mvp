@@ -204,8 +204,11 @@
 - [x] 43 testes passando, zero erros TypeScript
 
 ## Fase 26: Importação de insumos — colunas oficiais + etapa de-para
-- [ ] Servidor: mapeamento das 10 colunas oficiais (nome, categoria, unidade, origem, estoque_atual, estoque_minimo, estoque_ideal, preco_estimado, reposicao_modo, lead_time_dias)
-- [ ] Servidor: retornar lista de nomes não encontrados no catálogo (para etapa de-para)
-- [ ] UI: etapa de-para — tabela com nomes não reconhecidos e select para mapear para insumo existente ou criar novo
-- [ ] UI: só confirmar importação após resolver todos os de-para pendentes
-- [ ] Template CSV atualizado com as 10 colunas oficiais
+- [x] Servidor: mapeamento das 10 colunas oficiais (nome, categoria, unidade, origem, estoque_atual, estoque_minimo, estoque_ideal, preco_estimado, reposicao_modo, lead_time_dias)
+- [x] Servidor: endpoint analisarPlanilhaInsumos retorna unmapped[] com nomes não encontrados no catálogo
+- [x] Servidor: endpoint confirmarImportacaoInsumos aceita mappings de-para e aplica upsert
+- [x] UI: fluxo de 3 etapas (upload → de-para → resultado) no Dialog de importação
+- [x] UI: etapa de-para exibe nomes não reconhecidos com Select para mapear para insumo existente ou criar novo
+- [x] UI: resultado exibe código gerado e ação (Novo/Atualizado) por linha importada
+- [x] Template CSV atualizado com as 10 colunas oficiais
+- [x] 43 testes passando, zero erros TypeScript
