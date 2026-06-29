@@ -107,6 +107,68 @@ interface Raca {
   ativo?: boolean;
 }
 
+interface Insumo {
+  id: number;
+  nome: string;
+  descricao?: string;
+  categoria: string;
+  unidade: string;
+  origem: string;
+  estoque_atual: number;
+  estoque_minimo: number;
+  estoque_ideal: number;
+  preco_estimado?: number;
+  fornecedor_id?: number;
+  fornecedor_nome?: string;
+  reposicao_modo: string;
+  lead_time_dias: number;
+  status_estoque?: string;
+}
+
+interface Fornecedor {
+  id: number;
+  nome: string;
+  cnpj_cpf?: string;
+  whatsapp?: string;
+  telegram?: string;
+  email?: string;
+  endereco?: string;
+  prazo_entrega_dias: number;
+  forma_pagamento: string;
+  observacoes?: string;
+  total_pedidos?: number;
+}
+
+interface MovimentacaoInsumo {
+  id: number;
+  insumo_id: number;
+  tipo: string;
+  quantidade: number;
+  custo_unitario?: number;
+  custo_total?: number;
+  observacao?: string;
+  data_movim: string;
+  criado_em?: string;
+}
+
+interface PedidoCompra {
+  id: number;
+  insumo_id: number;
+  insumo_nome?: string;
+  unidade?: string;
+  fornecedor_id?: number;
+  fornecedor_nome?: string;
+  fornecedor_whatsapp?: string;
+  quantidade: number;
+  preco_estimado?: number;
+  valor_total_estimado?: number;
+  data_entrega_desejada?: string;
+  status: string;
+  modo_geracao: string;
+  observacao?: string;
+  criado_em?: string;
+}
+
 // ─── Helper: require claims or throw ─────────────────────────────────────────
 
 async function requireClaims(req: Parameters<typeof getClaimsFromRequest>[0]) {
@@ -406,5 +468,147 @@ export const railwayRouter = router({
         imovel_id: imovelId,
         ...fields,
       });
+    }),
+
+  // ── Insumos ────────────────────────────────────────────────────────────────
+  insumos: publicProcedure
+    .input(z.object({ imovelId: z.number(), categoria: z.string().optional(), origem: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const params = new URLSearchParams({ fazenda_id: String(input.imovelId) });
+      if (input.categoria) params.set("categoria", input.categoria);
+      if (input.origem) params.set("origem", input.origem);
+      const data = await railwayFetch<{ data: Insumo[] } | Insumo[]>(`/insumos/?${params}`);
+      return Array.isArray(data) ? data : (data as { data: Insumo[] }).data ?? [];
+    }),
+
+  insumosAlertas: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayFetch<{ data: Insumo[]; total: number } | Insumo[]>(`/insumos/alertas?fazenda_id=${input.imovelId}`);
+      return Array.isArray(data) ? data : (data as { data: Insumo[] }).data ?? [];
+    }),
+
+  createInsumo: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      nome: z.string().min(1),
+      descricao: z.string().optional(),
+      categoria: z.string().default("outros"),
+      unidade: z.string().default("unidade"),
+      origem: z.enum(["comprado", "proprio", "doacao"]).default("comprado"),
+      estoque_atual: z.number().default(0),
+      estoque_minimo: z.number().default(0),
+      estoque_ideal: z.number().default(0),
+      preco_estimado: z.number().optional(),
+      fornecedor_id: z.number().optional(),
+      reposicao_modo: z.enum(["automatico", "manual"]).default("manual"),
+      lead_time_dias: z.number().default(7),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, ...fields } = input;
+      const data = await railwayMutate<{ data: Insumo } | Insumo>(`/insumos/`, "POST", { fazenda_id: imovelId, ...fields });
+      return (data as { data: Insumo }).data ?? data;
+    }),
+
+  movimentarInsumo: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      insumoId: z.number(),
+      tipo: z.enum(["compra", "producao_propria", "doacao", "ajuste_positivo", "uso", "venda", "perda", "ajuste_negativo"]),
+      quantidade: z.number().positive(),
+      custo_unitario: z.number().optional(),
+      observacao: z.string().optional(),
+      data_movim: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, insumoId, ...fields } = input;
+      const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", fields);
+      return (data as { data: MovimentacaoInsumo }).data ?? data;
+    }),
+
+  // ── Fornecedores ───────────────────────────────────────────────────────────
+  fornecedores: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayFetch<{ data: Fornecedor[] } | Fornecedor[]>(`/fornecedores/?fazenda_id=${input.imovelId}`);
+      return Array.isArray(data) ? data : (data as { data: Fornecedor[] }).data ?? [];
+    }),
+
+  createFornecedor: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      nome: z.string().min(1),
+      cnpj_cpf: z.string().optional(),
+      whatsapp: z.string().optional(),
+      telegram: z.string().optional(),
+      email: z.string().optional(),
+      endereco: z.string().optional(),
+      prazo_entrega_dias: z.number().default(7),
+      forma_pagamento: z.string().default("a_vista"),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, ...fields } = input;
+      const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/`, "POST", { fazenda_id: imovelId, ...fields });
+      return (data as { data: Fornecedor }).data ?? data;
+    }),
+
+  // ── Pedidos de Compra ────────────────────────────────────────────────────────
+  pedidosCompra: publicProcedure
+    .input(z.object({ imovelId: z.number(), status: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const params = new URLSearchParams({ fazenda_id: String(input.imovelId) });
+      if (input.status) params.set("status", input.status);
+      const data = await railwayFetch<{ data: PedidoCompra[] } | PedidoCompra[]>(`/pedidos-compra/?${params}`);
+      return Array.isArray(data) ? data : (data as { data: PedidoCompra[] }).data ?? [];
+    }),
+
+  createPedidoCompra: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      insumo_id: z.number(),
+      fornecedor_id: z.number().optional(),
+      quantidade: z.number().positive(),
+      preco_estimado: z.number().optional(),
+      data_entrega_desejada: z.string().optional(),
+      observacao: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, ...fields } = input;
+      const data = await railwayMutate<{ data: PedidoCompra } | PedidoCompra>(`/pedidos-compra/`, "POST", { fazenda_id: imovelId, ...fields });
+      return (data as { data: PedidoCompra }).data ?? data;
+    }),
+
+  aprovarPedidoCompra: publicProcedure
+    .input(z.object({ imovelId: z.number(), pedidoId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayMutate<{ data: PedidoCompra } | PedidoCompra>(`/pedidos-compra/${input.pedidoId}/aprovar`, "PUT");
+      return (data as { data: PedidoCompra }).data ?? data;
+    }),
+
+  enviarPedidoCompra: publicProcedure
+    .input(z.object({ imovelId: z.number(), pedidoId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayMutate<{ ok: boolean; enviado_telegram: boolean; mensagem: string }>(`/pedidos-compra/${input.pedidoId}/enviar`, "POST");
     }),
 });

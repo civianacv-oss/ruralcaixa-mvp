@@ -165,3 +165,9 @@
 - [x] Página DCTFWeb (/dctfweb)
 - [x] Registrar todas as rotas no App.tsx
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 21: Módulo de Insumos
+- [x] Adicionar endpoints tRPC proxy em server/routers/railway.ts: insumos, fornecedores, movimentações, pedidos-compra
+- [x] Criar página Insumos.tsx com abas: Estoque, Fornecedores, Pedidos de Compra
+- [x] Alertas de estoque crítico/baixo com badge na aba Estoque
+- [x] Registrar rota /insumos no App.tsx e no RuralLayout (grupo Gestão)

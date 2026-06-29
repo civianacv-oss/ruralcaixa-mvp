@@ -17,6 +17,7 @@ import {
   Users,
   ShoppingCart,
   Palmtree,
+  Package,
   ClipboardList,
   Globe,
   LogOut,
@@ -56,6 +57,7 @@ const NAV_SECTIONS = [
     items: [
       { icon: DollarSign, label: "Financeiro", path: "/financeiro" },
       { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
+      { icon: Package, label: "Insumos", path: "/insumos" },
       { icon: ShoppingCart, label: "Compra e Venda", path: "/compra-venda" },
       { icon: Palmtree, label: "Cultivo de Açaí", path: "/cultivo-acai" },
     ],
