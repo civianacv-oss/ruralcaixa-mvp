@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { MapPin, Ruler, Users, ChevronRight, Leaf, Loader2, LogOut } from "lucide-react";
-import { getImoveis, getOvinoDashboard, getBovinoAnimais, clearSession, getProdutorNome, getProdutorId, setSession, type Imovel } from "@/lib/api";
+import { getImoveis, getOvinoDashboard, getBovinoAnimais, clearSession, getProdutorNome, getProdutorId, setSession, setImovelNome, type Imovel } from "@/lib/api";
 
 interface ImovelEnriquecido extends Imovel {
   totalOvinos?: number;
@@ -38,6 +38,7 @@ export default function SelecionarImovel() {
         // If only one imóvel, skip selection and go straight to dashboard
         if (list.length === 1) {
           setSession(produtorId, produtorNome, list[0].id);
+          setImovelNome(list[0].nome);
           navigate("/dashboard");
           return;
         }
@@ -80,6 +81,7 @@ export default function SelecionarImovel() {
     setSelecting(imovel.id);
     const produtorId = getProdutorId()!;
     setSession(produtorId, produtorNome, imovel.id);
+    setImovelNome(imovel.nome);
     // Small delay for visual feedback
     setTimeout(() => navigate("/dashboard"), 350);
   }

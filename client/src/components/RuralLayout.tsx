@@ -27,7 +27,7 @@ const NAV_ITEMS = [
 ];
 
 export default function RuralLayout({ children }: { children: React.ReactNode }) {
-  const { authenticated, produtorNome, logout } = useRuralAuth();
+  const { authenticated, produtorNome, imovelNome, logout } = useRuralAuth();
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -135,17 +135,36 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* Switch property button */}
-        <div className="px-2 pb-1">
-          <button
+        {/* Active property banner */}
+        {imovelNome && (
+          <div
+            className="mx-2 mb-1 rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-150 hover:brightness-110"
+            style={{ background: "oklch(0.28 0.06 145)" }}
             onClick={() => { navigate("/selecionar-imovel"); setMobileOpen(false); }}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-white/50 hover:bg-white/8 hover:text-white/90 transition-all duration-150"
-            title={!sidebarOpen ? "Trocar propriedade" : undefined}
+            title={!sidebarOpen ? imovelNome : undefined}
           >
-            <Home className="w-4 h-4 shrink-0" />
-            {sidebarOpen && <span className="truncate text-[12px]">Trocar propriedade</span>}
-          </button>
-        </div>
+            {sidebarOpen ? (
+              <div className="flex items-start gap-2">
+                <Home className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "oklch(0.65 0.12 145)" }} />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.5px] mb-0.5" style={{ color: "oklch(0.55 0.08 145)" }}>
+                    Propriedade ativa
+                  </p>
+                  <p className="text-[12px] font-semibold text-white/90 truncate leading-tight">
+                    {imovelNome}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "oklch(0.55 0.08 145)" }}>
+                    Toque para trocar
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <Home className="w-4 h-4" style={{ color: "oklch(0.65 0.12 145)" }} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* User footer */}
           <div
@@ -165,7 +184,9 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
                   <p className="text-sm font-medium text-white truncate leading-none">
                     {produtorNome || "Produtor"}
                   </p>
-                  <p className="text-xs text-white/40 mt-1">Produtor Rural</p>
+                  <p className="text-xs text-white/40 mt-0.5 truncate">
+                    {imovelNome || "Produtor Rural"}
+                  </p>
                 </div>
                 <button
                   onClick={logout}

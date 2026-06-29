@@ -19,6 +19,14 @@ export function getImovelId(): number | null {
   return v ? Number(v) : null;
 }
 
+export function getImovelNome(): string {
+  return localStorage.getItem("rc_imovel_nome") ?? "";
+}
+
+export function setImovelNome(nome: string) {
+  localStorage.setItem("rc_imovel_nome", nome);
+}
+
 export function setSession(produtorId: number, nome: string, imovelId?: number) {
   localStorage.setItem("rc_produtor_id", String(produtorId));
   localStorage.setItem("rc_produtor_nome", nome);
@@ -29,6 +37,7 @@ export function clearSession() {
   localStorage.removeItem("rc_produtor_id");
   localStorage.removeItem("rc_produtor_nome");
   localStorage.removeItem("rc_imovel_id");
+  localStorage.removeItem("rc_imovel_nome");
   localStorage.removeItem("rc_produtor_cpf");
 }
 
