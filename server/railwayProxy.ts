@@ -25,6 +25,8 @@ export interface RcClaims {
   produtorId: number;
   cpf: string;
   imovelId: number | null;
+  /** 'admin' = contador (sees all properties); 'user' = produtor (sees only own) */
+  role: "user" | "admin";
 }
 
 /**
@@ -45,6 +47,7 @@ export async function getClaimsFromRequest(req: Request): Promise<RcClaims | nul
       produtorId: payload.produtorId as number,
       cpf: payload.cpf as string,
       imovelId: (payload.imovelId as number | null) ?? null,
+      role: (payload.role as "user" | "admin") ?? "user",
     };
   } catch {
     return null;

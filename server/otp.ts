@@ -8,7 +8,7 @@
  *   - Once Meta approves WhatsApp Business: set whatsappPriority=true globally or per-produtor
  */
 
-import { getProdutorConfig } from "./db";
+import { getProdutorConfig, getUserByCpf, getImoveisForProdutor } from "./db";
 
 const RAILWAY_API = "https://ruralcaixa-mvp-production.up.railway.app";
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -24,6 +24,7 @@ interface OtpEntry {
   telefone: string;
   imovelId?: number;
   imovelCount: number;
+  role: "user" | "admin";
   expiresAt: number;
   attempts: number;
 }
@@ -217,10 +218,24 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     throw new Error("CPF não encontrado. Verifique ou entre em contato.");
   }
 
-  // Get imoveis (single fetch)
+  // Get imoveis from Railway
   const imovelList = await fetchImoveis(cpfClean);
-  const imovelId = imovelList?.[0]?.id;
-  const imovelCount = imovelList.length;
+
+  // Determine role from local DB (admin = contador, user = produtor)
+  const localUser = await getUserByCpf(cpfClean).catch(() => null);
+  const role: "user" | "admin" = localUser?.role ?? "user";
+
+  // For produtor (user), filter imoveis by local ACL; for admin (contador), show all
+  let allowedImoveis = imovelList;
+  if (role === "user") {
+    const allowedIds = await getImoveisForProdutor(produtor.id).catch(() => null);
+    if (allowedIds) {
+      allowedImoveis = imovelList.filter((im) => allowedIds.includes(im.id));
+    }
+  }
+
+  const imovelId = allowedImoveis?.[0]?.id;
+  const imovelCount = allowedImoveis.length;
 
   // Generate code
   const code = generateCode();
@@ -232,6 +247,7 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     telefone: produtor.telefone,
     imovelId,
     imovelCount,
+    role,
     expiresAt: Date.now() + OTP_TTL_MS,
     attempts: 0,
   };
@@ -258,6 +274,7 @@ export interface VerifyOtpResult {
   produtorNome: string;
   imovelId?: number;
   imovelCount: number;
+  role: "user" | "admin";
   openId: string;
 }
 
@@ -298,6 +315,7 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
     produtorNome: entry.produtorNome,
     imovelId: entry.imovelId,
     imovelCount: entry.imovelCount ?? 1,
+    role: entry.role ?? "user",
     openId,
   };
 }

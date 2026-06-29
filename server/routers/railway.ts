@@ -162,6 +162,10 @@ export const railwayRouter = router({
     const claims = await requireClaims(ctx.req);
     // Fetch all imóveis from Railway for this CPF
     const allImoveis = await railwayFetch<Imovel[]>(`/imoveis/buscar?cpf=${claims.cpf}`);
+    // Admin (contador) sees ALL properties; user (produtor) is filtered by local ACL
+    if (claims.role === "admin") {
+      return allImoveis;
+    }
     // Filter by local ACL table (produtor_imovel) so each produtor sees only their property
     const allowedIds = await getImoveisForProdutor(claims.produtorId);
     if (!allowedIds) {

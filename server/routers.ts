@@ -93,6 +93,7 @@ export const appRouter = router({
           produtorId: result.produtorId,
           cpf: input.cpf.replace(/\D/g, ""),
           imovelId: result.imovelId ?? null,
+          role: result.role ?? "user",
         });
         ctx.res.cookie("rc_claims", claimsToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
         return {
@@ -124,6 +125,7 @@ export const appRouter = router({
           produtorId: claims.produtorId,
           cpf: claims.cpf,
           imovelId: input.imovelId,
+          role: claims.role ?? "user",
         });
         ctx.res.cookie("rc_claims", claimsToken, { ...cookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
         return { success: true, imovelId: input.imovelId };
