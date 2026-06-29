@@ -4,32 +4,76 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Animais from "./pages/Animais";
+import Saude from "./pages/Saude";
+import Reproducao from "./pages/Reproducao";
+import Financeiro from "./pages/Financeiro";
+import Movimentacoes from "./pages/Movimentacoes";
+import RuralLayout from "./components/RuralLayout";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { isAuthenticated } from "./lib/api";
+
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    if (!isAuthenticated()) navigate("/login");
+  }, [navigate]);
+  if (!isAuthenticated()) return null;
+  return (
+    <RuralLayout>
+      <Component />
+    </RuralLayout>
+  );
+}
+
+function HomeRedirect() {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    if (isAuthenticated()) {
+      navigate("/dashboard");
+    } else {
+      navigate("/login");
+    }
+  }, [navigate]);
+  return null;
+}
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
+      <Route path="/" component={HomeRedirect} />
+      <Route path="/login" component={Login} />
+      <Route path="/dashboard">
+        {() => <ProtectedRoute component={Dashboard} />}
+      </Route>
+      <Route path="/animais">
+        {() => <ProtectedRoute component={Animais} />}
+      </Route>
+      <Route path="/saude">
+        {() => <ProtectedRoute component={Saude} />}
+      </Route>
+      <Route path="/reproducao">
+        {() => <ProtectedRoute component={Reproducao} />}
+      </Route>
+      <Route path="/financeiro">
+        {() => <ProtectedRoute component={Financeiro} />}
+      </Route>
+      <Route path="/movimentacoes">
+        {() => <ProtectedRoute component={Movimentacoes} />}
+      </Route>
+      <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router />
