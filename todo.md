@@ -202,3 +202,10 @@
 - [x] UI: código exibido na tabela de estoque (coluna Código com badge monoespaçado)
 - [x] Geração automática de código: prefixo por categoria + sequencial (FAR-001, RAC-002, etc.)
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 26: Importação de insumos — colunas oficiais + etapa de-para
+- [ ] Servidor: mapeamento das 10 colunas oficiais (nome, categoria, unidade, origem, estoque_atual, estoque_minimo, estoque_ideal, preco_estimado, reposicao_modo, lead_time_dias)
+- [ ] Servidor: retornar lista de nomes não encontrados no catálogo (para etapa de-para)
+- [ ] UI: etapa de-para — tabela com nomes não reconhecidos e select para mapear para insumo existente ou criar novo
+- [ ] UI: só confirmar importação após resolver todos os de-para pendentes
+- [ ] Template CSV atualizado com as 10 colunas oficiais

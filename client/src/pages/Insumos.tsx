@@ -196,30 +196,64 @@ export default function Insumos() {
   const [openNovoPedido, setOpenNovoPedido] = useState(false);
   const [movimInsumoId, setMovimInsumoId] = useState<number | null>(null);
 
-  // ── Importção de planilha ────────────────────────────────────────────────────
+  // ── Importação de planilha (3 etapas: upload → de-para → resultado) ────────────────────────────────────────────────────
   const [openImport, setOpenImport] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importResult, setImportResult] = useState<{ total: number; success: number; errors: number; results: { nome: string; ok: boolean; error?: string }[] } | null>(null);
+  const [importStep, setImportStep] = useState<"upload" | "depara" | "resultado">("upload");
+  const [importPreview, setImportPreview] = useState<{
+    rows: any[];
+    unmapped: { nome: string; linha: number }[];
+    catalog: any[];
+    total: number;
+  } | null>(null);
+  const [importMappings, setImportMappings] = useState<Record<string, string>>({});
+  const [importResult, setImportResult] = useState<{ total: number; success: number; errors: number; results: { nome: string; ok: boolean; error?: string; codigo?: string; action?: string }[] } | null>(null);
 
-  const importarInsumos = trpc.railway.importarInsumos.useMutation({
-    onSuccess: (data) => {
+  const analisarPlanilha = trpc.railway.analisarPlanilhaInsumos.useMutation({
+    onSuccess: (data: any) => {
+      setImportPreview(data);
+      const initial: Record<string, string> = {};
+      data.unmapped.forEach((u: { nome: string }) => { initial[u.nome] = u.nome; });
+      setImportMappings(initial);
+      setImportStep("depara");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const confirmarImportacao = trpc.railway.confirmarImportacaoInsumos.useMutation({
+    onSuccess: (data: any) => {
       setImportResult(data);
+      setImportStep("resultado");
       if (data.success > 0) {
         utils.railway.insumos.invalidate();
         utils.railway.insumosAlertas.invalidate();
+        utils.railway.listarCatalogInsumos.invalidate();
       }
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
-  const handleImport = async () => {
+  const handleAnalisar = async () => {
     if (!importFile || !imovelId) return;
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64 = (e.target?.result as string).split(",")[1];
-      importarInsumos.mutate({ imovelId, fileBase64: base64, fileName: importFile.name });
+      analisarPlanilha.mutate({ imovelId, fileBase64: base64, fileName: importFile.name });
     };
     reader.readAsDataURL(importFile);
+  };
+
+  const handleConfirmarImportacao = () => {
+    if (!importPreview || !imovelId) return;
+    confirmarImportacao.mutate({ imovelId, rows: importPreview.rows, mappings: importMappings });
+  };
+
+  const resetImport = () => {
+    setImportFile(null);
+    setImportStep("upload");
+    setImportPreview(null);
+    setImportMappings({});
+    setImportResult(null);
   };
 
   const downloadTemplate = () => {
@@ -281,16 +315,29 @@ export default function Insumos() {
           </h1>
           <p className="text-sm text-muted-foreground">Gestão de estoque, fornecedores e pedidos de compra</p>
         </div>
-        <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) { setImportFile(null); setImportResult(null); } }}>
+        <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm">
               <Upload className="h-4 w-4 mr-1" /> Importar Planilha
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5" /> Importar Insumos de Planilha</DialogTitle></DialogHeader>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" /> Importar Insumos de Planilha
+              </DialogTitle>
+              {/* Indicador de etapas */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                <span className={importStep === "upload" ? "font-semibold text-primary" : ""}>1. Upload</span>
+                <span>→</span>
+                <span className={importStep === "depara" ? "font-semibold text-primary" : ""}>2. De-Para</span>
+                <span>→</span>
+                <span className={importStep === "resultado" ? "font-semibold text-primary" : ""}>3. Resultado</span>
+              </div>
+            </DialogHeader>
 
-            {!importResult ? (
+            {/* ETAPA 1: Upload */}
+            {importStep === "upload" && (
               <div className="space-y-4">
                 <div className="rounded-lg border border-dashed p-4 text-center bg-muted/30">
                   <FileSpreadsheet className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
@@ -336,16 +383,93 @@ export default function Insumos() {
                   <Button variant="outline" className="flex-1" onClick={() => setOpenImport(false)}>Cancelar</Button>
                   <Button
                     className="flex-1"
-                    disabled={!importFile || importarInsumos.isPending}
-                    onClick={handleImport}
+                    disabled={!importFile || analisarPlanilha.isPending}
+                    onClick={handleAnalisar}
                   >
-                    {importarInsumos.isPending ? "Importando..." : "Importar"}
+                    {analisarPlanilha.isPending ? "Analisando..." : "Analisar Planilha →"}
                   </Button>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {/* ETAPA 2: De-Para */}
+            {importStep === "depara" && importPreview && (
               <div className="space-y-4">
-                {/* Resultado */}
+                <div className="rounded-lg border bg-muted/20 p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">{importPreview.total} linhas encontradas</p>
+                    <p className="text-xs text-muted-foreground">{importPreview.unmapped.length} nome(s) não encontrado(s) no catálogo</p>
+                  </div>
+                  {importPreview.unmapped.length === 0 && (
+                    <Badge className="bg-green-100 text-green-700 border-green-200">Todos mapeados ✓</Badge>
+                  )}
+                </div>
+
+                {importPreview.unmapped.length > 0 ? (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Mapeamento de nomes não reconhecidos
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Para cada nome da planilha que não existe no catálogo, escolha um insumo existente (de-para) ou deixe como está para criar um novo.
+                    </p>
+                    {importPreview.unmapped.map((u) => (
+                      <div key={u.nome} className="flex items-center gap-3 rounded-lg border p-2 bg-background">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{u.nome}</p>
+                          <p className="text-xs text-muted-foreground">Linha {u.linha} da planilha</p>
+                        </div>
+                        <span className="text-muted-foreground text-xs shrink-0">→</span>
+                        <Select
+                          value={importMappings[u.nome] ?? u.nome}
+                          onValueChange={(v) => setImportMappings(prev => ({ ...prev, [u.nome]: v }))}
+                        >
+                          <SelectTrigger className="w-52 h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={u.nome}>
+                              <span className="flex items-center gap-1">
+                                <Plus className="h-3 w-3" /> Criar novo: {u.nome}
+                              </span>
+                            </SelectItem>
+                            {importPreview.catalog.map((c: any) => (
+                              <SelectItem key={c.id} value={c.nome}>
+                                <span className="flex items-center gap-2">
+                                  <span className="font-mono text-xs text-muted-foreground">{c.codigo}</span>
+                                  {c.nome}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-center">
+                    <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-green-800">Todos os nomes foram reconhecidos no catálogo!</p>
+                    <p className="text-xs text-green-700 mt-1">Clique em Confirmar para importar os dados.</p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setImportStep("upload")}>← Voltar</Button>
+                  <Button
+                    className="flex-1"
+                    disabled={confirmarImportacao.isPending}
+                    onClick={handleConfirmarImportacao}
+                  >
+                    {confirmarImportacao.isPending ? "Importando..." : `Confirmar Importação (${importPreview.total})`}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ETAPA 3: Resultado */}
+            {importStep === "resultado" && importResult && (
+              <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="rounded-lg bg-muted/40 p-3">
                     <p className="text-2xl font-bold">{importResult.total}</p>
@@ -361,8 +485,22 @@ export default function Insumos() {
                   </div>
                 </div>
 
+                {importResult.success > 0 && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 max-h-48 overflow-y-auto">
+                    <p className="text-xs font-semibold text-green-700 mb-2">Insumos importados:</p>
+                    {importResult.results.filter(r => r.ok).map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-green-700 mb-1">
+                        <CheckCircle2 className="h-3 w-3 shrink-0" />
+                        <span className="font-mono text-muted-foreground">{r.codigo}</span>
+                        <span className="font-medium">{r.nome}</span>
+                        <Badge variant="outline" className="text-xs h-4 px-1">{r.action === "criado" ? "Novo" : "Atualizado"}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {importResult.errors > 0 && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 max-h-40 overflow-y-auto">
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 max-h-32 overflow-y-auto">
                     <p className="text-xs font-semibold text-red-700 mb-2">Linhas com erro:</p>
                     {importResult.results.filter(r => !r.ok).map((r, i) => (
                       <div key={i} className="flex items-start gap-2 text-xs text-red-700 mb-1">
@@ -373,14 +511,7 @@ export default function Insumos() {
                   </div>
                 )}
 
-                {importResult.success > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-green-700 font-medium">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {importResult.success} insumo(s) adicionados ao estoque com sucesso.
-                  </div>
-                )}
-
-                <Button className="w-full" onClick={() => { setOpenImport(false); setImportFile(null); setImportResult(null); }}>
+                <Button className="w-full" onClick={() => { setOpenImport(false); resetImport(); }}>
                   Fechar
                 </Button>
               </div>

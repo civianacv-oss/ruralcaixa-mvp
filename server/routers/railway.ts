@@ -762,4 +762,161 @@ export const railwayRouter = router({
         unidade: input.unidade,
       });
     }),
+
+  /**
+   * Pré-analisa a planilha e retorna:
+   * - rows: todas as linhas parseadas com as 10 colunas oficiais
+   * - unmapped: nomes que não existem no catálogo (precisam de de-para)
+   * - catalog: catálogo atual da fazenda (para popular os selects de de-para)
+   */
+  analisarPlanilhaInsumos: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      fileBase64: z.string(),
+      fileName: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+
+      // Detectar linha de cabeçalho real
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", header: 1 }) as unknown[][];
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+        const rowVals = rawRows[i].map(v => String(v ?? "").toLowerCase().trim());
+        if (rowVals.some(v => v === "nome" || v === "name" || v === "insumo" || v === "produto")) {
+          headerRowIndex = i;
+          break;
+        }
+      }
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", range: headerRowIndex });
+      if (rows.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: 'Planilha vazia ou sem coluna "Nome" reconhecível.' });
+      if (rows.length > 500) throw new TRPCError({ code: "BAD_REQUEST", message: "Limite de 500 linhas por importação." });
+
+      const normalize = (v: unknown) => String(v ?? "").trim();
+      const toNum = (v: unknown) => { const n = parseFloat(String(v ?? "0").replace(",", ".")); return isNaN(n) ? 0 : n; };
+      const col = (row: Record<string, unknown>, ...keys: string[]) => {
+        for (const k of keys) {
+          const found = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, "") === k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+          if (found && row[found] !== "") return row[found];
+        }
+        return "";
+      };
+
+      // Parsear as 10 colunas oficiais de cada linha
+      const parsedRows = rows.map((row, idx) => ({
+        _linha: idx + 2,
+        nome: normalize(col(row, "nome", "name", "insumo", "produto")),
+        categoria: normalize(col(row, "categoria", "category", "tipo")) || "outros",
+        unidade: normalize(col(row, "unidade", "unit", "un")) || "unidade",
+        origem: normalize(col(row, "origem", "origin")) || "comprado",
+        estoque_atual: toNum(col(row, "estoqueatual", "estoque", "posicaofisicaatual", "posicao", "quantidade")),
+        estoque_minimo: toNum(col(row, "estoqueminimo", "minimo", "min")),
+        estoque_ideal: toNum(col(row, "estoqueideal", "ideal")),
+        preco_estimado: toNum(col(row, "precoestimado", "preco", "price", "valor", "valorunitariodaultimacompra", "valorunitario")) || 0,
+        reposicao_modo: normalize(col(row, "reposicaomodo", "reposicao")) === "automatico" ? "automatico" : "manual",
+        lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
+      }));
+
+      // Identificar nomes sem correspondente no catálogo
+      const catalog = await listInsumosCatalogo(input.imovelId);
+      const catalogNomes = new Set(catalog.map((c) => c.nomeNormalizado));
+      const normalizeNome = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+      const unmapped: { nome: string; linha: number }[] = [];
+      const seen = new Set<string>();
+      for (const r of parsedRows) {
+        if (!r.nome) continue;
+        const key = normalizeNome(r.nome);
+        if (!catalogNomes.has(key) && !seen.has(key)) {
+          unmapped.push({ nome: r.nome, linha: r._linha });
+          seen.add(key);
+        }
+      }
+
+      return { rows: parsedRows, unmapped, catalog, total: parsedRows.length };
+    }),
+
+  /**
+   * Confirma a importação com os mapeamentos de-para resolvidos.
+   * mappings: { nomePlanilha: nomeDestino } — se nomeDestino === nomePlanilha, cria novo; caso contrário, usa o nome destino
+   */
+  confirmarImportacaoInsumos: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      rows: z.array(z.object({
+        _linha: z.number(),
+        nome: z.string(),
+        categoria: z.string(),
+        unidade: z.string(),
+        origem: z.string(),
+        estoque_atual: z.number(),
+        estoque_minimo: z.number(),
+        estoque_ideal: z.number(),
+        preco_estimado: z.number(),
+        reposicao_modo: z.string(),
+        lead_time_dias: z.number(),
+      })),
+      mappings: z.record(z.string(), z.string()), // { nomePlanilha: nomeDestino }
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      const results: { nome: string; codigo?: string; ok: boolean; action?: "criado" | "atualizado"; error?: string }[] = [];
+
+      for (const row of input.rows) {
+        if (!row.nome) { results.push({ nome: "(sem nome)", ok: false, error: "Nome obrigatório" }); continue; }
+
+        // Aplicar de-para: se o nome da planilha foi mapeado para outro, usar o destino
+        const nomeDestino = input.mappings[row.nome] ?? row.nome;
+
+        try {
+          // Upsert no catálogo local
+          const catalogItem = await upsertInsumosCatalogo({
+            imovelId: input.imovelId,
+            nome: nomeDestino,
+            categoria: row.categoria,
+            unidade: row.unidade,
+          });
+
+          // Tentar enviar para Railway
+          try {
+            const payload = {
+              fazenda_id: input.imovelId,
+              nome: nomeDestino,
+              categoria: row.categoria,
+              unidade: row.unidade,
+              origem: row.origem,
+              estoque_atual: row.estoque_atual,
+              estoque_minimo: row.estoque_minimo,
+              estoque_ideal: row.estoque_ideal,
+              preco_estimado: row.preco_estimado || undefined,
+              reposicao_modo: row.reposicao_modo,
+              lead_time_dias: row.lead_time_dias,
+            };
+            const railwayResult = await railwayMutate<{ id: number } | unknown>("/insumos/", "POST", payload);
+            if (railwayResult && typeof railwayResult === "object" && "id" in railwayResult) {
+              await upsertInsumosCatalogo({ imovelId: input.imovelId, nome: nomeDestino, categoria: row.categoria, unidade: row.unidade, railwayId: (railwayResult as { id: number }).id });
+            }
+          } catch {
+            // Railway indisponível — ignorar
+          }
+
+          const isNew = !catalogItem.railwayId;
+          results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: isNew ? "criado" : "atualizado" });
+        } catch (e: unknown) {
+          results.push({ nome: nomeDestino, ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      const success = results.filter(r => r.ok).length;
+      const errors = results.filter(r => !r.ok).length;
+      return { total: input.rows.length, success, errors, results };
+    }),
 });
