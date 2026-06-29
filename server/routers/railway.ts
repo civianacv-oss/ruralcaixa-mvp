@@ -516,6 +516,15 @@ export const railwayRouter = router({
       return (data as { data: Insumo }).data ?? data;
     }),
 
+  insumoDetalhe: publicProcedure
+    .input(z.object({ imovelId: z.number(), insumoId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayFetch<{ data: Insumo & { movimentacoes?: MovimentacaoInsumo[] } } | (Insumo & { movimentacoes?: MovimentacaoInsumo[] })>(`/insumos/${input.insumoId}?fazenda_id=${input.imovelId}`);
+      return (data as { data: Insumo & { movimentacoes?: MovimentacaoInsumo[] } }).data ?? data;
+    }),
+
   movimentarInsumo: publicProcedure
     .input(z.object({
       imovelId: z.number(),

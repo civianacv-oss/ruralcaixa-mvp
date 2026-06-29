@@ -9,20 +9,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
   Package,
   AlertTriangle,
   Plus,
-  ArrowDown,
-  ArrowUp,
   ShoppingCart,
   Truck,
   CheckCircle,
   Send,
   Users,
+  History,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Info,
+  Zap,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,6 +63,17 @@ const TIPO_MOVIM_LABELS: Record<string, string> = {
   ajuste_negativo: "Ajuste -",
 };
 
+const TIPO_MOVIM_ICONS: Record<string, React.ReactNode> = {
+  compra: <ArrowDownCircle className="h-4 w-4 text-green-600" />,
+  producao_propria: <ArrowDownCircle className="h-4 w-4 text-blue-600" />,
+  doacao: <ArrowDownCircle className="h-4 w-4 text-purple-600" />,
+  ajuste_positivo: <ArrowDownCircle className="h-4 w-4 text-teal-600" />,
+  uso: <ArrowUpCircle className="h-4 w-4 text-orange-600" />,
+  venda: <ArrowUpCircle className="h-4 w-4 text-red-600" />,
+  perda: <ArrowUpCircle className="h-4 w-4 text-red-500" />,
+  ajuste_negativo: <ArrowUpCircle className="h-4 w-4 text-gray-500" />,
+};
+
 export default function Insumos() {
   const { imovelId } = useRuralAuth();
   const utils = trpc.useUtils();
@@ -80,6 +96,14 @@ export default function Insumos() {
     { enabled: !!imovelId }
   );
 
+  // Detalhe do insumo selecionado (histórico)
+  const [selectedInsumoId, setSelectedInsumoId] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { data: insumoDetalhe, isLoading: loadingDetalhe } = trpc.railway.insumoDetalhe.useQuery(
+    { imovelId: imovelId!, insumoId: selectedInsumoId! },
+    { enabled: !!imovelId && !!selectedInsumoId && historyOpen }
+  );
+
   // ── Mutations ────────────────────────────────────────────────────────────────
   const createInsumo = trpc.railway.createInsumo.useMutation({
     onSuccess: () => {
@@ -96,6 +120,7 @@ export default function Insumos() {
       toast.success("Movimentação registrada");
       utils.railway.insumos.invalidate();
       utils.railway.insumosAlertas.invalidate();
+      if (historyOpen && selectedInsumoId) utils.railway.insumoDetalhe.invalidate();
       setOpenMovim(false);
     },
     onError: (e) => toast.error(e.message),
@@ -140,7 +165,7 @@ export default function Insumos() {
   const [openMovim, setOpenMovim] = useState(false);
   const [openNovoFornecedor, setOpenNovoFornecedor] = useState(false);
   const [openNovoPedido, setOpenNovoPedido] = useState(false);
-  const [selectedInsumoId, setSelectedInsumoId] = useState<number | null>(null);
+  const [movimInsumoId, setMovimInsumoId] = useState<number | null>(null);
 
   // ── Form states ──────────────────────────────────────────────────────────────
   const [novoInsumo, setNovoInsumo] = useState({
@@ -171,12 +196,20 @@ export default function Insumos() {
     );
   }
 
+  const alertasCriticos = alertas.filter((a: any) => a.status_estoque === "critico").length;
+  const alertasBaixos = alertas.filter((a: any) => a.status_estoque === "baixo").length;
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Insumos</h1>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            Insumos
+            {alertas.length > 0 && (
+              <Badge variant="destructive" className="text-xs">{alertas.length}</Badge>
+            )}
+          </h1>
           <p className="text-sm text-muted-foreground">Gestão de estoque, fornecedores e pedidos de compra</p>
         </div>
       </div>
@@ -186,15 +219,24 @@ export default function Insumos() {
         <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="h-5 w-5 text-orange-600" />
-            <span className="font-semibold text-orange-800">{alertas.length} insumo(s) com estoque baixo ou crítico</span>
+            <span className="font-semibold text-orange-800">
+              {alertasCriticos > 0 && `${alertasCriticos} crítico(s)`}
+              {alertasCriticos > 0 && alertasBaixos > 0 && " · "}
+              {alertasBaixos > 0 && `${alertasBaixos} baixo(s)`}
+              {alertas.length - alertasCriticos - alertasBaixos > 0 && ` · ${alertas.length - alertasCriticos - alertasBaixos} em atenção`}
+            </span>
           </div>
           <div className="flex flex-wrap gap-2">
             {alertas.slice(0, 8).map((a: any) => (
-              <span key={a.id} className={`text-xs px-2 py-1 rounded border font-medium ${STATUS_COLORS[a.status_estoque ?? "atencao"]}`}>
+              <button
+                key={a.id}
+                className={`text-xs px-2 py-1 rounded border font-medium cursor-pointer hover:opacity-80 transition-opacity ${STATUS_COLORS[a.status_estoque ?? "atencao"]}`}
+                onClick={() => { setSelectedInsumoId(a.id); setHistoryOpen(true); }}
+              >
                 {a.nome} — {STATUS_LABELS[a.status_estoque ?? "atencao"]}
-              </span>
+              </button>
             ))}
-            {alertas.length > 8 && <span className="text-xs text-muted-foreground">+{alertas.length - 8} mais</span>}
+            {alertas.length > 8 && <span className="text-xs text-muted-foreground self-center">+{alertas.length - 8} mais</span>}
           </div>
         </div>
       )}
@@ -284,22 +326,45 @@ export default function Insumos() {
                       </Select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Reposição</Label>
+
+                  {/* Reposição automática — destaque visual */}
+                  <div className={`rounded-lg border p-3 transition-all ${novoInsumo.reposicao_modo === "automatico" ? "border-emerald-300 bg-emerald-50" : "border-border bg-muted/30"}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Zap className={`h-4 w-4 ${novoInsumo.reposicao_modo === "automatico" ? "text-emerald-600" : "text-muted-foreground"}`} />
+                        <Label className={novoInsumo.reposicao_modo === "automatico" ? "text-emerald-800 font-semibold" : ""}>
+                          Reposição automática
+                        </Label>
+                      </div>
                       <Select value={novoInsumo.reposicao_modo} onValueChange={v => setNovoInsumo(p => ({ ...p, reposicao_modo: v as any }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="manual">Manual</SelectItem>
                           <SelectItem value="automatico">Automático</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label>Lead time (dias)</Label>
-                      <Input type="number" min="1" value={novoInsumo.lead_time_dias} onChange={e => setNovoInsumo(p => ({ ...p, lead_time_dias: Number(e.target.value) }))} />
-                    </div>
+                    {novoInsumo.reposicao_modo === "automatico" ? (
+                      <p className="text-xs text-emerald-700">
+                        Quando o estoque cair abaixo do mínimo, um pedido de compra será gerado automaticamente para o fornecedor padrão.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No modo manual, você receberá apenas um alerta quando o estoque estiver baixo.
+                      </p>
+                    )}
+                    {novoInsumo.reposicao_modo === "automatico" && (
+                      <div className="mt-2">
+                        <Label className="text-xs text-emerald-700">Lead time (dias até entrega)</Label>
+                        <Input
+                          type="number" min="1" className="h-8 text-xs mt-1"
+                          value={novoInsumo.lead_time_dias}
+                          onChange={e => setNovoInsumo(p => ({ ...p, lead_time_dias: Number(e.target.value) }))}
+                        />
+                      </div>
+                    )}
                   </div>
+
                   <Button
                     className="w-full"
                     disabled={!novoInsumo.nome || createInsumo.isPending}
@@ -342,15 +407,18 @@ export default function Insumos() {
                     <TableHead>Mínimo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Fornecedor</TableHead>
+                    <TableHead>Reposição</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {insumos.map((ins: any) => (
-                    <TableRow key={ins.id}>
+                    <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
                       <TableCell className="font-medium">{ins.nome}</TableCell>
                       <TableCell className="capitalize text-sm text-muted-foreground">{ins.categoria}</TableCell>
-                      <TableCell>{ins.estoque_atual} {ins.unidade}</TableCell>
+                      <TableCell className={ins.status_estoque === "critico" ? "text-red-600 font-semibold" : ins.status_estoque === "baixo" ? "text-orange-600 font-medium" : ""}>
+                        {ins.estoque_atual} {ins.unidade}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{ins.estoque_minimo} {ins.unidade}</TableCell>
                       <TableCell>
                         <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[ins.status_estoque ?? "ok"]}`}>
@@ -358,14 +426,30 @@ export default function Insumos() {
                         </span>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{ins.fornecedor_nome ?? "—"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => { setSelectedInsumoId(ins.id); setOpenMovim(true); }}
-                        >
-                          <ArrowDown className="h-3 w-3 mr-1" /> Movimentar
-                        </Button>
+                      <TableCell>
+                        {ins.reposicao_modo === "automatico" ? (
+                          <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
+                            <Zap className="h-3 w-3" /> Auto
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Manual</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex gap-1 justify-end">
+                          <Button
+                            variant="outline" size="sm"
+                            onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}
+                          >
+                            <History className="h-3 w-3 mr-1" /> Histórico
+                          </Button>
+                          <Button
+                            variant="outline" size="sm"
+                            onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}
+                          >
+                            <Plus className="h-3 w-3 mr-1" /> Movimentar
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -404,10 +488,10 @@ export default function Insumos() {
                 </div>
                 <Button
                   className="w-full"
-                  disabled={!selectedInsumoId || movimForm.quantidade <= 0 || movimentar.isPending}
+                  disabled={!movimInsumoId || movimForm.quantidade <= 0 || movimentar.isPending}
                   onClick={() => movimentar.mutate({
                     imovelId: imovelId!,
-                    insumoId: selectedInsumoId!,
+                    insumoId: movimInsumoId!,
                     tipo: movimForm.tipo,
                     quantidade: movimForm.quantidade,
                     custo_unitario: movimForm.custo_unitario ? Number(movimForm.custo_unitario) : undefined,
@@ -638,20 +722,14 @@ export default function Insumos() {
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
                           {p.status === "pendente" && (
-                            <Button
-                              variant="outline" size="sm"
-                              disabled={aprovarPedido.isPending}
-                              onClick={() => aprovarPedido.mutate({ imovelId: imovelId!, pedidoId: p.id })}
-                            >
+                            <Button variant="outline" size="sm" disabled={aprovarPedido.isPending}
+                              onClick={() => aprovarPedido.mutate({ imovelId: imovelId!, pedidoId: p.id })}>
                               <CheckCircle className="h-3 w-3 mr-1" /> Aprovar
                             </Button>
                           )}
                           {(p.status === "aprovado" || p.status === "pendente") && (
-                            <Button
-                              variant="outline" size="sm"
-                              disabled={enviarPedido.isPending}
-                              onClick={() => enviarPedido.mutate({ imovelId: imovelId!, pedidoId: p.id })}
-                            >
+                            <Button variant="outline" size="sm" disabled={enviarPedido.isPending}
+                              onClick={() => enviarPedido.mutate({ imovelId: imovelId!, pedidoId: p.id })}>
                               <Send className="h-3 w-3 mr-1" /> Enviar
                             </Button>
                           )}
@@ -665,6 +743,109 @@ export default function Insumos() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* ── DRAWER: Histórico de movimentações ── */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-muted-foreground" />
+              {loadingDetalhe ? "Carregando..." : insumoDetalhe?.nome ?? "Insumo"}
+            </SheetTitle>
+          </SheetHeader>
+
+          {loadingDetalhe ? (
+            <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+          ) : insumoDetalhe ? (
+            <div className="space-y-5">
+              {/* Resumo do insumo */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Estoque atual</p>
+                  <p className={`text-lg font-bold ${insumoDetalhe.status_estoque === "critico" ? "text-red-600" : insumoDetalhe.status_estoque === "baixo" ? "text-orange-600" : "text-foreground"}`}>
+                    {insumoDetalhe.estoque_atual}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{insumoDetalhe.unidade}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Mínimo</p>
+                  <p className="text-lg font-bold">{insumoDetalhe.estoque_minimo}</p>
+                  <p className="text-xs text-muted-foreground">{insumoDetalhe.unidade}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 p-3 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">Ideal</p>
+                  <p className="text-lg font-bold">{insumoDetalhe.estoque_ideal}</p>
+                  <p className="text-xs text-muted-foreground">{insumoDetalhe.unidade}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[insumoDetalhe.status_estoque ?? "ok"]}`}>
+                  {STATUS_LABELS[insumoDetalhe.status_estoque ?? "ok"]}
+                </span>
+                <span className="text-xs text-muted-foreground capitalize">{insumoDetalhe.categoria}</span>
+                {insumoDetalhe.reposicao_modo === "automatico" && (
+                  <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
+                    <Zap className="h-3 w-3" /> Reposição automática
+                  </span>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button size="sm" className="flex-1" onClick={() => { setMovimInsumoId(selectedInsumoId); setOpenMovim(true); }}>
+                  <Plus className="h-3 w-3 mr-1" /> Registrar movimentação
+                </Button>
+              </div>
+
+              <Separator />
+
+              {/* Histórico */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <History className="h-4 w-4 text-muted-foreground" />
+                  Últimas movimentações
+                </h3>
+                {!insumoDetalhe.movimentacoes || insumoDetalhe.movimentacoes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação registrada.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {insumoDetalhe.movimentacoes.map((m: any) => {
+                      const isSaida = ["uso", "venda", "perda", "ajuste_negativo"].includes(m.tipo);
+                      return (
+                        <div key={m.id} className="flex items-start gap-3 rounded-lg border p-3 bg-card">
+                          <div className="mt-0.5 shrink-0">
+                            {TIPO_MOVIM_ICONS[m.tipo] ?? <Info className="h-4 w-4 text-muted-foreground" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium">{TIPO_MOVIM_LABELS[m.tipo] ?? m.tipo}</span>
+                              <span className={`text-sm font-bold ${isSaida ? "text-red-600" : "text-green-600"}`}>
+                                {isSaida ? "-" : "+"}{m.quantidade} {insumoDetalhe.unidade}
+                              </span>
+                            </div>
+                            {m.custo_unitario && (
+                              <p className="text-xs text-muted-foreground">
+                                R$ {Number(m.custo_unitario).toFixed(2)}/un · Total: R$ {(m.custo_total ?? m.custo_unitario * m.quantidade).toFixed(2)}
+                              </p>
+                            )}
+                            {m.observacao && <p className="text-xs text-muted-foreground truncate">{m.observacao}</p>}
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {m.data_movim ? new Date(m.data_movim).toLocaleDateString("pt-BR") : ""}
+                              {m.criado_em ? ` · ${new Date(m.criado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">Selecione um insumo para ver o histórico.</p>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

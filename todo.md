@@ -171,3 +171,10 @@
 - [x] Criar página Insumos.tsx com abas: Estoque, Fornecedores, Pedidos de Compra
 - [x] Alertas de estoque crítico/baixo com badge na aba Estoque
 - [x] Registrar rota /insumos no App.tsx e no RuralLayout (grupo Gestão)
+
+## Fase 22: Melhorias no módulo de Insumos
+- [x] Badge de alertas de insumos no menu sidebar (RuralLayout) — badge vermelho na aba Estoque e no header da página
+- [x] Drawer lateral de histórico de movimentações por insumo (Sheet side=right) com ícones de entrada/saída, custo unitário e total
+- [x] Destaque visual da reposição automática no formulário — card verde com explicação e campo lead_time quando modo=automático
+- [x] Endpoint tRPC insumoDetalhe adicionado ao railway.ts
+- [x] 43 testes passando, zero erros TypeScript

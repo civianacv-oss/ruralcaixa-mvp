@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
+import { trpc } from "@/lib/trpc";
 import {
   LayoutDashboard,
   Building2,
@@ -31,6 +32,15 @@ import {
 } from "lucide-react";
 import { getImovelId } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+function useInsumosAlertaCount() {
+  const imovelId = getImovelId();
+  const { data } = trpc.railway.insumosAlertas.useQuery(
+    { imovelId: imovelId! },
+    { enabled: !!imovelId, refetchInterval: 5 * 60 * 1000, staleTime: 4 * 60 * 1000 }
+  );
+  return Array.isArray(data) ? data.length : 0;
+}
 
 const NAV_SECTIONS = [
   {
@@ -86,6 +96,7 @@ function NavButton({
   collapsed,
   onClick,
   placeholder,
+  badge,
 }: {
   icon: React.ElementType;
   label: string;
@@ -93,6 +104,7 @@ function NavButton({
   collapsed: boolean;
   onClick: () => void;
   placeholder?: boolean;
+  badge?: number;
 }) {
   const btn = (
     <button
@@ -118,10 +130,21 @@ function NavButton({
           isActive ? "text-emerald-400" : placeholder ? "text-white/25" : "text-white/45 group-hover:text-white/75"
         }`}
       />
+      {/* Badge no modo collapsed */}
+      {collapsed && badge != null && badge > 0 && (
+        <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
       {!collapsed && (
         <>
           <span className="truncate">{label}</span>
-          {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+          {badge != null && badge > 0 && (
+            <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 shrink-0">
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
+          {!badge && isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
           {placeholder && !isActive && (
             <span className="ml-auto text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={{ background: "oklch(0.30 0.04 145)", color: "oklch(0.55 0.06 145)" }}>
               Em breve
@@ -150,6 +173,7 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const insumosAlertaCount = useInsumosAlertaCount();
 
   useEffect(() => {
     if (!authenticated) navigate("/login");
@@ -235,6 +259,7 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
                   isActive={location.startsWith(item.path)}
                   collapsed={!sidebarOpen}
                   onClick={() => { navigate(item.path); setMobileOpen(false); }}
+                  badge={item.path === "/insumos" && insumosAlertaCount > 0 ? insumosAlertaCount : undefined}
                 />
               ))}
             </div>
