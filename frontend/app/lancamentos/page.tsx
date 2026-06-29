@@ -332,7 +332,7 @@ export default function LancamentosPage() {
     async function handleExcluir() {
     if (!editando) return;
     try {
-      const res = await fetch(`${API}/produtores/${PRODUTOR_ID}/lancamentos/${editando.id}`, { method: "DELETE" });
+      const res = await fetch(`${API}/lancamentos/${editando.id}`, { method: "DELETE" });
       if (res.ok) { setEditando(null); showMsg("Lancamento excluido!"); carregarLancamentos(filtroMes || undefined); }
       else showMsg("Erro ao excluir.", "err");
     } catch { showMsg("Erro de conexao.", "err"); }
@@ -600,10 +600,12 @@ export default function LancamentosPage() {
           onFechar={() => setEditando(null)}
           saving={savingEditar}
           onExcluir={handleExcluir}
+          onExcluir={handleExcluir}
         />
       )}
     </div>
   );
 }
+
 
 
