@@ -4,24 +4,31 @@ import { useState } from "react";
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 
 export default function LoginPage() {
-  const [token, setToken] = useState("");
+  const [cpf, setCpf] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
 
+  function formatCPF(v: string) {
+    return v.replace(/\D/g, "").slice(0, 11)
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+
   async function handleLogin() {
-    if (!token.trim()) return;
+    const cpfClean = cpf.replace(/\D/g, "");
+    if (cpfClean.length !== 11) { setErro("CPF invalido."); return; }
     setLoading(true);
     setErro("");
     try {
-      const res = await fetch(`${API}/produtores/me?token=${token.trim()}`);
-      if (!res.ok) { setErro("Token inválido. Verifique e tente novamente."); return; }
+      const res = await fetch(`${API}/produtores/me?cpf=${cpfClean}`);
+      if (!res.ok) { setErro("CPF nao encontrado. Verifique ou entre em contato."); return; }
       const data = await res.json();
-      localStorage.setItem("rc_token", token.trim());
       localStorage.setItem("rc_produtor_id", String(data.id));
       localStorage.setItem("rc_produtor_nome", data.nome);
       window.location.href = "/";
     } catch {
-      setErro("Erro de conexão. Tente novamente.");
+      setErro("Erro de conexao. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -33,17 +40,17 @@ export default function LoginPage() {
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>🌱</div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1a2e1a" }}>RuralCaixa</h1>
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "#7a8a6a" }}>Digite seu token de acesso</p>
+          <p style={{ margin: "8px 0 0", fontSize: 13, color: "#7a8a6a" }}>Digite seu CPF para acessar</p>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: "#7a8a6a", display: "block", marginBottom: 6, letterSpacing: "0.5px" }}>TOKEN</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: "#7a8a6a", display: "block", marginBottom: 6, letterSpacing: "0.5px" }}>CPF</label>
           <input
-            value={token}
-            onChange={e => setToken(e.target.value)}
+            value={cpf}
+            onChange={e => setCpf(formatCPF(e.target.value))}
             onKeyDown={e => e.key === "Enter" && handleLogin()}
-            placeholder="rc_..."
-            style={{ width: "100%", border: "1.5px solid #e0dbd0", borderRadius: 8, padding: "10px 12px", fontSize: 13, boxSizing: "border-box", outline: "none" }}
+            placeholder="000.000.000-00"
+            style={{ width: "100%", border: "1.5px solid #e0dbd0", borderRadius: 8, padding: "10px 12px", fontSize: 15, boxSizing: "border-box", outline: "none", letterSpacing: "1px" }}
           />
         </div>
 
@@ -55,18 +62,18 @@ export default function LoginPage() {
 
         <button
           onClick={handleLogin}
-          disabled={loading || !token.trim()}
+          disabled={loading || cpf.replace(/\D/g, "").length !== 11}
           style={{
             width: "100%", padding: "11px 0", borderRadius: 8, border: "none",
-            background: loading || !token.trim() ? "#8ab88a" : "#3a6a2a",
-            color: "#fff", fontSize: 14, fontWeight: 700, cursor: loading || !token.trim() ? "not-allowed" : "pointer",
+            background: loading || cpf.replace(/\D/g, "").length !== 11 ? "#8ab88a" : "#3a6a2a",
+            color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer",
           }}
         >
           {loading ? "Entrando..." : "Entrar"}
         </button>
 
         <p style={{ textAlign: "center", fontSize: 12, color: "#9a9a8a", marginTop: 20 }}>
-          Seu token foi enviado pelo Telegram ao se cadastrar.
+          Use o CPF cadastrado no sistema.
         </p>
       </div>
     </div>
