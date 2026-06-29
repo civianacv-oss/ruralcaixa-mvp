@@ -191,7 +191,11 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
-      return railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`);
+      // Bovinos use path param; ovinos/caprinos/suinos use query param
+      if (input.especie === "bovinos") {
+        return railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`);
+      }
+      return railwayFetch<Animal[]>(`/${prefix}/animais?imovel_id=${input.imovelId}`);
     }),
 
   createAnimal: publicProcedure
@@ -334,7 +338,11 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
-      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`);
+      // Bovinos use path param; ovinos/caprinos use query param on /sanitario/calendario
+      if (input.especie === "bovinos") {
+        return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`);
+      }
+      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/calendario?imovel_id=${input.imovelId}&dias=30`);
     }),
 
   createSanitario: publicProcedure
@@ -368,7 +376,13 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
-      return railwayFetch<ReproducaoRecord[]>(`/${prefix}/reproducao/${input.imovelId}/prenhas`);
+      // Only bovinos have a dedicated /reproducao/{imovel_id}/prenhas endpoint.
+      // For ovinos/caprinos, use the saude/alertas endpoint as a proxy for reproductive alerts.
+      if (input.especie === "bovinos") {
+        return railwayFetch<ReproducaoRecord[]>(`/${prefix}/reproducao/${input.imovelId}/prenhas`);
+      }
+      // ovinos/caprinos: use alertas filtered to reproductive events
+      return railwayFetch<ReproducaoRecord[]>(`/${prefix}/alertas?imovel_id=${input.imovelId}&tipo=reproducao`).catch(() => []);
     }),
 
   createReproducao: publicProcedure
