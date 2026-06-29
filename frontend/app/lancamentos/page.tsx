@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
-const PRODUTOR_ID = 1;
+const PRODUTOR_ID = typeof window !== "undefined" ? Number(localStorage.getItem("rc_produtor_id") || 1) : 1;
 
 function fmtBRL(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -221,6 +221,12 @@ const FORM_VAZIO: FormState = {
 };
 
 export default function LancamentosPage() {
+  useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem("rc_produtor_id")) {
+      window.location.href = "/login";
+    }
+  }, []);
+
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "receita" | "despesa" | "investimento">("todos");
