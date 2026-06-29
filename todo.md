@@ -147,3 +147,21 @@
 - [x] Cliente: main.tsx envia X-Rc-Claims header em todas as requisições tRPC
 - [x] api.ts: getRcToken/setRcToken/clearRcToken helpers adicionados; clearSession limpa o token
 - [x] 43 testes passando, zero erros TypeScript
+
+## Fase 20: Reestruturação completa da navegação e novos módulos
+- [x] RuralLayout: nova estrutura de navegação com grupos Rural, Rebanho, Gestão, Fiscal
+- [x] Página Propriedades (/propriedades)
+- [x] Página Contratos Rurais (/contratos-rurais)
+- [x] Página Acerto de Contrato (/acerto-contrato)
+- [x] Página Lançamentos (/lancamentos)
+- [x] Página Rebanhos (/rebanhos) com abas por espécie
+- [x] Página Agricultura (/agricultura)
+- [x] Página Relatórios (/relatorios)
+- [x] Página NF-e Produtor (/nfe-produtor)
+- [x] Página eSocial Rural (/esocial-rural)
+- [x] Página Compra e Venda (/compra-venda)
+- [x] Página Cultivo de Açaí (/cultivo-acai)
+- [x] Página EFD-Reinf / DARF (/efd-reinf)
+- [x] Página DCTFWeb (/dctfweb)
+- [x] Registrar todas as rotas no App.tsx
+- [x] 43 testes passando, zero erros TypeScript

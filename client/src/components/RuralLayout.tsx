@@ -3,11 +3,22 @@ import { useLocation } from "wouter";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import {
   LayoutDashboard,
+  Building2,
+  FileSignature,
+  Calculator,
+  Receipt,
   PawPrint,
+  Sprout,
   HeartPulse,
   Baby,
   DollarSign,
-  ArrowLeftRight,
+  BarChart3,
+  FileText,
+  Users,
+  ShoppingCart,
+  Palmtree,
+  ClipboardList,
+  Globe,
   LogOut,
   Leaf,
   ChevronRight,
@@ -16,23 +27,27 @@ import {
   Settings,
   HelpCircle,
   Bell,
-  FileText,
 } from "lucide-react";
 import { getImovelId } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const NAV_SECTIONS = [
   {
-    label: "Visão Geral",
+    label: "Rural",
     items: [
-      { icon: LayoutDashboard, label: "Painel", path: "/dashboard" },
+      { icon: LayoutDashboard, label: "Painel Principal", path: "/dashboard" },
+      { icon: Building2, label: "Propriedades", path: "/propriedades" },
+      { icon: FileSignature, label: "Contratos Rurais", path: "/contratos-rurais" },
+      { icon: Calculator, label: "Acerto de Contrato", path: "/acerto-contrato" },
+      { icon: Receipt, label: "Lançamentos", path: "/lancamentos" },
     ],
   },
   {
     label: "Rebanho",
     items: [
-      { icon: PawPrint, label: "Animais", path: "/animais" },
-      { icon: HeartPulse, label: "Saúde", path: "/saude" },
+      { icon: PawPrint, label: "Rebanhos", path: "/rebanhos" },
+      { icon: Sprout, label: "Agricultura", path: "/agricultura" },
+      { icon: HeartPulse, label: "Saúde Animal", path: "/saude" },
       { icon: Baby, label: "Reprodução", path: "/reproducao" },
     ],
   },
@@ -40,7 +55,18 @@ const NAV_SECTIONS = [
     label: "Gestão",
     items: [
       { icon: DollarSign, label: "Financeiro", path: "/financeiro" },
-      { icon: ArrowLeftRight, label: "Movimentações", path: "/movimentacoes" },
+      { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
+      { icon: ShoppingCart, label: "Compra e Venda", path: "/compra-venda" },
+      { icon: Palmtree, label: "Cultivo de Açaí", path: "/cultivo-acai" },
+    ],
+  },
+  {
+    label: "Fiscal",
+    items: [
+      { icon: FileText, label: "NF-e Produtor", path: "/nfe-produtor" },
+      { icon: Users, label: "eSocial Rural", path: "/esocial-rural" },
+      { icon: ClipboardList, label: "EFD-Reinf / DARF", path: "/efd-reinf" },
+      { icon: Globe, label: "DCTFWeb", path: "/dctfweb" },
     ],
   },
 ];
@@ -175,7 +201,7 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
                 RuralCaixa
               </span>
               <span className="text-[10px] font-medium" style={{ color: "oklch(0.52 0.08 145)" }}>
-                Gestão Pecuária
+                Gestão Rural
               </span>
             </div>
           )}
