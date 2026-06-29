@@ -176,15 +176,15 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     attempts: 0,
   };
 
-  // Try WhatsApp first, fallback to Telegram
-  let channel: "whatsapp" | "telegram" = "whatsapp";
-  const wappOk = await sendWhatsApp(produtor.telefone, code);
-  if (!wappOk) {
-    const tgOk = await sendTelegram(code, produtor.nome);
-    if (!tgOk) {
+  // Try Telegram first (WhatsApp pending Meta approval — will be primary once approved)
+  let channel: "whatsapp" | "telegram" = "telegram";
+  const tgOk = await sendTelegram(code, produtor.nome);
+  if (!tgOk) {
+    const wappOk = await sendWhatsApp(produtor.telefone, code);
+    if (!wappOk) {
       throw new Error("Não foi possível enviar o código. Tente novamente em instantes.");
     }
-    channel = "telegram";
+    channel = "whatsapp";
   }
 
   // Store OTP

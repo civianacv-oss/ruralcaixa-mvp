@@ -255,14 +255,17 @@ export default function Login() {
             <form onSubmit={handleOtpSubmit} className="space-y-5">
               {/* Channel badge */}
               <div
-                className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-[13px]"
+                className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-[13px]"
                 style={{ background: "oklch(0.94 0.04 145)", color: "oklch(0.28 0.10 145)" }}
               >
-                <MessageCircle className="w-4 h-4 shrink-0" />
+                <MessageCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  Olá, <strong>{produtorNome.split(" ")[0]}</strong>! Código enviado para{" "}
-                  <strong>{maskedPhone}</strong> via{" "}
-                  <strong>{channel === "whatsapp" ? "WhatsApp" : "Telegram"}</strong>.
+                  Olá, <strong>{produtorNome.split(" ")[0]}</strong>!{" "}
+                  {channel === "telegram" ? (
+                    <>Código enviado para o <strong>grupo do Telegram</strong> do RuralCaixa. Verifique o grupo e copie o código.</>
+                  ) : (
+                    <>Código enviado para <strong>{maskedPhone}</strong> via <strong>WhatsApp</strong>.</>
+                  )}
                 </span>
               </div>
 
