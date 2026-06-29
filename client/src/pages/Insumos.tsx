@@ -84,21 +84,22 @@ export default function Insumos() {
   const utils = trpc.useUtils();
 
   // ── Queries ──────────────────────────────────────────────────────────────────
+  // retry:false para não logar erros 404 enquanto o backend de insumos não estiver deployado
   const { data: insumos = [], isLoading: loadingInsumos } = trpc.railway.insumos.useQuery(
     { imovelId: imovelId! },
-    { enabled: !!imovelId }
+    { enabled: !!imovelId, retry: false }
   );
   const { data: alertas = [], isLoading: loadingAlertas } = trpc.railway.insumosAlertas.useQuery(
     { imovelId: imovelId! },
-    { enabled: !!imovelId }
+    { enabled: !!imovelId, retry: false }
   );
   const { data: fornecedores = [], isLoading: loadingFornecedores } = trpc.railway.fornecedores.useQuery(
     { imovelId: imovelId! },
-    { enabled: !!imovelId }
+    { enabled: !!imovelId, retry: false }
   );
   const { data: pedidos = [], isLoading: loadingPedidos } = trpc.railway.pedidosCompra.useQuery(
     { imovelId: imovelId! },
-    { enabled: !!imovelId }
+    { enabled: !!imovelId, retry: false }
   );
 
   // Detalhe do insumo selecionado (histórico)
@@ -106,7 +107,7 @@ export default function Insumos() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const { data: insumoDetalhe, isLoading: loadingDetalhe } = trpc.railway.insumoDetalhe.useQuery(
     { imovelId: imovelId!, insumoId: selectedInsumoId! },
-    { enabled: !!imovelId && !!selectedInsumoId && historyOpen }
+    { enabled: !!imovelId && !!selectedInsumoId && historyOpen, retry: false }
   );
 
   // ── Mutations ────────────────────────────────────────────────────────────────
