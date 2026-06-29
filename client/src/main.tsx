@@ -10,15 +10,27 @@ import "./index.css";
 
 const queryClient = new QueryClient();
 
+const RURAL_SESSION_ERR_MSG = "Sessão inválida ou expirada. Faça login novamente.";
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
 
-  const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
+  const isUnauthorized =
+    error.message === UNAUTHED_ERR_MSG ||
+    error.message === RURAL_SESSION_ERR_MSG ||
+    (error.data as { code?: string } | undefined)?.code === "UNAUTHORIZED";
 
   if (!isUnauthorized) return;
 
-  window.location.href = getLoginUrl();
+  // Clear rural session data from localStorage so the login page starts fresh
+  try {
+    ["rc_produtor_id", "rc_produtor_nome", "rc_imovel_id", "rc_imovel_nome", "rc_produtor_cpf"].forEach(
+      k => localStorage.removeItem(k)
+    );
+  } catch { /* ignore */ }
+
+  window.location.href = "/login";
 };
 
 queryClient.getQueryCache().subscribe(event => {
