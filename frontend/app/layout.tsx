@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 
@@ -8,7 +8,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "GestaoAgro Tech — Gestao de LCDPR e NF-e para Produtor Rural",
+  title: "GestaoAgro Tech â€” Gestao de LCDPR e NF-e para Produtor Rural",
   description: "Solucoes tecnologicas para gestao de LCDPR, NF-e e analise de dados do agronegocio rural. GestaoAgro Tech simplifica a vida do produtor rural pessoa fisica.",
   keywords: "LCDPR, NF-e produtor rural, gestao rural, agronegocio, GestaoAgro Tech",
   manifest: "/manifest.json",
@@ -41,7 +41,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`${geistSans.variable} h-full antialiased`}>
       <head>
-        <link rel="manifest" href="/manifest.json" />
+        <meta charSet="utf-8" /><link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#166534" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -60,19 +60,20 @@ export default function RootLayout({
           }
         ` }} />
         {children}
-        {/* Rodape — visivel para validacao Meta WhatsApp Business */}
+        {/* Rodape â€” visivel para validacao Meta WhatsApp Business */}
         <footer className="bg-green-900 text-white text-center py-3 text-xs opacity-70 mt-auto">
           <p>
-            <strong>GestaoAgro Tech</strong> — Solucoes tecnologicas para gestao rural
+            <strong>GestaoAgro Tech</strong> â€” Solucoes tecnologicas para gestao rural
           </p>
           <p className="mt-0.5">
-            LCDPR · NF-e Produtor Rural · DRE Gerencial · WhatsApp Bot
+            LCDPR Â· NF-e Produtor Rural Â· DRE Gerencial Â· WhatsApp Bot
           </p>
           <p className="mt-0.5">
-            contato: civiana.cv@gmail.com · ruralcaixa-mvp.vercel.app
+            contato: civiana.cv@gmail.com Â· ruralcaixa-mvp.vercel.app
           </p>
         </footer>
       </body>
     </html>
   );
 }
+
