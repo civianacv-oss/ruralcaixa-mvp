@@ -46,7 +46,7 @@ const NAV_SECTIONS = [
 
 const BOTTOM_ITEMS = [
   { icon: Bell, label: "Notificações", path: "/notificacoes", placeholder: true },
-  { icon: Settings, label: "Perfil &amp; Notificações", path: "/perfil" },
+  { icon: Settings, label: "Perfil & Notificações", path: "/perfil" },
   { icon: HelpCircle, label: "Ajuda", path: "/ajuda", placeholder: true },
 ];
 
