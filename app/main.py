@@ -1980,3 +1980,5 @@ def listar_aportes(imovel_id: int):
 # redeploy 102413
 
 # redeploy 103127
+
+# redeploy 104644
