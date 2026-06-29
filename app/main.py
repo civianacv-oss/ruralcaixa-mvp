@@ -1,11 +1,11 @@
-# bovino module enabled
+﻿# bovino module enabled
 from app.routers.bovino import router as bovino_router
 import hmac, hashlib, json, os
 import httpx
 from datetime import date
 from typing import Optional, List
 
-# piscicultura module enabled          ← ADICIONAR
+# piscicultura module enabled          â† ADICIONAR
 from app.routers.piscicultura import router as piscicultura_router
 from backend.routers.telegram_router import router as telegram_router
 from app.routers.telegram_bot_router import router as telegram_bot_router
@@ -143,7 +143,7 @@ except Exception as e:
     nfe_produtor_router = None
 if nfe_produtor_router: app.include_router(nfe_produtor_router)
 
-# Apuração PJ
+# ApuraÃ§Ã£o PJ
 apuracao_pj_router = None
 try:
     from app.routers.apuracao_pj import router as apuracao_pj_router
@@ -152,6 +152,40 @@ except Exception as e:
     print(f"APURACAO_PJ ROUTER FAILED: {e}")
     apuracao_pj_router = None
 if apuracao_pj_router: app.include_router(apuracao_pj_router)
+
+
+# ImportaÃ§Ã£o em lote
+importacao_router = None
+try:
+    from app.routers.importacao import router as importacao_router
+    print("IMPORTACAO ROUTER LOADED OK")
+except Exception as e:
+    print(f"IMPORTACAO ROUTER FAILED: {e}")
+if importacao_router:
+    app.include_router(importacao_router)
+
+try:
+    from app.routers.propriedades_rural import router as propriedades_rural_router
+    app.include_router(propriedades_rural_router)
+    print('PROPRIEDADES_RURAL ROUTER LOADED OK')
+except Exception as _e:
+    print(f'PROPRIEDADES_RURAL ROUTER FAILED: {_e}')
+
+insumos_router = None
+try:
+    from app.routers.insumos import router as insumos_router
+    app.include_router(insumos_router)
+    print("INSUMOS ROUTER LOADED OK")
+except Exception as e:
+    print(f"INSUMOS ROUTER FAILED: {e}")
+
+# Cron alertas insumos
+try:
+    from app.services.insumo_cron import verificar_alertas_insumo
+    print('INSUMO CRON LOADED OK')
+except Exception as _e:
+    verificar_alertas_insumo = None
+    print(f'INSUMO CRON FAILED: {_e}')
 
 # Cron alertas ovinos
 try:
@@ -168,7 +202,7 @@ try:
 except Exception as e:
     print(f"CAPRINO CRON FAILED: {e}")
     processar_alertas_caprinos = None
-# Cron alertas suínos
+# Cron alertas suÃ­nos
 try:
     from app.services.suino_cron import processar_alertas_suinos
     print("SUINO CRON LOADED OK")
@@ -189,7 +223,7 @@ try:
 except Exception as e:
     print(f"AGRICULTURA CRON FAILED: {e}")
     processar_alertas_agricultura = None
-# Cron alertas açaí
+# Cron alertas aÃ§aÃ­
 try:
     from app.services.acai_cron import processar_alertas_acai
     print("ACAI CRON LOADED OK")
@@ -204,6 +238,7 @@ except Exception as e:
     print(f"PISCICULTURA CRON FAILED: {e}")
     processar_alertas_piscicultura = None
 
+# CORS primeiro (executa por Ãºltimo na pilha)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -211,6 +246,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Auth depois (executa primeiro na pilha)
+from app.middleware.auth_middleware import AuthMiddleware
+app.add_middleware(AuthMiddleware)
 app.include_router(contratos_router)
 app.include_router(lanc_router)
 from app.propriedades import router as propriedades_router
@@ -222,9 +261,9 @@ app.include_router(bovino_router)
 app.include_router(agricultura_router)
 app.include_router(piscicultura_router)
 app.include_router(telegram_router)
-app.include_router(telegram_bot_router)   # ← ADICIONAR
+app.include_router(telegram_bot_router)   # â† ADICIONAR
 
-# â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Models Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 class ClassificarTexto(BaseModel):
     texto: str
@@ -279,7 +318,7 @@ class TerceiroUpdate(BaseModel):
     area_ha: float = 0
     investimento: float = 0
 
-# â”€â”€â”€ Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ 
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Endpoints Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ 
 @app.put("/terceiros/{terceiro_id}")
 def update_terceiro(terceiro_id: int, data: TerceiroUpdate):
     from app.db import engine
@@ -345,9 +384,9 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
             fields.append("data = %s")
             vals.append(data.data)
 
-        # Se descrição ou tipo mudaram → reclassificar e APRENDER
+        # Se descriÃ§Ã£o ou tipo mudaram â†’ reclassificar e APRENDER
         if data.descricao is not None or data.tipo is not None:
-            # Buscar dados atuais do lançamento
+            # Buscar dados atuais do lanÃ§amento
             cur.execute(
                 "SELECT s.nome, LOWER(s.tipo), s.atividade_tipo FROM lancamentos l LEFT JOIN subcontas s ON s.id = l.subconta_id WHERE l.id = %s::uuid",
                 (lancamento_id,)
@@ -375,7 +414,7 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
             fields.append("subconta_id = %s")
             vals.append(sub_id)
 
-            # ── APRENDIZADO: salvar regra para esta descrição ──────────────
+            # â”€â”€ APRENDIZADO: salvar regra para esta descriÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             palavra_chave = nome_sub[:50].lower()
             cur.execute(
                 "SELECT id FROM regras_classificacao WHERE palavra_chave = %s",
@@ -393,8 +432,8 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
                     (str(_uuid.uuid4()), palavra_chave, sub_id)
                 )
 
-            # ── PROPAGAR: atualizar lançamentos semelhantes sem correção manual ──
-            # Busca lançamentos com descrição parecida que ainda não foram corrigidos manualmente
+            # â”€â”€ PROPAGAR: atualizar lanÃ§amentos semelhantes sem correÃ§Ã£o manual â”€â”€
+            # Busca lanÃ§amentos com descriÃ§Ã£o parecida que ainda nÃ£o foram corrigidos manualmente
             cur.execute("""
                 UPDATE lancamentos l
                 SET subconta_id = %s
@@ -415,7 +454,7 @@ def atualizar_lancamento(lancamento_id: str, data: LancamentoUpdate):
             tuple(vals)
         )
 
-        # Registrar que este lançamento foi corrigido manualmente
+        # Registrar que este lanÃ§amento foi corrigido manualmente
         if data.descricao is not None or data.tipo is not None:
             cur.execute(
                 "INSERT INTO correcoes_manuais (id, lancamento_id, criado_em) VALUES (%s, %s::uuid, NOW()) ON CONFLICT (lancamento_id) DO NOTHING",
@@ -443,6 +482,56 @@ def deletar_lancamento(lancamento_id: str):
         conn.close()
 
 
+
+
+@app.delete("/imoveis-rurais/{imovel_id}")
+def deletar_imovel_rural(imovel_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        total = conn.execute(text(
+            "SELECT COUNT(*) FROM lancamentos WHERE empreendimento_id=:id"
+        ), {"id": imovel_id}).fetchone()[0]
+        if total > 0:
+            raise HTTPException(status_code=400,
+                detail=f"Imovel possui {total} lancamentos. Remova-os primeiro.")
+        conn.execute(text("DELETE FROM imoveis_rurais WHERE id=:id"), {"id": imovel_id})
+        conn.commit()
+    return {"status": "ok", "id": imovel_id}
+
+
+@app.put("/imoveis-rurais/{imovel_id}")
+def atualizar_imovel_rural(imovel_id: int, dados: dict):
+    from app.db import engine
+    from sqlalchemy import text
+    campos = []
+    valores = {"id": imovel_id}
+    for campo in ["nome", "municipio", "uf", "area_total", "caepf", "nirf"]:
+        if campo in dados:
+            campos.append(f"{campo} = :{campo}")
+            valores[campo] = dados[campo]
+    if not campos:
+        raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
+    with engine.connect() as conn:
+        conn.execute(text(
+            f"UPDATE imoveis_rurais SET {', '.join(campos)} WHERE id=:id"
+        ), valores)
+        conn.commit()
+    return {"status": "ok"}
+
+
+@app.delete("/produtores/{produtor_id}/lancamentos/{lancamento_id}")
+def deletar_lancamento_por_produtor(produtor_id: int, lancamento_id: str):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "DELETE FROM lancamentos WHERE id=:lid AND produtor_id=:pid RETURNING id"
+        ), {"lid": lancamento_id, "pid": produtor_id})
+        conn.commit()
+        if not result.fetchone():
+            raise HTTPException(status_code=404, detail="Lancamento nao encontrado")
+    return {"status": "ok", "id": lancamento_id}
 
 @app.delete("/terceiros/{terceiro_id}")
 def del_terceiro(terceiro_id: int):
@@ -472,7 +561,7 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
     if abs(alfa + beta - 1.0) > 0.01:
         raise HTTPException(status_code=400, detail="alfa + beta deve ser igual a 1")
     with engine.connect() as conn:
-        # Buscar imÃ³vel e terceiros
+        # Buscar imÃƒÂ³vel e terceiros
         imovel = conn.execute(text(
             "SELECT area_declarante, investimento_declarante FROM imoveis_rurais WHERE id = :id"
         ), {"id": imovel_id}).fetchone()
@@ -481,18 +570,18 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
         ), {"id": imovel_id}).fetchall()
 
         if not imovel:
-            raise HTTPException(status_code=404, detail="ImÃ³vel nÃ£o encontrado")
+            raise HTTPException(status_code=404, detail="ImÃƒÂ³vel nÃƒÂ£o encontrado")
 
         # Calcular totais
         area_total = float(imovel[0] or 0) + sum(float(t[1] or 0) for t in terceiros)
         inv_total = float(imovel[1] or 0) + sum(float(t[2] or 0) for t in terceiros)
 
-        # Calcular participaÃ§Ã£o do declarante
+        # Calcular participaÃƒÂ§ÃƒÂ£o do declarante
         c_terra_decl = float(imovel[0] or 0) / area_total if area_total > 0 else 0
         c_inv_decl = float(imovel[1] or 0) / inv_total if inv_total > 0 else 0
         perc_decl = round((alfa * c_terra_decl + beta * c_inv_decl) * 100, 2)
 
-        # Atualizar imÃ³vel
+        # Atualizar imÃƒÂ³vel
         conn.execute(text("""
             UPDATE imoveis_rurais 
             SET participacao = :perc, alfa = :alfa, beta = :beta,
@@ -520,13 +609,127 @@ def recalcular_participacoes(imovel_id: int, alfa: float = 0.5, beta: float = 0.
             "inv_total": inv_total,
         }
 
+
+
+# â”€â”€ AutenticaÃ§Ã£o por CPF + OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class SolicitarCodigoRequest(BaseModel):
+    cpf: str
+
+class VerificarCodigoRequest(BaseModel):
+    cpf: str
+    codigo: str
+
+@app.post("/auth/solicitar")
+async def auth_solicitar(body: SolicitarCodigoRequest):
+    """Envia cÃ³digo OTP via WhatsApp/Telegram para o CPF informado."""
+    from app.services.auth_service import solicitar_codigo
+    result = solicitar_codigo(body.cpf)
+    if "erro" in result:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=result["erro"])
+    return result
+
+@app.post("/auth/verificar")
+async def auth_verificar(body: VerificarCodigoRequest):
+    """Valida o cÃ³digo OTP e retorna o token de acesso."""
+    from app.services.auth_service import verificar_codigo
+    result = verificar_codigo(body.cpf, body.codigo)
+    if "erro" in result:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=result["erro"])
+    return result
+
+
+# â”€â”€ Feedback de testadores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class FeedbackRequest(BaseModel):
+    descricao: str
+    pagina: str = ""
+    origem: str = "app"
+
+@app.post("/feedback")
+async def receber_feedback(body: FeedbackRequest, request: Request):
+    """Recebe feedback de testadores e envia para o grupo Telegram."""
+    import os, httpx as _httpx
+    token_bot = os.getenv("TELEGRAM_BOT_TOKEN")
+    group_id = os.getenv("TELEGRAM_GROUP_CHAT_ID", "-5457537054")
+
+    # Tenta identificar o produtor pelo token
+    auth = request.headers.get("Authorization", "")
+    produtor_nome = "AnÃ´nimo"
+    if auth.startswith("Bearer "):
+        try:
+            from app.db import get_db
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT nome FROM produtores WHERE api_token=%s LIMIT 1",
+                        (auth.split(" ", 1)[1].strip(),)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        produtor_nome = row["nome"]
+        except Exception:
+            pass
+
+    mensagem = (
+        f"ðŸ› *Novo feedback de testador*\n\n"
+        f"ðŸ‘¤ Produtor: {produtor_nome}\n"
+        f"ðŸ“ PÃ¡gina: {body.pagina or 'nÃ£o informada'}\n"
+        f"ðŸ“ DescriÃ§Ã£o:\n{body.descricao}"
+    )
+
+    if token_bot:
+        try:
+            async with _httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{token_bot}/sendMessage",
+                    json={"chat_id": group_id, "text": mensagem, "parse_mode": "Markdown"},
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Feedback telegram error: {e}")
+
+    # Envia tambÃ©m por WhatsApp
+    try:
+        from app.services.whatsapp_service import enviar_whatsapp
+        enviar_whatsapp("5598992002705", mensagem.replace("*", ""))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Feedback whatsapp error: {e}")
+
+    return {"ok": True, "msg": "Feedback recebido. Obrigado!"}
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Retorna dados do produtor autenticado via Bearer token."""
+    from app.db import get_db
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Token nÃ£o fornecido.")
+    token = auth.split(" ", 1)[1].strip()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, nome, cpf, telefone, caepf, municipio, uf "
+                "FROM produtores WHERE api_token = %s LIMIT 1",
+                (token,)
+            )
+            row = cur.fetchone()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Token invÃ¡lido.")
+    return dict(row)
+
 @app.get("/")
 def root():
     return {"status": "Rural Caixa PF online", "version": "2.0"}
 
 @app.get("/regras-classificacao")
 def listar_regras_classificacao():
-    """Lista todas as regras de classificação aprendidas."""
+    """Lista todas as regras de classificaÃ§Ã£o aprendidas."""
     import psycopg2, os
     DB_URL = os.getenv("DATABASE_URL")
     conn = psycopg2.connect(DB_URL)
@@ -557,7 +760,7 @@ def listar_regras_classificacao():
 
 @app.post("/setup-aprendizado")
 def setup_aprendizado():
-    """Cria as tabelas de aprendizado se não existirem. Chamar uma vez após deploy."""
+    """Cria as tabelas de aprendizado se nÃ£o existirem. Chamar uma vez apÃ³s deploy."""
     import psycopg2, os
     DB_URL = os.getenv("DATABASE_URL")
     conn = psycopg2.connect(DB_URL)
@@ -658,15 +861,15 @@ async def verify_webhook(
     token: str = Query(None, alias="hub.verify_token"),
     challenge: str = Query(None, alias="hub.challenge")
 ):
-    print(f"--- TENTATIVA DE VALIDAÃ‡ÃƒO ---")
+    print(f"--- TENTATIVA DE VALIDAÃƒâ€¡ÃƒÆ’O ---")
     print(f"Mode: {mode}, Token: {token}, Challenge: {challenge}")
     
     if mode == "subscribe" and token == "campo_digital_2026":
-        print("VALIDAÃ‡ÃƒO APROVADA!")
+        print("VALIDAÃƒâ€¡ÃƒÆ’O APROVADA!")
         from fastapi.responses import Response
         return Response(content=challenge, media_type="text/plain")
     
-    print("VALIDAÃ‡ÃƒO FALHOU: Token incorreto ou parÃ¢metros ausentes.")
+    print("VALIDAÃƒâ€¡ÃƒÆ’O FALHOU: Token incorreto ou parÃƒÂ¢metros ausentes.")
     raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/wapp/inbound")
@@ -681,44 +884,44 @@ async def processar_alertas_ovinos_endpoint(imovel_id: int = None):
     """Processa e envia alertas ovinos via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_ovinos:
         return processar_alertas_ovinos(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 
 @app.post("/caprino/processar-alertas")
 async def processar_alertas_caprinos_endpoint(imovel_id: int = None):
     """Processa e envia alertas caprinos via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_caprinos:
         return processar_alertas_caprinos(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 @app.post("/suino/processar-alertas")
 async def processar_alertas_suinos_endpoint(imovel_id: int = None):
-    """Processa e envia alertas suínos via WhatsApp. Chamado pelo cron Railway."""
+    """Processa e envia alertas suÃ­nos via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_suinos:
         return processar_alertas_suinos(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 @app.post("/bovino/processar-alertas")
 async def processar_alertas_bovinos_endpoint(imovel_id: int = None):
     """Processa e envia alertas bovinos via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_bovinos:
         return processar_alertas_bovinos(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 @app.post("/agricultura/processar-alertas")
 async def processar_alertas_agricultura_endpoint(imovel_id: int = None):
     """Processa e envia alertas de agricultura via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_agricultura:
         return processar_alertas_agricultura(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 @app.post("/acai/processar-alertas")
 async def processar_alertas_acai_endpoint(imovel_id: int = None):
-    """Processa e envia alertas de açaí via WhatsApp. Chamado pelo cron Railway."""
+    """Processa e envia alertas de aÃ§aÃ­ via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_acai:
         return processar_alertas_acai(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 @app.post("/piscicultura/processar-alertas")
 async def processar_alertas_piscicultura_endpoint(imovel_id: int = None):
     """Processa e envia alertas de piscicultura via WhatsApp. Chamado pelo cron Railway."""
     if processar_alertas_piscicultura:
         return processar_alertas_piscicultura(imovel_id=imovel_id)
-    return {"erro": "Cron não disponível"}
+    return {"erro": "Cron nÃ£o disponÃ­vel"}
 @app.post("/cadastro")
 async def cadastrar_produtor(data: CadastroRequest):
     from app.db import cadastrar
@@ -804,7 +1007,7 @@ def get_lancamentos(produtor_id: int, mes: Optional[str] = None, atividade: Opti
     from sqlalchemy import text
     lancamentos = buscar_lancamentos(produtor_id, mes, atividade)
     
-    # Buscar participaÃ§Ã£o do produtor nos imÃ³veis
+    # Buscar participaÃƒÂ§ÃƒÂ£o do produtor nos imÃƒÂ³veis
     with engine.connect() as conn:
         imoveis = conn.execute(text("""
             SELECT id, participacao FROM imoveis_rurais WHERE produtor_id = :pid
@@ -897,7 +1100,7 @@ def atualizar_produtor(produtor_id: int, data: ProdutorUpdate):
         conn.commit()
     return {"status": "ok"}
 
-# â”€â”€â”€ WhatsApp helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ WhatsApp helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 async def send_msg(to: str, body: str):
     async with httpx.AsyncClient() as client:
@@ -907,7 +1110,7 @@ async def send_msg(to: str, body: str):
             json={"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text", "text": {"body": body}}
         )
 
-# â”€â”€â”€ Processamento WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Processamento WhatsApp Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
@@ -1204,12 +1407,12 @@ def get_terceiros_validacao(imovel_id: int):
                  "tipo": r[3], "percentual": float(r[4] or 0)}
                 for r in terceiros
             ]
-        }# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# PATCH main.py â€” NF-e Produtor Rural
-# Cole no final do main.py (antes da funÃ§Ã£o processar)
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        }# Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+# PATCH main.py Ã¢â‚¬â€ NF-e Produtor Rural
+# Cole no final do main.py (antes da funÃƒÂ§ÃƒÂ£o processar)
+# Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 
-# â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬ Models Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 class NFeConfigUpdate(BaseModel):
     inscricao_estadual: Optional[str] = None
@@ -1271,7 +1474,7 @@ class NFeCreate(BaseModel):
     lancamento_id: Optional[int] = None
     itens: List[ItemNFeCreate]
 
-# â”€â”€ Endpoints NF-e â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬ Endpoints NF-e Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @app.get("/produtores/{produtor_id}/nfe/config")
 def get_nfe_config(produtor_id: int):
@@ -1388,7 +1591,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
     from sqlalchemy import text
     from app.services.nfe_service import calcular_impostos
     with engine.connect() as conn:
-        # PrÃ³ximo nÃºmero
+        # PrÃƒÂ³ximo nÃƒÂºmero
         cfg = conn.execute(text(
             "SELECT serie, proxima_numero FROM nfe_config WHERE produtor_id=:pid"
         ), {"pid":produtor_id}).fetchone()
@@ -1453,7 +1656,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
                 "vdesc":item.valor_desconto,
             })
 
-        # Incrementa prÃ³ximo nÃºmero
+        # Incrementa prÃƒÂ³ximo nÃƒÂºmero
         conn.execute(text(
             "UPDATE nfe_config SET proxima_numero=:n WHERE produtor_id=:pid"
         ), {"n":numero+1,"pid":produtor_id})
@@ -1564,7 +1767,7 @@ def get_documento(lancamento_id: str):
 # deploy-r2-v2
 
 
-# â”€â”€ eSocial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬ eSocial Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 from fastapi import Body
 
@@ -1702,7 +1905,7 @@ def resumo_esocial(produtor_id: int, per_apur: str = None):
 # dre-fix
 
 
-# â”€â”€ Aportes de Capital e Participacao Dinamica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Ã¢â€â‚¬Ã¢â€â‚¬ Aportes de Capital e Participacao Dinamica Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @app.post("/imoveis/{imovel_id}/aportes")
 def registrar_aporte(imovel_id: int, dados: dict = Body(...)):
@@ -1747,4 +1950,5 @@ def listar_aportes(imovel_id: int):
                 'historico': [{'id': r[0], 'produtor_id': r[1], 'nome': r[2], 'valor': float(r[3]), 'data_aporte': str(r[4]), 'descricao': r[5]} for r in rows]}
 
 # ovino-redeploy-trigger
+
 
