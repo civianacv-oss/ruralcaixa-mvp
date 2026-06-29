@@ -520,7 +520,7 @@ def atualizar_imovel_rural(imovel_id: int, dados: dict):
     return {"status": "ok"}
 
 
-@app.get("/produtores/me")
+@app.get("/me/produtor")
 def get_produtor_by_token(token: str = None, cpf: str = None):
     from app.db import engine
     from sqlalchemy import text
@@ -1973,5 +1973,6 @@ def listar_aportes(imovel_id: int):
                 'historico': [{'id': r[0], 'produtor_id': r[1], 'nome': r[2], 'valor': float(r[3]), 'data_aporte': str(r[4]), 'descricao': r[5]} for r in rows]}
 
 # ovino-redeploy-trigger
+
 
 
