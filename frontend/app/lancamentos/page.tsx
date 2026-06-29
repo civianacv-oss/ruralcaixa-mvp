@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect } from "react";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
@@ -34,14 +34,14 @@ type FormState = {
 };
 
 const SUGESTOES_RECEITA = [
-  "Venda de bovinos", "Venda de ovinos", "Venda de suínos",
-  "Venda de produtos agrícolas", "Serviços prestados",
+  "Venda de bovinos", "Venda de ovinos", "Venda de suÃ­nos",
+  "Venda de produtos agrÃ­colas", "ServiÃ§os prestados",
   "Arrendamento recebido", "Outras receitas",
 ];
 const SUGESTOES_DESPESA = [
-  "Custeio agrícola", "Combustíveis", "Mão de obra", "Manutenção",
-  "Energia elétrica", "Arrendamento pago", "Medicamentos / Sanidade",
-  "Alimentação animal", "Outras despesas",
+  "Custeio agrÃ­cola", "CombustÃ­veis", "MÃ£o de obra", "ManutenÃ§Ã£o",
+  "Energia elÃ©trica", "Arrendamento pago", "Medicamentos / Sanidade",
+  "AlimentaÃ§Ã£o animal", "Outras despesas",
 ];
 
 const IconEdit = () => (
@@ -105,7 +105,7 @@ function ModalLancamento({
       }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1a2e1a" }}>{titulo}</h2>
-          <button onClick={onFechar} style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9a9a8a", lineHeight: 1 }}>×</button>
+          <button onClick={onFechar} style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9a9a8a", lineHeight: 1 }}>Ã—</button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -127,17 +127,17 @@ function ModalLancamento({
             </div>
           </div>
 
-          {/* Descrição */}
+          {/* DescriÃ§Ã£o */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "#7a8a6a", display: "block", marginBottom: 6, letterSpacing: "0.5px" }}>
-              DESCRIÇÃO
-              <span style={{ fontWeight: 400, marginLeft: 6, color: "#aaa" }}>— a conta será classificada automaticamente</span>
+              DESCRIÃ‡ÃƒO
+              <span style={{ fontWeight: 400, marginLeft: 6, color: "#aaa" }}>â€” a conta serÃ¡ classificada automaticamente</span>
             </label>
             <input
               list="sugestoes-lista"
               value={form.descricao}
               onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
-              placeholder="Ex: venda de 3 bois, compra de ração..."
+              placeholder="Ex: venda de 3 bois, compra de raÃ§Ã£o..."
               style={{ width: "100%", border: "1.5px solid #e0dbd0", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#1a2e1a", boxSizing: "border-box", outline: "none" }}
             />
             <datalist id="sugestoes-lista">
@@ -177,7 +177,7 @@ function ModalLancamento({
               style={{ width: "100%", border: "1.5px solid #e0dbd0", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#1a2e1a", boxSizing: "border-box", background: "#fff" }}
             >
               <option value="rural">Rural</option>
-              <option value="pecuaria">Pecuária</option>
+              <option value="pecuaria">PecuÃ¡ria</option>
               <option value="agricultura">Agricultura</option>
               <option value="investimento">Investimento</option>
             </select>
@@ -200,7 +200,7 @@ function ModalLancamento({
               fontSize: 13, fontWeight: 700, cursor: saving || !canSave ? "not-allowed" : "pointer",
             }}
           >
-            {saving ? "Salvando..." : "Salvar Lançamento"}
+            {saving ? "Salvando..." : "Salvar LanÃ§amento"}
           </button>
         </div>
       </div>
@@ -254,7 +254,7 @@ export default function LancamentosPage() {
   const totalDespesas = lancamentos.filter(l => l.tipo === "despesa").reduce((s, l) => s + l.valor, 0);
   const saldo = totalReceitas - totalDespesas;
 
-  // ── Criar ──────────────────────────────────────────────────────
+  // â”€â”€ Criar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function handleCriar() {
     setSavingCriar(true);
     try {
@@ -275,15 +275,15 @@ export default function LancamentosPage() {
       if (res.ok) {
         setShowCriar(false);
         setFormCriar(FORM_VAZIO);
-        showMsg("Lançamento criado com sucesso!");
+        showMsg("LanÃ§amento criado com sucesso!");
         carregarLancamentos(filtroMes || undefined);
       } else {
-        showMsg("Erro ao criar lançamento.", "err");
+        showMsg("Erro ao criar lanÃ§amento.", "err");
       }
     } finally { setSavingCriar(false); }
   }
 
-  // ── Editar ─────────────────────────────────────────────────────
+  // â”€â”€ Editar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function abrirEditar(l: Lancamento) {
     setEditando(l);
     setFormEditar({
@@ -312,7 +312,7 @@ export default function LancamentosPage() {
       });
       if (res.ok) {
         setEditando(null);
-        showMsg("Lançamento atualizado!");
+        showMsg("LanÃ§amento atualizado!");
         carregarLancamentos(filtroMes || undefined);
       } else {
         showMsg("Erro ao atualizar.", "err");
@@ -320,7 +320,16 @@ export default function LancamentosPage() {
     } finally { setSavingEditar(false); }
   }
 
-  // ── Upload documento ─────────────────────────────────────────
+  // â”€â”€ Upload documento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    async function handleExcluir() {
+    if (!editando) return;
+    try {
+      const res = await fetch($(${API}/produtores//lancamentos/), { method: "DELETE" });
+      if (res.ok) { setEditando(null); showMsg("Lancamento excluido!"); carregarLancamentos(filtroMes || undefined); }
+      else showMsg("Erro ao excluir.", "err");
+    } catch { showMsg("Erro de conexao.", "err"); }
+  }
+
   async function handleUpload(lancamentoId: string, file: File) {
     setUploadingId(lancamentoId);
     try {
@@ -337,7 +346,7 @@ export default function LancamentosPage() {
         showMsg("Erro ao enviar documento.", "err");
       }
     } catch {
-      showMsg("Erro de conexão ao enviar documento.", "err");
+      showMsg("Erro de conexÃ£o ao enviar documento.", "err");
     } finally {
       setUploadingId(null);
     }
@@ -347,10 +356,10 @@ export default function LancamentosPage() {
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#fff", borderBottom: "1px solid #e8e4dc", padding: "14px 28px", display: "flex", alignItems: "center", gap: 12 }}>
-        <a href="/" style={{ color: "#5a8a3a", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#fff", borderRadius: 8, border: "1px solid #d0e8c0" }}>🏠 Painel Principal</a>
-        <button onClick={() => window.history.back()} style={{ color:"#5a8a3a", fontSize:13, display:"flex", alignItems:"center", gap:4, background:"#fff", border:"1px solid #d0e8c0", cursor:"pointer", fontWeight:600, borderRadius:8, padding:"4px 10px" }}>← Voltar</button>
+        <a href="/" style={{ color: "#5a8a3a", textDecoration: "none", fontSize: 13, display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", background: "#fff", borderRadius: 8, border: "1px solid #d0e8c0" }}>ðŸ  Painel Principal</a>
+        <button onClick={() => window.history.back()} style={{ color:"#5a8a3a", fontSize:13, display:"flex", alignItems:"center", gap:4, background:"#fff", border:"1px solid #d0e8c0", cursor:"pointer", fontWeight:600, borderRadius:8, padding:"4px 10px" }}>â† Voltar</button>
         <span style={{ color: "#ddd" }}>/</span>
-        <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1a2e1a" }}>Lançamentos Financeiros</h1>
+        <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#1a2e1a" }}>LanÃ§amentos Financeiros</h1>
         <button
           onClick={() => { setFormCriar(FORM_VAZIO); setShowCriar(true); }}
           style={{
@@ -359,21 +368,21 @@ export default function LancamentosPage() {
             cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
           }}
         >
-          <IconPlus /> Novo Lançamento
+          <IconPlus /> Novo LanÃ§amento
         </button>
       </div>
 
       <div style={{ padding: "24px 28px" }}>
         <BannerOrientacao
           modulo="lancamentos"
-          titulo="Como usar os Lançamentos Financeiros"
-          descricao="Aqui você registra toda entrada e saída de dinheiro da sua propriedade rural. Esses lançamentos formam a base do seu Livro Caixa Rural (LCDPR), exigido pela Receita Federal para produtores com receita acima de R$ 142.798,50/ano."
+          titulo="Como usar os LanÃ§amentos Financeiros"
+          descricao="Aqui vocÃª registra toda entrada e saÃ­da de dinheiro da sua propriedade rural. Esses lanÃ§amentos formam a base do seu Livro Caixa Rural (LCDPR), exigido pela Receita Federal para produtores com receita acima de R$ 142.798,50/ano."
           passos={[
-            { icone: "📈", texto: "Receita: venda de animais, leite, grãos, etc." },
-            { icone: "📉", texto: "Despesa: insumos, veterinário, combustível, etc." },
-            { icone: "🏗️", texto: "Investimento: máquinas, benfeitorias, animais reprodutores" },
+            { icone: "ðŸ“ˆ", texto: "Receita: venda de animais, leite, grÃ£os, etc." },
+            { icone: "ðŸ“‰", texto: "Despesa: insumos, veterinÃ¡rio, combustÃ­vel, etc." },
+            { icone: "ðŸ—ï¸", texto: "Investimento: mÃ¡quinas, benfeitorias, animais reprodutores" },
           ]}
-          baseLegal="Base legal: Instrução Normativa RFB nº 1.848/2018 — Livro Caixa Digital do Produtor Rural (LCDPR)"
+          baseLegal="Base legal: InstruÃ§Ã£o Normativa RFB nÂº 1.848/2018 â€” Livro Caixa Digital do Produtor Rural (LCDPR)"
         />
         {/* Toast */}
         {msg && (
@@ -383,16 +392,16 @@ export default function LancamentosPage() {
             color: msg.tipo === "ok" ? "#155724" : "#721c24",
             padding: "10px 16px", borderRadius: 8, marginBottom: 16, fontSize: 13,
           }}>
-            {msg.tipo === "ok" ? "✅" : "❌"} {msg.text}
+            {msg.tipo === "ok" ? "âœ…" : "âŒ"} {msg.text}
           </div>
         )}
 
         {/* KPI Cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
           {[
-            { label: "Receitas", value: fmtBRL(totalReceitas), color: "#2d7a2d", bg: "#f0faf0", icon: "📈" },
-            { label: "Despesas", value: fmtBRL(totalDespesas), color: "#c0392b", bg: "#fff5f5", icon: "📉" },
-            { label: "Saldo", value: fmtBRL(saldo), color: saldo >= 0 ? "#2d7a2d" : "#c0392b", bg: saldo >= 0 ? "#f0faf0" : "#fff5f5", icon: "💰" },
+            { label: "Receitas", value: fmtBRL(totalReceitas), color: "#2d7a2d", bg: "#f0faf0", icon: "ðŸ“ˆ" },
+            { label: "Despesas", value: fmtBRL(totalDespesas), color: "#c0392b", bg: "#fff5f5", icon: "ðŸ“‰" },
+            { label: "Saldo", value: fmtBRL(saldo), color: saldo >= 0 ? "#2d7a2d" : "#c0392b", bg: saldo >= 0 ? "#f0faf0" : "#fff5f5", icon: "ðŸ’°" },
           ].map(k => (
             <div key={k.label} style={{ background: k.bg, border: `1px solid ${k.color}22`, borderRadius: 12, padding: "16px 20px" }}>
               <div style={{ fontSize: 12, color: "#7a8a6a", marginBottom: 4 }}>{k.icon} {k.label}</div>
@@ -417,7 +426,7 @@ export default function LancamentosPage() {
             ))}
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            <label style={{ fontSize: 12, color: "#7a8a6a" }}>Mês:</label>
+            <label style={{ fontSize: 12, color: "#7a8a6a" }}>MÃªs:</label>
             <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)}
               style={{ border: "1.5px solid #e0dbd0", borderRadius: 8, padding: "5px 10px", fontSize: 12, color: "#1a2e1a" }} />
             {filtroMes && (
@@ -431,29 +440,29 @@ export default function LancamentosPage() {
         {/* Tabela */}
         <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #e8e4dc" }}>
           {loading ? (
-            <div style={{ padding: 40, textAlign: "center", color: "#7a8a6a", fontSize: 14 }}>Carregando lançamentos...</div>
+            <div style={{ padding: 40, textAlign: "center", color: "#7a8a6a", fontSize: 14 }}>Carregando lanÃ§amentos...</div>
           ) : filtrados.length === 0 ? (
             <div style={{ padding: 48, textAlign: "center" }}>
-              <div style={{ fontSize: 44, marginBottom: 12 }}>💰</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2e1a", marginBottom: 8 }}>Nenhum lançamento registrado ainda</div>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>ðŸ’°</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#1a2e1a", marginBottom: 8 }}>Nenhum lanÃ§amento registrado ainda</div>
               <div style={{ fontSize: 13, color: "#5a6a5a", lineHeight: 1.65, maxWidth: 420, margin: "0 auto", marginBottom: 20 }}>
-                Comece registrando as receitas e despesas da sua propriedade. Exemplos: venda de animais (receita), compra de ração (despesa), aquisição de trator (investimento).
+                Comece registrando as receitas e despesas da sua propriedade. Exemplos: venda de animais (receita), compra de raÃ§Ã£o (despesa), aquisiÃ§Ã£o de trator (investimento).
               </div>
               <button onClick={() => { setFormCriar(FORM_VAZIO); setShowCriar(true); }} style={{
                 background: "#3a6a2a", color: "#fff", border: "none",
                 padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 16,
               }}>
-                + Registrar Primeiro Lançamento
+                + Registrar Primeiro LanÃ§amento
               </button>
               <div style={{ display: "inline-block", background: "#FFF8E1", border: "1px solid #FFE082", borderRadius: 8, padding: "8px 16px", fontSize: 12.5, color: "#5a4a10", maxWidth: 420 }}>
-                💡 Guarde todas as notas fiscais de compra de insumos — elas são dedutíveis no cálculo do imposto rural.
+                ðŸ’¡ Guarde todas as notas fiscais de compra de insumos â€” elas sÃ£o dedutÃ­veis no cÃ¡lculo do imposto rural.
               </div>
             </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8f6f2", borderBottom: "1px solid #e8e4dc" }}>
-                  {["Data", "Descrição", "Tipo", "Valor", "Atividade", "Doc", ""].map((h, i) => (
+                  {["Data", "DescriÃ§Ã£o", "Tipo", "Valor", "Atividade", "Doc", ""].map((h, i) => (
                     <th key={i} style={{ padding: "11px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#7a8a6a", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       {h}
                     </th>
@@ -484,7 +493,7 @@ export default function LancamentosPage() {
                     <td style={{ padding: "11px 16px", fontSize: 12, color: "#7a8a6a" }}>
                       {(l.atividade || "rural").toUpperCase()}
                     </td>
-                    {/* Coluna Doc: link se existir + botão upload */}
+                    {/* Coluna Doc: link se existir + botÃ£o upload */}
                     <td style={{ padding: "11px 16px", whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         {l.documento_url ? (
@@ -503,9 +512,9 @@ export default function LancamentosPage() {
                             <IconDoc /> Ver
                           </a>
                         ) : (
-                          <span style={{ color: "#ccc", fontSize: 12 }}>—</span>
+                          <span style={{ color: "#ccc", fontSize: 12 }}>â€”</span>
                         )}
-                        {/* Botão upload: input file oculto */}
+                        {/* BotÃ£o upload: input file oculto */}
                         <label
                           title={uploadingId === String(l.id) ? "Enviando..." : "Anexar documento"}
                           style={{
@@ -532,11 +541,11 @@ export default function LancamentosPage() {
                         </label>
                       </div>
                     </td>
-                    {/* Botão Editar */}
+                    {/* BotÃ£o Editar */}
                     <td style={{ padding: "11px 12px", textAlign: "right" }}>
                       <button
                         onClick={() => abrirEditar(l)}
-                        title="Editar lançamento"
+                        title="Editar lanÃ§amento"
                         style={{
                           background: "#f0f5eb", border: "1.5px solid #c8ddb8", color: "#3a6a2a",
                           borderRadius: 7, padding: "5px 10px", cursor: "pointer",
@@ -557,14 +566,14 @@ export default function LancamentosPage() {
         </div>
 
         <div style={{ marginTop: 10, fontSize: 12, color: "#9a9a8a" }}>
-          {filtrados.length} lançamento{filtrados.length !== 1 ? "s" : ""}{filtroMes ? ` em ${filtroMes}` : " no período"}
+          {filtrados.length} lanÃ§amento{filtrados.length !== 1 ? "s" : ""}{filtroMes ? ` em ${filtroMes}` : " no perÃ­odo"}
         </div>
       </div>
 
       {/* Modal Criar */}
       {showCriar && (
         <ModalLancamento
-          titulo="Novo Lançamento"
+          titulo="Novo LanÃ§amento"
           form={formCriar}
           setForm={setFormCriar}
           onSalvar={handleCriar}
@@ -576,7 +585,7 @@ export default function LancamentosPage() {
       {/* Modal Editar */}
       {editando && (
         <ModalLancamento
-          titulo="Editar Lançamento"
+          titulo="Editar LanÃ§amento"
           form={formEditar}
           setForm={setFormEditar}
           onSalvar={handleEditar}
@@ -588,3 +597,4 @@ export default function LancamentosPage() {
     </div>
   );
 }
+
