@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { setSession, setImovelNome, clearSession } from "@/lib/api";
+import { setSession, setImovelNome, clearSession, setRole } from "@/lib/api";
 import { Leaf, ShieldCheck, Users, Tractor, FileText, ChevronRight, Upload, CheckCircle, Clock, XCircle } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -106,6 +106,7 @@ export default function Login() {
     try {
       const result = await verifyOtp.mutateAsync({ cpf: cpf.replace(/\D/g, ""), code: fullCode });
       setSession(result.produtorId, result.produtorNome ?? "", result.imovelId ?? undefined);
+      setRole(result.role ?? "user");
 
       if (result.imovelCount === 1 && result.imovelId) {
         navigate("/dashboard");

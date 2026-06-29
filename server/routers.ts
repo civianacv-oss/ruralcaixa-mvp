@@ -103,6 +103,7 @@ export const appRouter = router({
           imovelId: result.imovelId,
           imovelCount: result.imovelCount,
           cpf: input.cpf,
+          role: result.role ?? "user",
         };
       }),
 

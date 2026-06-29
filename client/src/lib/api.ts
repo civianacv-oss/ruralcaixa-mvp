@@ -33,12 +33,25 @@ export function setSession(produtorId: number, nome: string, imovelId?: number) 
   if (imovelId) localStorage.setItem("rc_imovel_id", String(imovelId));
 }
 
+export function getRole(): string {
+  return localStorage.getItem("rc_role") ?? "user";
+}
+
+export function setRole(role: string) {
+  localStorage.setItem("rc_role", role);
+}
+
+export function isAdmin(): boolean {
+  return getRole() === "admin";
+}
+
 export function clearSession() {
   localStorage.removeItem("rc_produtor_id");
   localStorage.removeItem("rc_produtor_nome");
   localStorage.removeItem("rc_imovel_id");
   localStorage.removeItem("rc_imovel_nome");
   localStorage.removeItem("rc_produtor_cpf");
+  localStorage.removeItem("rc_role");
 }
 
 export function isAuthenticated(): boolean {

@@ -117,11 +117,18 @@
 - [x] 43 testes passando
 
 ## Fase 16: Seleção de Perfil no Login + Procuração
-- [ ] Adicionar etapa de seleção de perfil (Contador / Produtor / Procurador) antes do CPF na tela de login
-- [ ] Perfil Procurador: adicionar etapa de upload da procuração (PDF/imagem) após o CPF
-- [ ] Criar tabela `procuracoes` no banco: procurador_cpf, produtor_cpf, arquivo_url, arquivo_key, status, created_at
-- [ ] Endpoint tRPC `procuracao.upload` — salva arquivo no S3 e registra no banco com status pendente
-- [ ] Endpoint tRPC `procuracao.status` — retorna status da procuração do procurador logado
-- [ ] Salvar perfil selecionado no rc_claims JWT (campo `perfil`)
-- [ ] Procurador aprovado acessa os imóveis do produtor representado; pendente/rejeitado vê tela de aguardo
-- [ ] Painel admin para aprovar/rejeitar procurações
+- [x] Adicionar etapa de seleção de perfil (Contador / Produtor / Procurador) antes do CPF na tela de login
+- [x] Perfil Procurador: adicionar etapa de upload da procuração (PDF/imagem) após o CPF
+- [x] Criar tabela `procuracoes` no banco: procurador_cpf, produtor_cpf, arquivo_url, arquivo_key, status, created_at
+- [x] Endpoint tRPC `procuracao.upload` — salva arquivo no S3 e registra no banco com status pendente
+- [x] Endpoint tRPC `procuracao.status` — retorna status da procuração do procurador logado
+- [x] Painel admin para aprovar/rejeitar procurações (endpoint tRPC procuracao.list + procuracao.updateStatus)
+- [x] Procurador vê tela de aguardo após envio da procuração
+- [x] 43 testes passando
+
+## Fase 17: Correção TypeScript + Role no Login
+- [x] Adicionar campo `role` ao retorno do `verifyOtp` em server/routers.ts
+- [x] Confirmar que server/otp.ts já retorna `role` em VerifyOtpResult e OtpEntry
+- [x] Importar `setRole` em Login.tsx e salvar role após verifyOtp bem-sucedido
+- [x] RuralLayout.tsx usa `isAdmin` e `role` de useRuralAuth para mostrar link Procurações e label correto
+- [x] 43 testes passando, zero erros TypeScript

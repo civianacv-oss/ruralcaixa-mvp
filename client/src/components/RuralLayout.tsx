@@ -16,6 +16,7 @@ import {
   Settings,
   HelpCircle,
   Bell,
+  FileText,
 } from "lucide-react";
 import { getImovelId } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -117,7 +118,7 @@ function NavButton({
 }
 
 export default function RuralLayout({ children }: { children: React.ReactNode }) {
-  const { authenticated, produtorNome, imovelNome, logout } = useRuralAuth();
+  const { authenticated, produtorNome, imovelNome, logout, isAdmin, role } = useRuralAuth();
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -214,6 +215,15 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
 
         {/* Bottom utility links */}
         <div className="px-2 pb-2 space-y-0.5" style={{ borderTop: "1px solid oklch(0.25 0.04 145)", paddingTop: "8px" }}>
+          {isAdmin && (
+            <NavButton
+              icon={FileText}
+              label="Procurações"
+              isActive={location.startsWith("/admin/procuracoes")}
+              collapsed={!sidebarOpen}
+              onClick={() => { navigate("/admin/procuracoes"); setMobileOpen(false); }}
+            />
+          )}
           {BOTTOM_ITEMS.map((item) => (
             <NavButton
               key={item.path}
@@ -282,7 +292,7 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
                     {produtorNome || "Produtor"}
                   </p>
                   <p className="text-[11px] mt-0.5 truncate" style={{ color: "oklch(0.48 0.07 145)" }}>
-                    Produtor Rural
+                    {role === "admin" ? "Contador" : "Produtor Rural"}
                   </p>
                 </div>
                 <button

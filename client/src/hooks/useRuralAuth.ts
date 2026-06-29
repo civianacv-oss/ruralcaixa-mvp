@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { clearSession, getProdutorId, getProdutorNome, getImovelId, getImovelNome, isAuthenticated } from "@/lib/api";
+import { clearSession, getProdutorId, getProdutorNome, getImovelId, getImovelNome, isAuthenticated, getRole } from "@/lib/api";
 
 export function useRuralAuth() {
   const [produtorId, setProdutorId] = useState<number | null>(() => getProdutorId());
@@ -7,6 +7,7 @@ export function useRuralAuth() {
   const [imovelId, setImovelId] = useState<number | null>(() => getImovelId());
   const [imovelNome, setImovelNome] = useState<string>(() => getImovelNome());
   const [authenticated, setAuthenticated] = useState<boolean>(() => isAuthenticated());
+  const [role, setRoleState] = useState<string>(() => getRole());
 
   // Keep state in sync with localStorage (e.g. after login redirect)
   useEffect(() => {
@@ -19,6 +20,7 @@ export function useRuralAuth() {
     setImovelId(imv);
     setImovelNome(imvNome);
     setAuthenticated(Boolean(id));
+    setRoleState(getRole());
   }, []);
 
   const logout = useCallback(() => {
@@ -28,6 +30,7 @@ export function useRuralAuth() {
     setImovelId(null);
     setImovelNome("");
     setAuthenticated(false);
+    setRoleState("user");
     window.location.href = "/login";
   }, []);
 
@@ -41,7 +44,8 @@ export function useRuralAuth() {
     setImovelId(imv);
     setImovelNome(imvNome);
     setAuthenticated(Boolean(id));
+    setRoleState(getRole());
   }, []);
 
-  return { produtorId, produtorNome, imovelId, imovelNome, authenticated, logout, refresh };
+  return { produtorId, produtorNome, imovelId, imovelNome, authenticated, logout, refresh, role, isAdmin: role === "admin" };
 }
