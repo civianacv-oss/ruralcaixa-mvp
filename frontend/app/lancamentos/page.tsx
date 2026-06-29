@@ -80,6 +80,7 @@ function ModalLancamento({
   setForm,
   onSalvar,
   onFechar,
+  onExcluir,
   saving,
 }: {
   titulo: string;
@@ -87,6 +88,7 @@ function ModalLancamento({
   setForm: (f: FormState | ((prev: FormState) => FormState)) => void;
   onSalvar: () => void;
   onFechar: () => void;
+  onExcluir?: () => void;
   saving: boolean;
 }) {
   const sugestoes = form.tipo === "receita" ? SUGESTOES_RECEITA : SUGESTOES_DESPESA;
@@ -580,6 +582,7 @@ export default function LancamentosPage() {
           onSalvar={handleEditar}
           onFechar={() => setEditando(null)}
           saving={savingEditar}
+          onExcluir={handleExcluir}
         />
       )}
     </div>
