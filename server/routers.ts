@@ -290,6 +290,31 @@ export const appRouter = router({
       .mutation(({ ctx, input }) => db.deleteFinancialRecord(input.id, ctx.user.id)),
   }),
 
+  // ── Produtor Config (Telegram / WhatsApp settings)
+  produtorConfig: router({
+    get: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims) return null;
+      return db.getProdutorConfig(claims.produtorId);
+    }),
+    save: publicProcedure
+      .input(z.object({
+        telegramChatId: z.string().nullable().optional(),
+        whatsappPriority: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { getClaimsFromRequest } = await import("./railwayProxy");
+        const claims = await getClaimsFromRequest(ctx.req);
+        if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+        await db.upsertProdutorConfig(claims.produtorId, {
+          telegramChatId: input.telegramChatId ?? undefined,
+          whatsappPriority: input.whatsappPriority,
+        });
+        return { success: true };
+      }),
+  }),
+
   // ── Movements ─────────────────────────────────────────────────────────────
   movements: router({
     list: protectedProcedure

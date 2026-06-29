@@ -1,16 +1,14 @@
 /**
  * OTP (One-Time Password) module for RuralCaixa two-factor authentication.
  *
- * Flow:
- *   1. Client calls `auth.sendOtp` with CPF
- *   2. Backend finds the produtor via Railway API, generates a 6-digit code,
- *      stores it in-memory with a 5-minute TTL, and sends it via WhatsApp
- *      (falling back to Telegram if the WhatsApp endpoint fails).
- *   3. Client calls `auth.verifyOtp` with CPF + code
- *   4. Backend validates, then creates a proper session cookie.
+ * Channel priority (configurable per-produtor via produtor_config table):
+ *   - Default: Telegram (group broadcast via /telegram/alerta/generico)
+ *   - If produtor has telegram_chat_id: Telegram direct message via /telegram/mensagem-direta
+ *   - If produtor has whatsappPriority=true: WhatsApp first, Telegram as fallback
+ *   - Once Meta approves WhatsApp Business: set whatsappPriority=true globally or per-produtor
  */
 
-import { ENV } from "./_core/env";
+import { getProdutorConfig } from "./db";
 
 const RAILWAY_API = "https://ruralcaixa-mvp-production.up.railway.app";
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -47,12 +45,11 @@ function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function cleanCpf(cpf: string): string {
+export function cleanCpf(cpf: string): string {
   return cpf.replace(/\D/g, "");
 }
 
-function maskPhone(phone: string): string {
-  // Show last 4 digits: (**) *****-1234
+export function maskPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "").slice(-11);
   if (digits.length < 4) return "****";
   return `(${digits.slice(0, 2)}) *****-${digits.slice(-4)}`;
@@ -72,7 +69,7 @@ interface ImovelRaw {
   nome: string;
 }
 
-async function fetchProdutor(cpf: string): Promise<ProdutorRaw | null> {
+export async function fetchProdutor(cpf: string): Promise<ProdutorRaw | null> {
   const res = await fetch(`${RAILWAY_API}/produtores`, {
     headers: { "Content-Type": "application/json" },
   });
@@ -91,15 +88,7 @@ async function fetchImoveis(cpf: string): Promise<ImovelRaw[]> {
   }
 }
 
-async function fetchImovelId(cpf: string): Promise<number | undefined> {
-  const list = await fetchImoveis(cpf);
-  return list?.[0]?.id;
-}
-
-async function fetchImovelCount(cpf: string): Promise<number> {
-  const list = await fetchImoveis(cpf);
-  return list.length;
-}
+// ─── Send helpers ─────────────────────────────────────────────────────────────
 
 async function sendWhatsApp(telefone: string, code: string): Promise<boolean> {
   try {
@@ -120,9 +109,33 @@ async function sendWhatsApp(telefone: string, code: string): Promise<boolean> {
   }
 }
 
-async function sendTelegram(code: string, nome: string): Promise<boolean> {
+/**
+ * Send OTP via Telegram direct message (requires telegram_chat_id).
+ * Uses /telegram/mensagem-direta endpoint.
+ */
+async function sendTelegramDirect(telegramChatId: string, code: string, nome: string): Promise<boolean> {
   try {
-    // Use the generic alert endpoint (broadcasts to configured group)
+    const body = {
+      telegram_chat_id: telegramChatId,
+      mensagem: `🔐 Olá, ${nome}!\n\nSeu código de acesso ao *RuralCaixa* é:\n\n*${code}*\n\nVálido por 5 minutos. Não compartilhe com ninguém.`,
+    };
+    const res = await fetch(`${RAILWAY_API}/telegram/mensagem-direta`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Send OTP via Telegram group broadcast (fallback when no chat_id configured).
+ * Uses /telegram/alerta/generico endpoint.
+ */
+async function sendTelegramGroup(code: string, nome: string): Promise<boolean> {
+  try {
     const body = {
       titulo: "Código de Acesso RuralCaixa",
       mensagem: `🔐 Olá, ${nome}!\n\nSeu código de acesso é: *${code}*\n\nVálido por 5 minutos. Não compartilhe com ninguém.`,
@@ -139,11 +152,58 @@ async function sendTelegram(code: string, nome: string): Promise<boolean> {
   }
 }
 
+/**
+ * Smart send: chooses the best available channel based on per-produtor config.
+ *
+ * Priority logic:
+ *   1. If whatsappPriority=true → try WhatsApp first, then Telegram
+ *   2. Else → try Telegram first (direct if chat_id available, else group), then WhatsApp
+ *
+ * Returns the channel that succeeded, or throws if all fail.
+ */
+async function smartSend(
+  produtorId: number,
+  telefone: string,
+  code: string,
+  nome: string
+): Promise<"whatsapp" | "telegram_direct" | "telegram_group"> {
+  // Load per-produtor config (may be null if not yet configured)
+  const config = await getProdutorConfig(produtorId).catch(() => null);
+  const whatsappPriority = config?.whatsappPriority ?? false;
+  const telegramChatId = config?.telegramChatId ?? null;
+
+  if (whatsappPriority) {
+    // WhatsApp first (Meta approved)
+    const wappOk = await sendWhatsApp(telefone, code);
+    if (wappOk) return "whatsapp";
+    // Fallback to Telegram
+    if (telegramChatId) {
+      const tgOk = await sendTelegramDirect(telegramChatId, code, nome);
+      if (tgOk) return "telegram_direct";
+    }
+    const tgGroupOk = await sendTelegramGroup(code, nome);
+    if (tgGroupOk) return "telegram_group";
+    throw new Error("Não foi possível enviar o código. Tente novamente em instantes.");
+  } else {
+    // Telegram first (default — WhatsApp pending Meta approval)
+    if (telegramChatId) {
+      const tgOk = await sendTelegramDirect(telegramChatId, code, nome);
+      if (tgOk) return "telegram_direct";
+    }
+    const tgGroupOk = await sendTelegramGroup(code, nome);
+    if (tgGroupOk) return "telegram_group";
+    // Fallback to WhatsApp
+    const wappOk = await sendWhatsApp(telefone, code);
+    if (wappOk) return "whatsapp";
+    throw new Error("Não foi possível enviar o código. Tente novamente em instantes.");
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface SendOtpResult {
   success: true;
-  channel: "whatsapp" | "telegram";
+  channel: "whatsapp" | "telegram_direct" | "telegram_group";
   maskedPhone: string;
   produtorNome: string;
 }
@@ -151,13 +211,13 @@ export interface SendOtpResult {
 export async function sendOtp(cpf: string): Promise<SendOtpResult> {
   const cpfClean = cleanCpf(cpf);
 
-  // Find produtor
+  // Find produtor in Railway
   const produtor = await fetchProdutor(cpfClean);
   if (!produtor) {
     throw new Error("CPF não encontrado. Verifique ou entre em contato.");
   }
 
-  // Get imoveis (single fetch, reuse for both)
+  // Get imoveis (single fetch)
   const imovelList = await fetchImoveis(cpfClean);
   const imovelId = imovelList?.[0]?.id;
   const imovelCount = imovelList.length;
@@ -176,18 +236,10 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     attempts: 0,
   };
 
-  // Try Telegram first (WhatsApp pending Meta approval — will be primary once approved)
-  let channel: "whatsapp" | "telegram" = "telegram";
-  const tgOk = await sendTelegram(code, produtor.nome);
-  if (!tgOk) {
-    const wappOk = await sendWhatsApp(produtor.telefone, code);
-    if (!wappOk) {
-      throw new Error("Não foi possível enviar o código. Tente novamente em instantes.");
-    }
-    channel = "whatsapp";
-  }
+  // Send via best available channel
+  const channel = await smartSend(produtor.id, produtor.telefone, code, produtor.nome);
 
-  // Store OTP
+  // Store OTP only after successful send
   otpStore.set(cpfClean, entry);
 
   console.log(`[OTP] Code sent to ${produtor.nome} via ${channel} (${maskPhone(produtor.telefone)})`);
@@ -206,7 +258,7 @@ export interface VerifyOtpResult {
   produtorNome: string;
   imovelId?: number;
   imovelCount: number;
-  openId: string; // used to create session
+  openId: string;
 }
 
 export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpResult> {
@@ -230,13 +282,14 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
 
   if (entry.code !== code.trim()) {
     const remaining = MAX_ATTEMPTS - entry.attempts;
-    throw new Error(`Código incorreto. ${remaining} tentativa${remaining !== 1 ? "s" : ""} restante${remaining !== 1 ? "s" : ""}.`);
+    throw new Error(
+      `Código incorreto. ${remaining} tentativa${remaining !== 1 ? "s" : ""} restante${remaining !== 1 ? "s" : ""}.`
+    );
   }
 
-  // Valid — remove from store
+  // Valid — remove from store (single use)
   otpStore.delete(cpfClean);
 
-  // openId for this produtor: use "rc_<produtorId>" as a stable identifier
   const openId = `rc_${entry.produtorId}`;
 
   return {

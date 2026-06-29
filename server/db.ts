@@ -11,12 +11,14 @@ import {
   InsertReproductiveRecord,
   InsertUser,
   Movement,
+  ProdutorConfig,
   ReproductiveRecord,
   User,
   animals,
   financialRecords,
   healthRecords,
   movements,
+  produtorConfig,
   reproductiveRecords,
   users,
 } from "../drizzle/schema";
@@ -288,4 +290,27 @@ export async function createMovement(data: InsertMovement): Promise<Movement> {
   await db.insert(movements).values(data);
   const result = await db.select().from(movements).where(eq(movements.animalId, data.animalId)).orderBy(desc(movements.createdAt)).limit(1);
   return result[0];
+}
+
+// ─── Produtor Config ──────────────────────────────────────────────────────────
+
+/** Get per-produtor config (telegram_chat_id, whatsapp_priority). Returns null if not found. */
+export async function getProdutorConfig(produtorId: number): Promise<ProdutorConfig | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(produtorConfig).where(eq(produtorConfig.produtorId, produtorId)).limit(1);
+  return result[0] ?? null;
+}
+
+/** Upsert per-produtor config. Creates a row if none exists, updates otherwise. */
+export async function upsertProdutorConfig(
+  produtorId: number,
+  data: { telegramChatId?: string | null; whatsappPriority?: boolean }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(produtorConfig)
+    .values({ produtorId, ...data })
+    .onDuplicateKeyUpdate({ set: data });
 }

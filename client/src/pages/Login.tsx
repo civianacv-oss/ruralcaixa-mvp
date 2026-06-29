@@ -20,7 +20,7 @@ export default function Login() {
   const [step, setStep] = useState<Step>("cpf");
   const [cpf, setCpf] = useState("");
   const [code, setCode] = useState(["", "", "", "", "", ""]);
-  const [channel, setChannel] = useState<"whatsapp" | "telegram">("whatsapp");
+  const [channel, setChannel] = useState<"whatsapp" | "telegram_direct" | "telegram_group">("telegram_group");
   const [maskedPhone, setMaskedPhone] = useState("");
   const [produtorNome, setProdutorNome] = useState("");
   const [erro, setErro] = useState("");
@@ -187,7 +187,7 @@ export default function Login() {
             <p className="text-[13px] mt-1 text-center" style={{ color: "oklch(0.52 0.04 140)" }}>
               {step === "cpf"
                 ? "Digite seu CPF para acessar"
-                : `Código enviado via ${channel === "whatsapp" ? "WhatsApp" : "Telegram"}`}
+                : (channel === "whatsapp" ? "Código enviado via WhatsApp ✓" : "Código enviado via Telegram ✓")}
             </p>
           </div>
 
@@ -261,7 +261,9 @@ export default function Login() {
                 <MessageCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
                   Olá, <strong>{produtorNome.split(" ")[0]}</strong>!{" "}
-                  {channel === "telegram" ? (
+                  {channel === "telegram_direct" ? (
+                    <>Código enviado diretamente para o seu <strong>Telegram</strong> ({maskedPhone}). Verifique suas mensagens.</>
+                  ) : channel === "telegram_group" ? (
                     <>Código enviado para o <strong>grupo do Telegram</strong> do RuralCaixa. Verifique o grupo e copie o código.</>
                   ) : (
                     <>Código enviado para <strong>{maskedPhone}</strong> via <strong>WhatsApp</strong>.</>

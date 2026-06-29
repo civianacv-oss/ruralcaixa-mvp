@@ -46,7 +46,7 @@ const NAV_SECTIONS = [
 
 const BOTTOM_ITEMS = [
   { icon: Bell, label: "Notificações", path: "/notificacoes", placeholder: true },
-  { icon: Settings, label: "Configurações", path: "/configuracoes", placeholder: true },
+  { icon: Settings, label: "Perfil &amp; Notificações", path: "/perfil" },
   { icon: HelpCircle, label: "Ajuda", path: "/ajuda", placeholder: true },
 ];
 
@@ -219,10 +219,10 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
               key={item.path}
               icon={item.icon}
               label={item.label}
-              isActive={false}
+              isActive={location.startsWith(item.path)}
               collapsed={!sidebarOpen}
               placeholder={item.placeholder}
-              onClick={() => {}}
+              onClick={() => { if (!item.placeholder) { navigate(item.path); setMobileOpen(false); } }}
             />
           ))}
         </div>

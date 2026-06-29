@@ -130,3 +130,28 @@ export const movements = mysqlTable("movements", {
 
 export type Movement = typeof movements.$inferSelect;
 export type InsertMovement = typeof movements.$inferInsert;
+
+// ─── Produtor Config ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Per-produtor configuration stored locally (Railway API has no telegram_chat_id field).
+ * produtorId matches the Railway produtor.id.
+ */
+export const produtorConfig = mysqlTable("produtor_config", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Railway produtor.id — used as the foreign key to the Railway dataset */
+  produtorId: int("produtorId").notNull().unique(),
+  /** Telegram personal chat_id for direct OTP messages (optional) */
+  telegramChatId: varchar("telegramChatId", { length: 64 }),
+  /**
+   * When true, WhatsApp is the primary OTP channel and Telegram is the fallback.
+   * Set to true once Meta approves the WhatsApp Business integration.
+   * Default false = Telegram first.
+   */
+  whatsappPriority: boolean("whatsappPriority").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ProdutorConfig = typeof produtorConfig.$inferSelect;
+export type InsertProdutorConfig = typeof produtorConfig.$inferInsert;

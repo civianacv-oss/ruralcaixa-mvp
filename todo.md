@@ -101,3 +101,17 @@
 - [x] CRUD Financeiro — botões Novo/Editar/Excluir com modais e confirmação
 - [x] imovelId/produtorId injetados automaticamente pelo servidor nos endpoints POST
 - [x] 43 testes passando
+
+## Fase 15: Telegram Direto por Produtor + WhatsApp Flag
+- [x] Tabela `produtor_config` no banco local (produtorId, telegramChatId, whatsappPriority)
+- [x] Helpers db.getProdutorConfig / db.upsertProdutorConfig
+- [x] otp.ts atualizado: usa telegram_chat_id individual se disponível, fallback para grupo geral
+- [x] otp.ts: respeita flag whatsappPriority (WhatsApp primeiro quando ativado)
+- [x] Endpoint tRPC `produtorConfig.get` — retorna config do produtor logado
+- [x] Endpoint tRPC `produtorConfig.save` — salva telegramChatId e whatsappPriority
+- [x] Página Perfil.tsx — card de configuração do canal de verificação
+- [x] Instruções para obter Chat ID via @userinfobot
+- [x] Toggle de prioridade WhatsApp com aviso "ative somente após aprovação da Meta"
+- [x] Rota /perfil no App.tsx (rota protegida)
+- [x] Link "Perfil & Notificações" no menu lateral (item Settings → /perfil)
+- [x] 43 testes passando

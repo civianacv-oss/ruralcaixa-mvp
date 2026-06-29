@@ -13,6 +13,7 @@ import Financeiro from "./pages/Financeiro";
 import Movimentacoes from "./pages/Movimentacoes";
 import RuralLayout from "./components/RuralLayout";
 import SelecionarImovel from "./pages/SelecionarImovel";
+import Perfil from "./pages/Perfil";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated } from "./lib/api";
@@ -67,6 +68,9 @@ function Router() {
       </Route>
       <Route path="/movimentacoes">
         {() => <ProtectedRoute component={Movimentacoes} />}
+      </Route>
+      <Route path="/perfil">
+        {() => <ProtectedRoute component={Perfil} />}
       </Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
