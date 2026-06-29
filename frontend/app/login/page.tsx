@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
@@ -21,7 +21,7 @@ export default function LoginPage() {
     setLoading(true);
     setErro("");
     try {
-      const res = await fetch(`${API}/produtores/me?cpf=${cpfClean}`);
+      const res = await fetch(`${API}/me/produtor?cpf=${cpfClean}`);
       if (!res.ok) { setErro("CPF nao encontrado. Verifique ou entre em contato."); return; }
       const data = await res.json();
       localStorage.setItem("rc_produtor_id", String(data.id));
@@ -38,7 +38,7 @@ export default function LoginPage() {
     <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
       <div style={{ background: "#fff", borderRadius: 16, padding: "40px 36px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.1)" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🌱</div>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>ðŸŒ±</div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#1a2e1a" }}>RuralCaixa</h1>
           <p style={{ margin: "8px 0 0", fontSize: 13, color: "#7a8a6a" }}>Digite seu CPF para acessar</p>
         </div>
