@@ -11,6 +11,7 @@ import {
   InsertReproductiveRecord,
   InsertUser,
   Movement,
+  Procuracao,
   ProdutorConfig,
   ReproductiveRecord,
   User,
@@ -18,6 +19,7 @@ import {
   financialRecords,
   healthRecords,
   movements,
+  procuracoes,
   produtorConfig,
   produtorImovel,
   reproductiveRecords,
@@ -332,4 +334,65 @@ export async function getImoveisForProdutor(produtorId: number): Promise<number[
     .where(eq(produtorImovel.produtorId, produtorId));
   if (rows.length === 0) return null; // no ACL rows → fall back to Railway
   return rows.map((r) => r.imovelId);
+}
+
+// ─── Procurações ──────────────────────────────────────────────────────────────
+
+/** Cria uma nova procuração com status pendente */
+export async function createProcuracao(data: {
+  procuradorCpf: string;
+  procuradorNome?: string;
+  produtorCpf: string;
+  arquivoUrl: string;
+  arquivoKey: string;
+}): Promise<Procuracao> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(procuracoes).values({
+    procuradorCpf: data.procuradorCpf,
+    procuradorNome: data.procuradorNome ?? null,
+    produtorCpf: data.produtorCpf,
+    arquivoUrl: data.arquivoUrl,
+    arquivoKey: data.arquivoKey,
+    status: "pendente",
+  });
+  const id = (result as { insertId: number }).insertId;
+  const rows = await db.select().from(procuracoes).where(eq(procuracoes.id, id)).limit(1);
+  return rows[0];
+}
+
+/** Retorna a procuração mais recente de um procurador (por CPF) */
+export async function getProcuracaoByProcurador(cpf: string): Promise<Procuracao | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const normalized = cpf.replace(/\D/g, "");
+  const formatted = normalized.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  const rows = await db
+    .select()
+    .from(procuracoes)
+    .where(eq(procuracoes.procuradorCpf, formatted))
+    .orderBy(desc(procuracoes.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Lista todas as procurações (para o painel admin) */
+export async function listProcuracoes(): Promise<Procuracao[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(procuracoes).orderBy(desc(procuracoes.createdAt));
+}
+
+/** Aprova ou rejeita uma procuração */
+export async function updateProcuracaoStatus(
+  id: number,
+  status: "aprovado" | "rejeitado",
+  adminNota?: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(procuracoes)
+    .set({ status, adminNota: adminNota ?? null })
+    .where(eq(procuracoes.id, id));
 }

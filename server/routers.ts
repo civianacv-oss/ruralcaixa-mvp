@@ -317,6 +317,73 @@ export const appRouter = router({
       }),
   }),
 
+  // ── Procurações ────────────────────────────────────────────────────────────────────────────────────
+  procuracao: router({
+    /** Verifica o status da procuração do procurador logado */
+    status: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims) return null;
+      // Busca pelo CPF formatado do claims
+      const cpf = claims.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+      return db.getProcuracaoByProcurador(cpf);
+    }),
+
+    /** Upload de procuração: recebe base64 do arquivo e salva no S3 */
+    upload: publicProcedure
+      .input(z.object({
+        procuradorCpf: z.string().min(11),
+        procuradorNome: z.string().optional(),
+        produtorCpf: z.string().min(11),
+        fileBase64: z.string().min(1),
+        fileName: z.string().min(1),
+        mimeType: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const { storagePut } = await import("./storage");
+        const cpfClean = input.procuradorCpf.replace(/\D/g, "");
+        const ext = input.fileName.split(".").pop() ?? "pdf";
+        const key = `procuracoes/${cpfClean}/${Date.now()}.${ext}`;
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        const proc = await db.createProcuracao({
+          procuradorCpf: input.procuradorCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"),
+          procuradorNome: input.procuradorNome,
+          produtorCpf: input.produtorCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"),
+          arquivoUrl: url,
+          arquivoKey: key,
+        });
+        return { success: true, id: proc.id, status: proc.status };
+      }),
+
+    /** Lista todas as procurações (admin only) */
+    list: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims || claims.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito ao administrador." });
+      }
+      return db.listProcuracoes();
+    }),
+
+    /** Aprova ou rejeita uma procuração (admin only) */
+    updateStatus: publicProcedure
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["aprovado", "rejeitado"]),
+        adminNota: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { getClaimsFromRequest } = await import("./railwayProxy");
+        const claims = await getClaimsFromRequest(ctx.req);
+        if (!claims || claims.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito ao administrador." });
+        }
+        await db.updateProcuracaoStatus(input.id, input.status, input.adminNota);
+        return { success: true };
+      }),
+  }),
+
   // ── Movements ─────────────────────────────────────────────────────────────
   movements: router({
     list: protectedProcedure

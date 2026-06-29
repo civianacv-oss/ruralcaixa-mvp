@@ -174,3 +174,32 @@ export const produtorImovel = mysqlTable("produtor_imovel", {
 
 export type ProdutorImovel = typeof produtorImovel.$inferSelect;
 export type InsertProdutorImovel = typeof produtorImovel.$inferInsert;
+
+// ─── Procurações ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Procurações enviadas por procuradores para acesso aos dados de um produtor.
+ * O admin (contador) aprova ou rejeita cada solicitação.
+ */
+export const procuracoes = mysqlTable("procuracoes", {
+  id: int("id").autoincrement().primaryKey(),
+  /** CPF do procurador (quem está solicitando acesso) */
+  procuradorCpf: varchar("procuradorCpf", { length: 14 }).notNull(),
+  /** Nome do procurador */
+  procuradorNome: varchar("procuradorNome", { length: 255 }),
+  /** CPF do produtor representado */
+  produtorCpf: varchar("produtorCpf", { length: 14 }).notNull(),
+  /** URL pública do arquivo no S3 */
+  arquivoUrl: text("arquivoUrl").notNull(),
+  /** Chave S3 para gestão do arquivo */
+  arquivoKey: varchar("arquivoKey", { length: 512 }).notNull(),
+  /** Status da procuração */
+  status: mysqlEnum("status", ["pendente", "aprovado", "rejeitado"]).default("pendente").notNull(),
+  /** Observação do admin ao aprovar/rejeitar */
+  adminNota: text("adminNota"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Procuracao = typeof procuracoes.$inferSelect;
+export type InsertProcuracao = typeof procuracoes.$inferInsert;

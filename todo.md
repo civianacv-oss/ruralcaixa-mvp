@@ -115,3 +115,13 @@
 - [x] Rota /perfil no App.tsx (rota protegida)
 - [x] Link "Perfil & Notificações" no menu lateral (item Settings → /perfil)
 - [x] 43 testes passando
+
+## Fase 16: Seleção de Perfil no Login + Procuração
+- [ ] Adicionar etapa de seleção de perfil (Contador / Produtor / Procurador) antes do CPF na tela de login
+- [ ] Perfil Procurador: adicionar etapa de upload da procuração (PDF/imagem) após o CPF
+- [ ] Criar tabela `procuracoes` no banco: procurador_cpf, produtor_cpf, arquivo_url, arquivo_key, status, created_at
+- [ ] Endpoint tRPC `procuracao.upload` — salva arquivo no S3 e registra no banco com status pendente
+- [ ] Endpoint tRPC `procuracao.status` — retorna status da procuração do procurador logado
+- [ ] Salvar perfil selecionado no rc_claims JWT (campo `perfil`)
+- [ ] Procurador aprovado acessa os imóveis do produtor representado; pendente/rejeitado vê tela de aguardo
+- [ ] Painel admin para aprovar/rejeitar procurações
