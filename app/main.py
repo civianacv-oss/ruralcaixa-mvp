@@ -725,16 +725,24 @@ async def auth_me(request: Request):
 
 
 @app.get("/produtores/me")
-def get_produtor_by_token(token: str):
+def get_produtor_by_token(token: str = None, cpf: str = None):
     from app.db import engine
     from sqlalchemy import text
     with engine.connect() as conn:
-        result = conn.execute(text(
-            "SELECT id, nome, cpf, telefone FROM produtores WHERE token = :token"
-        ), {"token": token})
+        if token:
+            result = conn.execute(text(
+                "SELECT id, nome, cpf, telefone FROM produtores WHERE api_token = :token"
+            ), {"token": token})
+        elif cpf:
+            cpf_clean = cpf.replace(".", "").replace("-", "").strip()
+            result = conn.execute(text(
+                "SELECT id, nome, cpf, telefone FROM produtores WHERE REPLACE(REPLACE(cpf,'.',''),'-','') = :cpf"
+            ), {"cpf": cpf_clean})
+        else:
+            raise HTTPException(status_code=400, detail="Informe token ou cpf")
         row = result.fetchone()
         if not row:
-            raise HTTPException(status_code=401, detail="Token invalido")
+            raise HTTPException(status_code=401, detail="CPF ou token nao encontrado")
         return {"id": row[0], "nome": row[1], "cpf": row[2], "telefone": row[3]}
 
 @app.get("/")
