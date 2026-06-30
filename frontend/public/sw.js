@@ -53,6 +53,6 @@ self.addEventListener('fetch', (e) => {
 
   // Demais assets: CacheFirst
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    caches.match(e.request).then(cached => cached || fetch(e.request)).catch(() => caches.match(e.request))
   );
 });
