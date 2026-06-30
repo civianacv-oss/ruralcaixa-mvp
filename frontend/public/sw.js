@@ -6,7 +6,11 @@ const STATIC_ASSETS = ['/', '/ovino'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then(cache => 
+      cache.addAll(STATIC_ASSETS).catch(() => {
+        console.warn('Alguns assets não puderam ser cacheados');
+      })
+    )
   );
   self.skipWaiting();
 });
