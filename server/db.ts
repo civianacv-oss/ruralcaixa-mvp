@@ -349,7 +349,7 @@ export async function getRailwayToken(produtorId: number): Promise<string | null
   const rows = await db
     .select({ railwayToken: produtorImovel.railwayToken })
     .from(produtorImovel)
-    .where(eq(produtorImovel.produtorId, produtorId))
+    .where(and(eq(produtorImovel.produtorId, produtorId), sql`railwayToken IS NOT NULL`))
     .limit(1);
   return rows[0]?.railwayToken ?? null;
 }

@@ -180,19 +180,39 @@ async function requireClaims(req: Parameters<typeof getClaimsFromRequest>[0]) {
       message: "Sessão inválida ou expirada. Faça login novamente.",
     });
   }
+  // Validate that the imovelId in the cookie is still in the producer's ACL.
+  // This prevents stale cookies from accessing properties the producer no longer owns.
+  // Admins (contadores) skip this check — they can access any property.
+  if (claims.role !== "admin" && claims.imovelId !== null) {
+    const { getImoveisForProdutor } = await import("../db");
+    const allowedIds = await getImoveisForProdutor(claims.produtorId);
+    if (allowedIds !== null && !allowedIds.includes(claims.imovelId)) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Imóvel da sessão não autorizado. Selecione um imóvel válido.",
+      });
+    }
+  }
   return claims;
 }
 
 // ─── Generic Railway mutation helper ─────────────────────────────────────────
-
 async function railwayMutate<T>(
   path: string,
   method: "POST" | "PATCH" | "PUT" | "DELETE",
-  body?: unknown
+  body?: unknown,
+  produtorId?: number,
 ): Promise<T> {
+  // Resolve the Railway api_token for this produtor (if available)
+  let authHeader: Record<string, string> = {};
+  if (produtorId) {
+    const { getRailwayToken } = await import("../db");
+    const token = await getRailwayToken(produtorId).catch(() => null);
+    if (token) authHeader = { Authorization: `Bearer ${token}` };
+  }
   const res = await fetch(`${RAILWAY_API}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeader },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -259,9 +279,9 @@ export const railwayRouter = router({
       const prefix = especiePrefix[input.especie];
       // Bovinos use path param; ovinos/caprinos/suinos use query param
       if (input.especie === "bovinos") {
-        return railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`);
+        return railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`, undefined, claims.produtorId);
       }
-      return railwayFetch<Animal[]>(`/${prefix}/animais?imovel_id=${input.imovelId}`);
+      return railwayFetch<Animal[]>(`/${prefix}/animais?imovel_id=${input.imovelId}`, undefined, claims.produtorId);
     }),
 
   createAnimal: publicProcedure
@@ -284,7 +304,7 @@ export const railwayRouter = router({
       return railwayMutate<Animal>(`/${prefix}/animais`, "POST", {
         imovel_id: imovelId,
         ...fields,
-      });
+      }, claims.produtorId);
     }),
 
   updateAnimal: publicProcedure
@@ -303,7 +323,7 @@ export const railwayRouter = router({
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
       const { animalId, imovelId, especie, ...fields } = input;
-      return railwayMutate<Animal>(`/${prefix}/animais/${animalId}`, "PATCH", fields);
+      return railwayMutate<Animal>(`/${prefix}/animais/${animalId}`, "PATCH", fields, claims.produtorId);
     }),
 
   updateAnimalStatus: publicProcedure
@@ -319,7 +339,7 @@ export const railwayRouter = router({
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
       const { animalId, imovelId, especie, ...fields } = input;
-      return railwayMutate<Animal>(`/${prefix}/animais/${animalId}/status`, "PATCH", fields);
+      return railwayMutate<Animal>(`/${prefix}/animais/${animalId}/status`, "PATCH", fields, claims.produtorId);
     }),
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -328,7 +348,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      return railwayFetch<OvinoDashboard>(`/ovino/dashboard/${input.imovelId}`);
+      return railwayFetch<OvinoDashboard>(`/ovino/dashboard/${input.imovelId}`, undefined, claims.produtorId);
     }),
 
   // ── Financial ──────────────────────────────────────────────────────────────
@@ -337,7 +357,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertProdutor(claims, input.produtorId);
-      return railwayFetch<ProdutorResumo>(`/produtores/${input.produtorId}/resumo`);
+      return railwayFetch<ProdutorResumo>(`/produtores/${input.produtorId}/resumo`, undefined, claims.produtorId);
     }),
 
   lancamentos: publicProcedure
@@ -345,7 +365,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertProdutor(claims, input.produtorId);
-      return railwayFetch<Lancamento[]>(`/produtores/${input.produtorId}/lancamentos`);
+      return railwayFetch<Lancamento[]>(`/produtores/${input.produtorId}/lancamentos`, undefined, claims.produtorId);
     }),
 
   createLancamento: publicProcedure
@@ -365,7 +385,7 @@ export const railwayRouter = router({
       return railwayMutate<Lancamento>(`/lancamentos`, "POST", {
         produtor_id: produtorId,
         ...fields,
-      });
+      }, claims.produtorId);
     }),
 
   updateLancamento: publicProcedure
@@ -385,7 +405,7 @@ export const railwayRouter = router({
       return railwayMutate<Lancamento>(`/lancamentos/${lancamentoId}`, "PUT", {
         produtor_id: produtorId,
         ...fields,
-      });
+      }, claims.produtorId);
     }),
 
   deleteLancamento: publicProcedure
@@ -393,7 +413,7 @@ export const railwayRouter = router({
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertProdutor(claims, input.produtorId);
-      await railwayMutate<unknown>(`/lancamentos/${input.lancamentoId}`, "DELETE");
+      await railwayMutate<unknown>(`/lancamentos/${input.lancamentoId}`, "DELETE", undefined, claims.produtorId);
       return { success: true };
     }),
 
@@ -406,9 +426,9 @@ export const railwayRouter = router({
       const prefix = especiePrefix[input.especie];
       // Bovinos use path param; ovinos/caprinos use query param on /sanitario/calendario
       if (input.especie === "bovinos") {
-        return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`);
+        return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`, undefined, claims.produtorId);
       }
-      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/calendario?imovel_id=${input.imovelId}&dias=30`);
+      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/calendario?imovel_id=${input.imovelId}&dias=30`, undefined, claims.produtorId);
     }),
 
   createSanitario: publicProcedure
@@ -432,7 +452,7 @@ export const railwayRouter = router({
       return railwayMutate<SanitarioRecord>(`/${prefix}/saude`, "POST", {
         imovel_id: imovelId,
         ...fields,
-      });
+      }, claims.produtorId);
     }),
 
   // ── Reproduction ───────────────────────────────────────────────────────────
@@ -445,10 +465,10 @@ export const railwayRouter = router({
       // Only bovinos have a dedicated /reproducao/{imovel_id}/prenhas endpoint.
       // For ovinos/caprinos, use the saude/alertas endpoint as a proxy for reproductive alerts.
       if (input.especie === "bovinos") {
-        return railwayFetch<ReproducaoRecord[]>(`/${prefix}/reproducao/${input.imovelId}/prenhas`);
+        return railwayFetch<ReproducaoRecord[]>(`/${prefix}/reproducao/${input.imovelId}/prenhas`, undefined, claims.produtorId);
       }
       // ovinos/caprinos: use alertas filtered to reproductive events
-      return railwayFetch<ReproducaoRecord[]>(`/${prefix}/alertas?imovel_id=${input.imovelId}&tipo=reproducao`).catch(() => []);
+      return railwayFetch<ReproducaoRecord[]>(`/${prefix}/alertas?imovel_id=${input.imovelId}&tipo=reproducao`, undefined, claims.produtorId).catch(() => []);
     }),
 
   createReproducao: publicProcedure
@@ -471,7 +491,7 @@ export const railwayRouter = router({
       return railwayMutate<ReproducaoRecord>(`/${prefix}/reproducao`, "POST", {
         imovel_id: imovelId,
         ...fields,
-      });
+      }, claims.produtorId);
     }),
 
   // ── Insumos ────────────────────────────────────────────────────────────────
@@ -483,7 +503,7 @@ export const railwayRouter = router({
       const params = new URLSearchParams({ fazenda_id: String(input.imovelId) });
       if (input.categoria) params.set("categoria", input.categoria);
       if (input.origem) params.set("origem", input.origem);
-      const data = await railwayFetch<{ data: Insumo[] } | Insumo[]>(`/insumos/?${params}`);
+      const data = await railwayFetch<{ data: Insumo[] } | Insumo[]>(`/insumos/?${params}`, undefined, claims.produtorId);
       return Array.isArray(data) ? data : (data as { data: Insumo[] }).data ?? [];
     }),
 
@@ -492,7 +512,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const data = await railwayFetch<{ data: Insumo[]; total: number } | Insumo[]>(`/insumos/alertas?fazenda_id=${input.imovelId}`);
+      const data = await railwayFetch<{ data: Insumo[]; total: number } | Insumo[]>(`/insumos/alertas?fazenda_id=${input.imovelId}`, undefined, claims.produtorId);
       return Array.isArray(data) ? data : (data as { data: Insumo[] }).data ?? [];
     }),
 
@@ -516,7 +536,7 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const { imovelId, ...fields } = input;
-      const data = await railwayMutate<{ data: Insumo } | Insumo>(`/insumos/`, "POST", { fazenda_id: imovelId, ...fields });
+      const data = await railwayMutate<{ data: Insumo } | Insumo>(`/insumos/`, "POST", { fazenda_id: imovelId, ...fields }, claims.produtorId);
       return (data as { data: Insumo }).data ?? data;
     }),
 
@@ -525,7 +545,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const data = await railwayFetch<{ data: Insumo & { movimentacoes?: MovimentacaoInsumo[] } } | (Insumo & { movimentacoes?: MovimentacaoInsumo[] })>(`/insumos/${input.insumoId}?fazenda_id=${input.imovelId}`);
+      const data = await railwayFetch<{ data: Insumo & { movimentacoes?: MovimentacaoInsumo[] } } | (Insumo & { movimentacoes?: MovimentacaoInsumo[] })>(`/insumos/${input.insumoId}?fazenda_id=${input.imovelId}`, undefined, claims.produtorId);
       return (data as { data: Insumo & { movimentacoes?: MovimentacaoInsumo[] } }).data ?? data;
     }),
 
@@ -543,7 +563,7 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const { imovelId, insumoId, ...fields } = input;
-      const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", fields);
+      const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", fields, claims.produtorId);
       return (data as { data: MovimentacaoInsumo }).data ?? data;
     }),
 
@@ -553,7 +573,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const data = await railwayFetch<{ data: Fornecedor[] } | Fornecedor[]>(`/fornecedores/?fazenda_id=${input.imovelId}`);
+      const data = await railwayFetch<{ data: Fornecedor[] } | Fornecedor[]>(`/fornecedores/?fazenda_id=${input.imovelId}`, undefined, claims.produtorId);
       return Array.isArray(data) ? data : (data as { data: Fornecedor[] }).data ?? [];
     }),
 
@@ -574,7 +594,7 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const { imovelId, ...fields } = input;
-      const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/`, "POST", { fazenda_id: imovelId, ...fields });
+      const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/`, "POST", { fazenda_id: imovelId, ...fields }, claims.produtorId);
       return (data as { data: Fornecedor }).data ?? data;
     }),
 
@@ -586,7 +606,7 @@ export const railwayRouter = router({
       assertImovel(claims, input.imovelId);
       const params = new URLSearchParams({ fazenda_id: String(input.imovelId) });
       if (input.status) params.set("status", input.status);
-      const data = await railwayFetch<{ data: PedidoCompra[] } | PedidoCompra[]>(`/pedidos-compra/?${params}`);
+      const data = await railwayFetch<{ data: PedidoCompra[] } | PedidoCompra[]>(`/pedidos-compra/?${params}`, undefined, claims.produtorId);
       return Array.isArray(data) ? data : (data as { data: PedidoCompra[] }).data ?? [];
     }),
 
@@ -604,7 +624,7 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const { imovelId, ...fields } = input;
-      const data = await railwayMutate<{ data: PedidoCompra } | PedidoCompra>(`/pedidos-compra/`, "POST", { fazenda_id: imovelId, ...fields });
+      const data = await railwayMutate<{ data: PedidoCompra } | PedidoCompra>(`/pedidos-compra/`, "POST", { fazenda_id: imovelId, ...fields }, claims.produtorId);
       return (data as { data: PedidoCompra }).data ?? data;
     }),
 
@@ -613,7 +633,7 @@ export const railwayRouter = router({
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const data = await railwayMutate<{ data: PedidoCompra } | PedidoCompra>(`/pedidos-compra/${input.pedidoId}/aprovar`, "PUT");
+      const data = await railwayMutate<{ data: PedidoCompra } | PedidoCompra>(`/pedidos-compra/${input.pedidoId}/aprovar`, "PUT", undefined, claims.produtorId);
       return (data as { data: PedidoCompra }).data ?? data;
     }),
 
@@ -622,7 +642,7 @@ export const railwayRouter = router({
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      return railwayMutate<{ ok: boolean; enviado_telegram: boolean; mensagem: string }>(`/pedidos-compra/${input.pedidoId}/enviar`, "POST");
+      return railwayMutate<{ ok: boolean; enviado_telegram: boolean; mensagem: string }>(`/pedidos-compra/${input.pedidoId}/enviar`, "POST", undefined, claims.produtorId);
     }),
 
   /**
@@ -708,7 +728,7 @@ export const railwayRouter = router({
           };
 
           try {
-            const railwayResult = await railwayMutate<{ id: number } | unknown>("/insumos/", "POST", payload);
+            const railwayResult = await railwayMutate<{ id: number } | unknown>("/insumos/", "POST", payload, claims.produtorId);
             // Atualizar railwayId no catálogo se o Railway retornou um id
             if (railwayResult && typeof railwayResult === "object" && "id" in railwayResult) {
               await upsertInsumosCatalogo({ imovelId: input.imovelId, nome, categoria, unidade, railwayId: (railwayResult as { id: number }).id });
@@ -903,7 +923,7 @@ export const railwayRouter = router({
               reposicao_modo: row.reposicao_modo,
               lead_time_dias: row.lead_time_dias,
             };
-            const railwayResult = await railwayMutate<{ id: number } | unknown>("/insumos/", "POST", payload);
+            const railwayResult = await railwayMutate<{ id: number } | unknown>("/insumos/", "POST", payload, claims.produtorId);
             if (railwayResult && typeof railwayResult === "object" && "id" in railwayResult) {
               await upsertInsumosCatalogo({ imovelId: input.imovelId, nome: nomeDestino, categoria: row.categoria, unidade: row.unidade, railwayId: (railwayResult as { id: number }).id });
             }
@@ -939,6 +959,7 @@ export const railwayRouter = router({
         method: "POST",
         body: JSON.stringify(input),
       });
+      // simulacaoAvulsa: endpoint público, sem produtorId necessário
       return res;
     }),
 
@@ -970,7 +991,7 @@ export const railwayRouter = router({
           jcp: input.jcp,
           observacao: input.observacao,
         }),
-      });
+      }, claims.produtorId);
       return res;
     }),
 
@@ -979,7 +1000,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const res = await railwayFetch<unknown[]>(`/simulador-regime/lancamentos/${input.imovelId}`);
+      const res = await railwayFetch<unknown[]>(`/simulador-regime/lancamentos/${input.imovelId}`, undefined, claims.produtorId);
       return Array.isArray(res) ? res : [];
     }),
 
@@ -988,7 +1009,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const res = await railwayFetch<unknown>(`/simulador-regime/dashboard/${input.imovelId}`);
+      const res = await railwayFetch<unknown>(`/simulador-regime/dashboard/${input.imovelId}`, undefined, claims.produtorId);
       return res;
     }),
 
@@ -999,7 +1020,7 @@ export const railwayRouter = router({
       assertImovel(claims, input.imovelId);
       const res = await railwayFetch<unknown>(`/simulador-regime/lancamento/${input.imovelId}/${input.competencia}`, {
         method: "DELETE",
-      });
+      }, claims.produtorId);
       return res;
     }),
 
@@ -1008,7 +1029,7 @@ export const railwayRouter = router({
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const res = await railwayFetch<unknown>(`/simulador-regime/perfil/${input.imovelId}`);
+      const res = await railwayFetch<unknown>(`/simulador-regime/perfil/${input.imovelId}`, undefined, claims.produtorId);
       return res;
     }),
 
@@ -1030,7 +1051,7 @@ export const railwayRouter = router({
           regime_atual: input.regime_atual,
           faturamento_estimado_anual: input.faturamento_estimado_anual,
         }),
-      });
+      }, claims.produtorId);
       return res;
     }),
 
@@ -1040,7 +1061,7 @@ export const railwayRouter = router({
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertProdutor(claims, input.produtorId);
-      const res = await railwayMutate<unknown>(`/produtores/${input.produtorId}/fechar-mes`, "POST");
+      const res = await railwayMutate<unknown>(`/produtores/${input.produtorId}/fechar-mes`, "POST", undefined, claims.produtorId);
       return res;
     }),
 
