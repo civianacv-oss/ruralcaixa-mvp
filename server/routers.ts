@@ -124,6 +124,17 @@ export const appRouter = router({
         const { getClaimsFromRequest } = await import("./railwayProxy");
         const claims = await getClaimsFromRequest(ctx.req);
         if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+        // Security: validate that the requested imovelId belongs to this producer
+        // Admin (contador) can switch to any imovel; produtor is restricted to their ACL
+        if (claims.role !== "admin") {
+          const allowedIds = await db.getImoveisForProdutor(claims.produtorId);
+          if (allowedIds && !allowedIds.includes(input.imovelId)) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Acesso negado: imóvel não pertence ao seu cadastro.",
+            });
+          }
+        }
         const cookieOptions = getSessionCookieOptions(ctx.req);
         const claimsToken = await signJwt({
           produtorId: claims.produtorId,

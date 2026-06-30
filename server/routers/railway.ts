@@ -20,7 +20,7 @@ import {
 } from "../railwayProxy";
 import * as XLSX from "xlsx";
 import { TRPCError } from "@trpc/server";
-import { getImoveisForProdutor, upsertInsumosCatalogo, searchInsumosCatalogo, listInsumosCatalogo } from "../db";
+import { getImoveisForProdutor, seedImoveisAcl, upsertInsumosCatalogo, searchInsumosCatalogo, listInsumosCatalogo } from "../db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -230,12 +230,15 @@ export const railwayRouter = router({
       return allImoveis;
     }
     // Filter by local ACL table (produtor_imovel) so each produtor sees only their property
-    const allowedIds = await getImoveisForProdutor(claims.produtorId);
+    let allowedIds = await getImoveisForProdutor(claims.produtorId);
     if (!allowedIds) {
-      // No ACL rows configured — return all (fallback for new producers)
-      return allImoveis;
+      // No ACL rows yet — seed from Railway data on first login (auto-registration)
+      // This ensures the produtor only sees imóveis linked to their own CPF
+      const railwayIds = allImoveis.map((im) => im.id);
+      await seedImoveisAcl(claims.produtorId, railwayIds);
+      allowedIds = railwayIds;
     }
-    return allImoveis.filter((im) => allowedIds.includes(im.id));
+    return allImoveis.filter((im) => (allowedIds as number[]).includes(im.id));
   }),
 
   // ── Raças por espécie ──────────────────────────────────────────────────────

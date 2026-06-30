@@ -625,3 +625,23 @@ export async function getVinculosPorContador(contadorCpf: string): Promise<Conta
       )
     );
 }
+
+/**
+ * Popula automaticamente o ACL de imóveis para um produtor no primeiro login.
+ * Chamado quando getImoveisForProdutor retorna null (sem linhas de ACL).
+ * Usa os imóveis retornados pelo Railway para o CPF do produtor como base.
+ * Isso garante que o produtor veja apenas os imóveis do seu CPF.
+ */
+export async function seedImoveisAcl(produtorId: number, imovelIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db || imovelIds.length === 0) return;
+  // Check again to avoid race conditions
+  const existing = await db
+    .select({ imovelId: produtorImovel.imovelId })
+    .from(produtorImovel)
+    .where(eq(produtorImovel.produtorId, produtorId));
+  if (existing.length > 0) return; // Already seeded
+  await db.insert(produtorImovel).values(
+    imovelIds.map((imovelId) => ({ produtorId, imovelId }))
+  );
+}
