@@ -1,9 +1,11 @@
-// page.tsx — Piscicultura
 "use client";
+import { getImovelId } from "@/hooks/useImovel";
+import { apiFetch } from "@/lib/api";
+// page.tsx — Piscicultura
 import { useState, useEffect } from "react";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
-const IMOVEL_ID = 1;
+const IMOVEL_ID = getImovelId();
 
 type Ciclo = {
   id: number;
@@ -155,7 +157,7 @@ export default function PisciculturaPage() {
   async function loadCiclos() {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/piscicultura/ciclos?imovel_id=${IMOVEL_ID}`);
+      const r = await apiFetch(`${API}/piscicultura/ciclos?imovel_id=${IMOVEL_ID}`);
       const data = await r.json();
       setCiclos(Array.isArray(data) ? data : []);
     } catch { setCiclos([]); }
@@ -165,9 +167,9 @@ export default function PisciculturaPage() {
   async function loadDashboard(cicloId: number) {
     try {
       const [dash, regs, bios] = await Promise.all([
-        fetch(`${API}/piscicultura/dashboard/${cicloId}`).then(r => r.json()),
-        fetch(`${API}/piscicultura/registros-diarios/${cicloId}`).then(r => r.json()),
-        fetch(`${API}/piscicultura/biometrias/${cicloId}`).then(r => r.json()),
+        apiFetch(`${API}/piscicultura/dashboard/${cicloId}`).then(r => r.json()),
+        apiFetch(`${API}/piscicultura/registros-diarios/${cicloId}`).then(r => r.json()),
+        apiFetch(`${API}/piscicultura/biometrias/${cicloId}`).then(r => r.json()),
       ]);
       setDashboard(dash);
       setRegistros(Array.isArray(regs) ? regs.slice(0, 10) : []);
@@ -179,7 +181,7 @@ export default function PisciculturaPage() {
     setCicloSelecionado(c);
     setTabDetalhe("dashboard");
     loadDashboard(c.id);
-    fetch(`${API}/piscicultura/preco-medio-racao/${c.id}`)
+    apiFetch(`${API}/piscicultura/preco-medio-racao/${c.id}`)
       .then(r => r.json())
       .then(d => {
         setPmpRacao(d.preco_medio_kg);
@@ -194,7 +196,7 @@ export default function PisciculturaPage() {
     }
     setSaving(true);
     try {
-      const r = await fetch(`${API}/piscicultura/ciclos`, {
+      const r = await apiFetch(`${API}/piscicultura/ciclos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,7 +230,7 @@ export default function PisciculturaPage() {
     if (!cicloSelecionado) return;
     setSaving(true);
     try {
-      const r = await fetch(`${API}/piscicultura/registros-diarios`, {
+      const r = await apiFetch(`${API}/piscicultura/registros-diarios`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -259,7 +261,7 @@ export default function PisciculturaPage() {
     if (!cicloSelecionado || !bioQtd || !bioPesoTotal) return;
     setSaving(true);
     try {
-      const r = await fetch(`${API}/piscicultura/biometrias`, {
+      const r = await apiFetch(`${API}/piscicultura/biometrias`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -282,7 +284,7 @@ export default function PisciculturaPage() {
     if (!cicloSelecionado || !compDesc || !compValor) return;
     setSaving(true);
     try {
-      const r = await fetch(`${API}/piscicultura/compras-insumos`, {
+      const r = await apiFetch(`${API}/piscicultura/compras-insumos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -309,7 +311,7 @@ export default function PisciculturaPage() {
     if (!cicloSelecionado || !despPesoKg || !despPrecoKg) return;
     setSaving(true);
     try {
-      const r = await fetch(`${API}/piscicultura/despescas`, {
+      const r = await apiFetch(`${API}/piscicultura/despescas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -331,8 +333,8 @@ export default function PisciculturaPage() {
     setSaving(false);
   }
 
-  const ciclosAtivos = ciclos.filter(c => c.status === "ativo");
-  const ciclosEncerrados = ciclos.filter(c => c.status !== "ativo");
+  const ciclosAtivos = (Array.isArray(ciclos) ? ciclos : []).filter(c => c.status === "ativo");
+  const ciclosEncerrados = (Array.isArray(ciclos) ? ciclos : []).filter(c => c.status !== "ativo");
 
   return (
     <div className="min-h-screen bg-gray-50">
