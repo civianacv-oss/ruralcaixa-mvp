@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -17,15 +18,17 @@ function CadastroContent() {
   const [salvo, setSalvo] = useState(false);
   const [produtorId, setProdutorId] = useState<number | null>(modoEdicao ? parseInt(produtorIdParam!) : null);
   const [imoveisExistentes, setImoveisExistentes] = useState<any[]>([]);
+  const [editandoImovelId, setEditandoImovelId] = useState(null);
   const [imovelSelecionado, setImovelSelecionado] = useState<number | null>(null);
   const [novoImovel, setNovoImovel] = useState(false);
+  const [deletandoImovel, setDeletandoImovel] = useState<number | null>(null);
   const ufs = ["AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO"];
 
   // Carregar dados se modo edição
   useEffect(() => {
     if (!modoEdicao || !produtorIdParam) return;
     const pid = parseInt(produtorIdParam);
-    fetch(`${API}/produtores`)
+    apiFetch(`${API}/produtores`)
       .then(r => r.json())
       .then(prods => {
         const p = prods.find((x: any) => x.id === pid);
@@ -33,7 +36,7 @@ function CadastroContent() {
           const tel = p.telefone?.replace(/^55/, "").replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3") || "";
           setProdutor({ nome: p.nome, cpf: p.cpf, telefone: tel, nirf: "" });
         }
-        return fetch(`${API}/produtor/imoveis?cpf=${p?.cpf?.replace(/\D/g,"") || ""}`);
+        return apiFetch(`${API}/produtor/imoveis?cpf=${p?.cpf?.replace(/\D/g,"") || ""}`);
       })
       .then(r => r.json())
       .then(imoveis => {
@@ -52,12 +55,52 @@ function CadastroContent() {
     return v.replace(/\D/g,"").replace(/^(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2").slice(0,15);
   }
 
+  async function deletarImovel(imovelId: number) {
+    if (!window.confirm("Tem certeza que deseja deletar este imóvel?")) return;
+    
+    setDeletandoImovel(imovelId);
+    try {
+      const res = await apiFetch(`${API}/propriedades/${imovelId}`, {
+        method: "DELETE",
+        headers: {"Content-Type": "application/json"},
+      });
+      
+      if (res.ok) {
+        setImoveisExistentes((Array.isArray(imoveisExistentes) ? imoveisExistentes : []).filter(im => im.id !== imovelId));
+        if (imovelSelecionado === imovelId) {
+          setImovelSelecionado(null);
+        }
+        alert("Imóvel deletado com sucesso!");
+      } else {
+        alert("Erro ao deletar imóvel.");
+      }
+    } catch (error) {
+      console.error("Erro ao deletar:", error);
+      alert("Erro de conexão ao deletar imóvel.");
+    } finally {
+      setDeletandoImovel(null);
+    }
+  }
+
   async function salvar() {
+    // Valida duplicata de imovel
+    if (imovel && imovel.nome) {
+      const _nomeLower = imovel.nome.toLowerCase().trim();
+      const _dup = (imoveisExistentes || []).find((im: any) =>
+        im.id !== editandoImovelId &&
+        im.nome.toLowerCase().trim() === _nomeLower &&
+        (im.municipio||"").toLowerCase() === (imovel.municipio||"").toLowerCase()
+      );
+      if (_dup) {
+        alert("Ja existe um imovel com este nome nesta cidade.");
+        return;
+      }
+    }
     setLoading(true);
     try {
       if (modoEdicao && produtorId) {
         // Atualizar produtor existente
-        const res = await fetch(`${API}/produtores/${produtorId}`, {
+        const res = await apiFetch(`${API}/produtores/${produtorId}`, {
           method: "PUT",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
@@ -73,7 +116,7 @@ function CadastroContent() {
         }
       } else {
         // Cadastro novo
-        const res = await fetch(API + "/cadastro", {
+        const res = await apiFetch(API + "/cadastro", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
@@ -170,17 +213,17 @@ function CadastroContent() {
                 <div className="text-sm font-medium text-gray-600 mb-2">Imóveis cadastrados</div>
                 {imoveisExistentes.map(im => (
                   <div key={im.id} className="px-3 py-2 rounded-lg border border-gray-200 text-sm mb-2">
-                    <div className="flex justify-between items-center">
-                      <div>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1">
                         <div className="font-medium">{im.nome}</div>
                         <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
                       </div>
-                      
-                        <a href={`/terceiros?imovel_id=${im.id}&produtor_id=${produtorId}`}
-                        className="text-xs text-green-700 font-medium whitespace-nowrap ml-2"
-                      >
-                        Parceiros →
-                      </a>
+
+                      <div style={{display:"flex",gap:4}}>
+                        <a href={`/terceiros?imovel_id=${im.id}&produtor_id=${produtorId}`} className="text-xs text-green-700 font-medium whitespace-nowrap">Parceiros</a>
+                        <button onClick={() => { setImovel({nome:im.nome,nirf:im.nirf||"",area_ha:im.area_ha||"",municipio:im.municipio,uf:im.uf||""}); setEditandoImovelId(im.id); }} style={{fontSize:12,color:"#2563eb",padding:"2px 6px",borderRadius:4,border:"1px solid #bfdbfe",cursor:"pointer",background:"white"}}>✏️</button>
+                        <button onClick={() => deletarImovel(im.id)} disabled={deletandoImovel === im.id} style={{fontSize:12,color:deletandoImovel === im.id ? "#d1d5db" : "#dc2626",padding:"2px 6px",borderRadius:4,border:"1px solid #fecaca",cursor:deletandoImovel === im.id ? "not-allowed" : "pointer",background:"white"}}>🗑️</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -228,10 +271,10 @@ function CadastroContent() {
                 if (!produtor.nome || !produtor.cpf || !produtor.telefone) return;
                 const cpf = produtor.cpf.replace(/\D/g, "");
                 try {
-                  const res = await fetch(`${API}/produtor/imoveis?cpf=${cpf}`);
+                  const res = await apiFetch(`${API}/produtor/imoveis?cpf=${cpf}`);
                   const data = await res.json();
-                  const todos = await fetch(`${API}/imoveis/buscar?q=`).then(r => r.json()).catch(() => []);
-                  const combinados = [...data, ...todos.filter((t: any) => !data.find((d: any) => d.nome === t.nome))];
+                  const todos = await apiFetch(`${API}/imoveis/buscar?q=`).then(r => r.json()).catch(() => []);
+                  const combinados = [...data, ...(Array.isArray(todos) ? todos : []).filter((t: any) => !data.find((d: any) => d.nome === t.nome))];
                   setImoveisExistentes(combinados);
                 } catch (e) {
                   console.log("Erro ao buscar imoveis:", e);
@@ -255,10 +298,20 @@ function CadastroContent() {
               <div className="space-y-2">
                 <div className="text-xs text-gray-500 mb-1">Imóveis já cadastrados:</div>
                 {imoveisExistentes.map(im => (
-                  <button key={im.id} onClick={() => setImovelSelecionado(im.id)} className={`w-full text-left px-3 py-3 rounded-lg border text-sm ${imovelSelecionado === im.id ? "border-green-600 bg-green-50" : "border-gray-200 bg-white"}`}>
-                    <div className="font-medium">{im.nome}</div>
-                    <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
-                  </button>
+                  <div key={im.id} className="flex gap-2 items-start">
+                    <button onClick={() => setImovelSelecionado(im.id)} className={`flex-1 text-left px-3 py-3 rounded-lg border text-sm ${imovelSelecionado === im.id ? "border-green-600 bg-green-50" : "border-gray-200 bg-white"}`}>
+                      <div className="font-medium">{im.nome}</div>
+                      <div className="text-xs text-gray-400">{im.municipio} - {im.uf}{im.area_ha ? ` · ${im.area_ha} ha` : ""}</div>
+                    </button>
+                    <button
+                      onClick={() => deletarImovel(im.id)}
+                      disabled={deletandoImovel === im.id}
+                      className="px-3 py-3 text-red-600 font-medium hover:text-red-800 disabled:text-gray-400 text-lg"
+                      title="Deletar imóvel"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 ))}
                 {imovelSelecionado && (
                   <div>
@@ -271,7 +324,7 @@ function CadastroContent() {
                 <button onClick={() => { setNovoImovel(true); setImovelSelecionado(null); }} className="w-full py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500">+ Cadastrar novo imóvel</button>
               </div>
             )}
-            {(novoImovel || imoveisExistentes.length === 0) && (          
+            {(novoImovel || imoveisExistentes.length === 0) && (
                <>
                 <div><label className="text-xs text-gray-500">Nome do imovel *</label><input className={inputClass} placeholder="Fazenda Boa Esperanca" value={imovel.nome} autoComplete="off" onChange={e => setImovel({...imovel, nome: e.target.value})} /></div>
                 <div><label className="text-xs text-gray-500">NIRF do imovel</label><input className={inputClass} placeholder="0000000-0" value={imovel.nirf} autoComplete="off" onChange={e => setImovel({...imovel, nirf: e.target.value})} /></div>

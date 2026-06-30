@@ -1,4 +1,6 @@
 "use client";
+import { getImovelId } from "@/hooks/useImovel";
+import { apiFetch } from "@/lib/api";
 /**
  * RuralCaixa — Módulo EFD-Reinf (v2)
  * Eventos R-2055 (comercialização), R-2010 (serviços), Apuração FUNRURAL, DARF, XML
@@ -7,7 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
-const IMOVEL_ID = 1;
+const IMOVEL_ID = getImovelId();
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Dashboard {
@@ -128,12 +130,12 @@ export default function EfdReinfPage() {
     setLoading(true);
     try {
       const [dash, r55, r10, ap, lotes, aliq] = await Promise.all([
-        fetch(`${API}/efdreinf/dashboard/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/r2055/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/r2010/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/apuracao/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/xml-lotes/${IMOVEL_ID}`).then(r => r.json()),
-        fetch(`${API}/efdreinf/aliquotas`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/dashboard/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/r2055/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/r2010/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/apuracao/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/xml-lotes/${IMOVEL_ID}`).then(r => r.json()),
+        apiFetch(`${API}/efdreinf/aliquotas`).then(r => r.json()),
       ]);
       setDashboard(dash);
       setR2055List(Array.isArray(r55) ? r55 : []);
@@ -173,7 +175,7 @@ export default function EfdReinfPage() {
     e.preventDefault();
     if (!f2055.cnpj_adquirente || !f2055.valor_bruto) return showMsg("Preencha CNPJ e valor.", "err");
     const comp = f2055.data_nota.substring(0, 7);
-    const res = await fetch(`${API}/efdreinf/r2055`, {
+    const res = await apiFetch(`${API}/efdreinf/r2055`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         imovel_id: IMOVEL_ID, competencia: comp, ...f2055,
@@ -195,7 +197,7 @@ export default function EfdReinfPage() {
     e.preventDefault();
     if (!f2010.cnpj_prestador || !f2010.valor_bruto) return showMsg("Preencha CNPJ e valor.", "err");
     const comp = f2010.data_nota.substring(0, 7);
-    const res = await fetch(`${API}/efdreinf/r2010`, {
+    const res = await apiFetch(`${API}/efdreinf/r2010`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         imovel_id: IMOVEL_ID, competencia: comp, ...f2010,
@@ -213,7 +215,7 @@ export default function EfdReinfPage() {
 
   // ── Gerar R-2055 a partir de acerto ─────────────────────────────────────
   const gerarR2055FromAcerto = async (acertoId: number) => {
-    const res = await fetch(`${API}/efdreinf/r2055/from-acerto/${acertoId}`, { method: "POST" });
+    const res = await apiFetch(`${API}/efdreinf/r2055/from-acerto/${acertoId}`, { method: "POST" });
     if (res.ok) {
       const data = await res.json();
       showMsg(`✅ R-2055 gerado automaticamente (competência ${data.competencia}). Verifique o CNPJ do adquirente.`);
@@ -224,13 +226,13 @@ export default function EfdReinfPage() {
   // ── Excluir ──────────────────────────────────────────────────────────────
   const excluirR2055 = async (id: number) => {
     if (!confirm("Excluir este registro?")) return;
-    const res = await fetch(`${API}/efdreinf/r2055/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`${API}/efdreinf/r2055/${id}`, { method: "DELETE" });
     if (res.ok) { showMsg("Registro excluído."); carregar(); }
     else { const e = await res.json(); showMsg(e.detail || "Erro ao excluir.", "err"); }
   };
   const excluirR2010 = async (id: number) => {
     if (!confirm("Excluir este registro?")) return;
-    const res = await fetch(`${API}/efdreinf/r2010/${id}`, { method: "DELETE" });
+    const res = await apiFetch(`${API}/efdreinf/r2010/${id}`, { method: "DELETE" });
     if (res.ok) { showMsg("Registro excluído."); carregar(); }
     else { const e = await res.json(); showMsg(e.detail || "Erro ao excluir.", "err"); }
   };
@@ -238,7 +240,7 @@ export default function EfdReinfPage() {
   // ── Marcar DARF pago ─────────────────────────────────────────────────────
   const marcarPago = async (id: number) => {
     if (!pagtoValor) return showMsg("Informe o valor pago.", "err");
-    const res = await fetch(
+    const res = await apiFetch(
       `${API}/efdreinf/apuracao/${id}/pago?data_pagamento=${pagtoData}&valor_pago=${pagtoValor}`,
       { method: "PATCH" }
     );
@@ -250,7 +252,7 @@ export default function EfdReinfPage() {
   const baixarXml = async (comp: string) => {
     const url = `${API}/efdreinf/xml/${IMOVEL_ID}/${comp}?tipo=r2055`;
     try {
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (!res.ok) { const e = await res.json(); return showMsg(e.detail || "Erro ao gerar XML.", "err"); }
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -823,7 +825,7 @@ export default function EfdReinfPage() {
                 </ol>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {apuracaoList.filter(ap => ap.status_darf === "em_aberto").map(ap => (
+                {(Array.isArray(apuracaoList) ? apuracaoList : []).filter(ap => ap.status_darf === "em_aberto").map(ap => (
                   <div key={ap.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
                     <div className="flex justify-between items-start mb-3">
                       <div>
@@ -850,7 +852,7 @@ export default function EfdReinfPage() {
                     </a>
                   </div>
                 ))}
-                {apuracaoList.filter(ap => ap.status_darf === "em_aberto").length === 0 && (
+                {(Array.isArray(apuracaoList) ? apuracaoList : []).filter(ap => ap.status_darf === "em_aberto").length === 0 && (
                   <div className="col-span-2 text-center py-8 text-gray-400">
                     <p className="text-2xl mb-2">✅</p>
                     <p>Nenhum DARF em aberto. Todas as competências estão pagas.</p>

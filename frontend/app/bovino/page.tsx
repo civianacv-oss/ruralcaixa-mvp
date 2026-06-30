@@ -313,7 +313,7 @@ export default function BovinoPage() {
     } else { setMsgRep("Erro ao salvar."); }
   }
 
-  const animaisFiltrados = aptidaoFiltro === "todos" ? (Array.isArray(animais) ? animais : []) : (Array.isArray(animais) ? animais.filter(a => a.aptidao_manejo === aptidaoFiltro) : []);
+  const animaisFiltrados = aptidaoFiltro === "todos" ? (Array.isArray(animais) ? animais : []) : (Array.isArray(animais) ? (Array.isArray(animais) ? animais : []).filter(a => a.aptidao_manejo === aptidaoFiltro) : []);
   const categorias = aptidao === "corte"
     ? ["bezerro", "novilho", "novilha", "boi", "vaca", "touro", "reprodutor"]
     : ["bezerra", "novilha", "vaca_solteira", "vaca_lactante", "touro", "reprodutor"];
@@ -443,7 +443,7 @@ export default function BovinoPage() {
                 { label: "Sexo *", comp: <select value={sexo} onChange={e => setSexo(e.target.value)} style={inputStyle}><option value="M">Macho</option><option value="F">Fêmea</option></select> },
                 { label: "Aptidão *", comp: <select value={aptidao} onChange={e => { setAptidao(e.target.value); setCategoria("bezerro"); }} style={inputStyle}><option value="corte">Corte</option><option value="leite">Leite</option><option value="misto">Misto</option></select> },
                 { label: "Categoria *", comp: <select value={categoria} onChange={e => setCategoria(e.target.value)} style={inputStyle}>{categorias.map(c => <option key={c} value={c}>{c}</option>)}</select> },
-                { label: "Raça", comp: <select value={racaId} onChange={e => setRacaId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{racas.filter(r => aptidao === "todos" || r.aptidao === aptidao || r.aptidao === "misto" || r.aptidao === "dupla").map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select> },
+                { label: "Raça", comp: <select value={racaId} onChange={e => setRacaId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{(Array.isArray(racas) ? racas : []).filter(r => aptidao === "todos" || r.aptidao === aptidao || r.aptidao === "misto" || r.aptidao === "dupla").map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select> },
                 { label: "Lote", comp: <select value={loteId} onChange={e => setLoteId(e.target.value)} style={inputStyle}><option value="">Sem lote</option>{lotes.map(l => <option key={l.id} value={l.id}>{l.nome}</option>)}</select> },
                 { label: "Origem", comp: <select value={origem} onChange={e => setOrigem(e.target.value)} style={inputStyle}><option value="nascimento">Nascimento</option><option value="compra">Compra</option><option value="transferencia">Transferência</option></select> },
                 { label: "Nasc.", comp: <input type="date" value={dataNasc} onChange={e => setDataNasc(e.target.value)} style={inputStyle} /> },
@@ -726,9 +726,9 @@ export default function BovinoPage() {
                 <h4 style={{ margin: "0 0 12px", color: green }}>Registrar Cobertura / IATF</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 12 }}>
                   {[
-                    { label: "Fêmea *", comp: <select value={repFemeaId} onChange={e => setRepFemeaId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{animais.filter(a => a.sexo === "F").map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
+                    { label: "Fêmea *", comp: <select value={repFemeaId} onChange={e => setRepFemeaId(e.target.value)} style={inputStyle}><option value="">Selecione</option>{(Array.isArray(animais) ? animais : []).filter(a => a.sexo === "F").map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
                     { label: "Método *", comp: <select value={repMetodo} onChange={e => setRepMetodo(e.target.value)} style={inputStyle}><option value="monta_natural">Monta Natural</option><option value="iatf">IATF</option><option value="ia">IA (Inseminação Artificial)</option><option value="te">TE (Transferência de Embrião)</option></select> },
-                    { label: "Touro / Sêmen", comp: <select value={repTouroId} onChange={e => setRepTouroId(e.target.value)} style={inputStyle}><option value="">Selecione (opcional)</option>{animais.filter(a => a.sexo === "M").map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
+                    { label: "Touro / Sêmen", comp: <select value={repTouroId} onChange={e => setRepTouroId(e.target.value)} style={inputStyle}><option value="">Selecione (opcional)</option>{(Array.isArray(animais) ? animais : []).filter(a => a.sexo === "M").map(a => <option key={a.id} value={a.id}>{a.brinco}{a.nome ? ` — ${a.nome}` : ""}</option>)}</select> },
                     { label: "Data Cobertura *", comp: <input type="date" value={repData} onChange={e => setRepData(e.target.value)} style={inputStyle} /> },
                     { label: "Observações", comp: <input value={repObs} onChange={e => setRepObs(e.target.value)} placeholder="Opcional" style={inputStyle} /> },
                   ].map((f, i) => <div key={i}><div style={{ fontSize: 11, fontWeight: 600, color: "#666", marginBottom: 4 }}>{f.label}</div>{f.comp}</div>)}
@@ -864,7 +864,7 @@ export default function BovinoPage() {
         {tab === "IATF" && (
           <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
             <h3 style={{ margin: "0 0 16px", color: "#1565c0", fontSize: 16 }}>🔬 Protocolo IATF</h3>
-            <IatfTab imovelId={IMOVEL_ID} api={API} animais={animais.filter(a => a.sexo === "F")} lotes={lotes} touros={animais.filter(a => a.sexo === "M")} />
+            <IatfTab imovelId={IMOVEL_ID} api={API} animais={(Array.isArray(animais) ? animais : []).filter(a => a.sexo === "F")} lotes={lotes} touros={(Array.isArray(animais) ? animais : []).filter(a => a.sexo === "M")} />
           </div>
         )}
 
@@ -872,7 +872,7 @@ export default function BovinoPage() {
         {tab === "Dieta Transição" && (
           <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
             <h3 style={{ margin: "0 0 16px", color: "#1565c0", fontSize: 16 }}>🌿 Dieta de Transição</h3>
-            <DietaTab imovelId={IMOVEL_ID} api={API} animais={animais.filter(a => a.sexo === "F")} />
+            <DietaTab imovelId={IMOVEL_ID} api={API} animais={(Array.isArray(animais) ? animais : []).filter(a => a.sexo === "F")} />
           </div>
         )}
 
@@ -931,12 +931,12 @@ function OrdenhaTab({ imovelId, api, animais, lotes }: { imovelId: number; api: 
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${api}/bovino/leiteiro/ordenha/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/leiteiro/ordenha/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
   }, [imovelId]);
 
   async function salvar() {
     if (!volume) { setMsg("Informe o volume."); return; }
-    const res = await fetch(`${api}/bovino/leiteiro/ordenha`, {
+    const res = await apiFetch(`${api}/bovino/leiteiro/ordenha`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -952,7 +952,7 @@ function OrdenhaTab({ imovelId, api, animais, lotes }: { imovelId: number; api: 
     if (res.ok) {
       setMsg("✅ Ordenha registrada!");
       setVolume(""); setGordura(""); setProteina(""); setPreco(""); setShow(false);
-      fetch(`${api}/bovino/leiteiro/ordenha/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/leiteiro/ordenha/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
     } else { setMsg("Erro ao salvar."); }
   }
 
@@ -1031,12 +1031,12 @@ function IatfTab({ imovelId, api, animais, lotes, touros }: { imovelId: number; 
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${api}/bovino/leiteiro/iatf/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/leiteiro/iatf/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
   }, [imovelId]);
 
   async function salvar() {
     if (!femeaId || !protocolo) { setMsg("Selecione a fêmea e informe o protocolo."); return; }
-    const res = await fetch(`${api}/bovino/leiteiro/iatf`, {
+    const res = await apiFetch(`${api}/bovino/leiteiro/iatf`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1049,7 +1049,7 @@ function IatfTab({ imovelId, api, animais, lotes, touros }: { imovelId: number; 
     if (res.ok) {
       setMsg("✅ Protocolo registrado!");
       setFemeaId(""); setProtocolo(""); setDataIatf(""); setTouroId(""); setSemen(""); setTecnico(""); setShow(false);
-      fetch(`${api}/bovino/leiteiro/iatf/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/leiteiro/iatf/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
     } else { setMsg("Erro ao salvar."); }
   }
 
@@ -1063,7 +1063,7 @@ function IatfTab({ imovelId, api, animais, lotes, touros }: { imovelId: number; 
           <div style={{ fontSize: 11, color: "#666" }}>Aguardando diagnóstico</div>
         </div>
         <div style={{ background: "#e8f5e9", borderRadius: 8, padding: "12px 20px", textAlign: "center" }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#2d5a27" }}>{registros.filter(r=>(r as Record<string, unknown>).resultado==="positivo").length}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#2d5a27" }}>{(Array.isArray(registros) ? registros : []).filter(r=>(r as Record<string, unknown>).resultado==="positivo").length}</div>
           <div style={{ fontSize: 11, color: "#666" }}>Positivos</div>
         </div>
       </div>
@@ -1126,12 +1126,12 @@ function DietaTab({ imovelId, api, animais }: { imovelId: number; api: string; a
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${api}/bovino/leiteiro/dieta-transicao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/leiteiro/dieta-transicao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
   }, [imovelId]);
 
   async function salvar() {
     if (!animalId || !descricao) { setMsg("Selecione o animal e informe a dieta."); return; }
-    const res = await fetch(`${api}/bovino/leiteiro/dieta-transicao`, {
+    const res = await apiFetch(`${api}/bovino/leiteiro/dieta-transicao`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1144,7 +1144,7 @@ function DietaTab({ imovelId, api, animais }: { imovelId: number; api: string; a
     if (res.ok) {
       setMsg("✅ Dieta registrada!");
       setAnimalId(""); setDescricao(""); setVolumoso(""); setConcentrado(""); setShow(false);
-      fetch(`${api}/bovino/leiteiro/dieta-transicao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/leiteiro/dieta-transicao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
     } else { setMsg("Erro ao salvar."); }
   }
 
@@ -1205,12 +1205,12 @@ function ConfinamentoTab({ imovelId, api, lotes }: { imovelId: number; api: stri
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${api}/bovino/corte/confinamento/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/corte/confinamento/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
   }, [imovelId]);
 
   async function salvar() {
     if (!loteId) { setMsg("Selecione o lote."); return; }
-    const res = await fetch(`${api}/bovino/corte/confinamento`, {
+    const res = await apiFetch(`${api}/bovino/corte/confinamento`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1225,7 +1225,7 @@ function ConfinamentoTab({ imovelId, api, lotes }: { imovelId: number; api: stri
     if (res.ok) {
       setMsg("✅ Confinamento iniciado!");
       setLoteId(""); setPesoEntrada(""); setDieta(""); setCustoDiario(""); setShow(false);
-      fetch(`${api}/bovino/corte/confinamento/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/corte/confinamento/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
     } else { setMsg("Erro ao salvar."); }
   }
 
@@ -1296,12 +1296,12 @@ function TipificacaoTab({ imovelId, api, animais }: { imovelId: number; api: str
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${api}/bovino/corte/classificacao-carcaca/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/corte/classificacao-carcaca/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
   }, [imovelId]);
 
   async function salvar() {
     if (!animalId) { setMsg("Selecione o animal."); return; }
-    const res = await fetch(`${api}/bovino/corte/classificacao-carcaca`, {
+    const res = await apiFetch(`${api}/bovino/corte/classificacao-carcaca`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1316,7 +1316,7 @@ function TipificacaoTab({ imovelId, api, animais }: { imovelId: number; api: str
     if (res.ok) {
       setMsg("✅ Tipificação registrada!");
       setAnimalId(""); setFrigorifico(""); setMaturidade(""); setAcabamento(""); setPesoCarcaca(""); setRendimento(""); setPrecoArroba(""); setShow(false);
-      fetch(`${api}/bovino/corte/classificacao-carcaca/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/corte/classificacao-carcaca/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
     } else { setMsg("Erro ao salvar."); }
   }
 
@@ -1381,13 +1381,13 @@ function CustoTab({ imovelId, api, lotes }: { imovelId: number; api: string; lot
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    fetch(`${api}/bovino/corte/custo-producao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch(`${api}/bovino/corte/custo-producao/resumo/${imovelId}`).then(r => r.json()).then(d => setResumo(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/corte/custo-producao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`${api}/bovino/corte/custo-producao/resumo/${imovelId}`).then(r => r.json()).then(d => setResumo(Array.isArray(d) ? d : [])).catch(() => {});
   }, [imovelId]);
 
   async function salvar() {
     if (!valor || !categoria) { setMsg("Informe categoria e valor."); return; }
-    const res = await fetch(`${api}/bovino/corte/custo-producao`, {
+    const res = await apiFetch(`${api}/bovino/corte/custo-producao`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1401,8 +1401,8 @@ function CustoTab({ imovelId, api, lotes }: { imovelId: number; api: string; lot
     if (res.ok) {
       setMsg("✅ Custo registrado!");
       setLoteId(""); setDescricao(""); setValor(""); setShow(false);
-      fetch(`${api}/bovino/corte/custo-producao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
-      fetch(`${api}/bovino/corte/custo-producao/resumo/${imovelId}`).then(r => r.json()).then(d => setResumo(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/corte/custo-producao/${imovelId}`).then(r => r.json()).then(d => setRegistros(Array.isArray(d) ? d : [])).catch(() => {});
+      apiFetch(`${api}/bovino/corte/custo-producao/resumo/${imovelId}`).then(r => r.json()).then(d => setResumo(Array.isArray(d) ? d : [])).catch(() => {});
     } else { setMsg("Erro ao salvar."); }
   }
 

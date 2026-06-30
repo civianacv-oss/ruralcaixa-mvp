@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -122,18 +123,18 @@ function TerceirosContent() {
 
   useEffect(() => {
     if (!imovelId) return;
-    fetch(`${API}/imoveis/${imovelId}/terceiros`)
+    apiFetch(`${API}/imoveis/${imovelId}/terceiros`)
       .then(r => r.json())
       .then(terc => { setTerceiros(terc); setLoading(false); })
       .catch(() => setLoading(false));
 
     if (produtorId) {
-      fetch(`${API}/produtores`)
+      apiFetch(`${API}/produtores`)
         .then(r => r.json())
         .then(prods => {
           const p = prods.find((x: any) => x.id === parseInt(produtorId!));
           if (!p) return;
-          fetch(`${API}/produtor/imoveis?cpf=${p.cpf?.replace(/\D/g, "")}`)
+          apiFetch(`${API}/produtor/imoveis?cpf=${p.cpf?.replace(/\D/g, "")}`)
             .then(r => r.json())
             .then(imoveis => {
               const im = imoveis.find((x: any) => x.id === imovelId);
@@ -153,7 +154,7 @@ function TerceirosContent() {
     const cpfLimpo = cpf.replace(/\D/g, "");
     if (cpfLimpo.length === 11) {
       try {
-        const res = await fetch(`${API}/produtores`);
+        const res = await apiFetch(`${API}/produtores`);
         const prods = await res.json();
         const found = prods.find((p: any) => p.cpf.replace(/\D/g, "") === cpfLimpo);
         if (found) setNovo(n => ({ ...n, nome_contraparte: found.nome }));
@@ -165,12 +166,12 @@ function TerceirosContent() {
     setSalvando(true);
     const minhaParticipacao = Math.max(0, 100 - totalPercManual);
     try {
-      await fetch(`${API}/imoveis/${imovelId}/tipo-exploracao?tipo=${tipoExploracao}&participacao=${minhaParticipacao}`, { method: "PUT" });
+      await apiFetch(`${API}/imoveis/${imovelId}/tipo-exploracao?tipo=${tipoExploracao}&participacao=${minhaParticipacao}`, { method: "PUT" });
 
       // Salva também na tabela participacoes_imovel (nova)
       // Usa o endpoint de participacoes se existir, senão ignora silenciosamente
       try {
-        await fetch(`${API}/imoveis/${imovelId}/participacoes`, {
+        await apiFetch(`${API}/imoveis/${imovelId}/participacoes`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -198,7 +199,7 @@ function TerceirosContent() {
   async function recalcularFormula() {
     setRecalculando(true);
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${API}/imoveis/${imovelId}/recalcular-participacoes?alfa=${alfa / 100}&beta=${(100 - alfa) / 100}`,
         { method: "POST" }
       );
@@ -220,7 +221,7 @@ function TerceirosContent() {
       // Atualiza terceiros com os valores do preview
       for (const [id, perc] of Object.entries(previewPendente)) {
         const t = terceiros.find(x => x.id === parseInt(id));
-        await fetch(`${API}/terceiros/${id}`, {
+        await apiFetch(`${API}/terceiros/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -230,7 +231,7 @@ function TerceirosContent() {
           }),
         });
       }
-      const terc = await fetch(`${API}/imoveis/${imovelId}/terceiros`).then(r => r.json());
+      const terc = await apiFetch(`${API}/imoveis/${imovelId}/terceiros`).then(r => r.json());
       setTerceiros(terc);
       setPreviewPendente(null);
       setPreviewDeclarante(null);
@@ -253,7 +254,7 @@ function TerceirosContent() {
       };
       if (novo.area_ha) body.area_ha = parseFloat(novo.area_ha);
       if (novo.investimento) body.investimento = parseFloat(novo.investimento);
-      const res = await fetch(`${API}/imoveis/${imovelId}/terceiros`, {
+      const res = await apiFetch(`${API}/imoveis/${imovelId}/terceiros`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -266,7 +267,7 @@ function TerceirosContent() {
 
   async function salvarEdicao(id: number) {
     try {
-      await fetch(`${API}/terceiros/${id}`, {
+      await apiFetch(`${API}/terceiros/${id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           perc_contraparte: parseFloat(editValues.perc || 0),
@@ -284,8 +285,8 @@ function TerceirosContent() {
 
   async function excluirTerceiro(id: number) {
     if (!confirm("Excluir este participante?")) return;
-    await fetch(`${API}/terceiros/${id}`, { method: "DELETE" });
-    setTerceiros(terceiros.filter(t => t.id !== id));
+    await apiFetch(`${API}/terceiros/${id}`, { method: "DELETE" });
+    setTerceiros((Array.isArray(terceiros) ? terceiros : []).filter(t => t.id !== id));
   }
 
   const totalPercManual = terceiros.reduce((s, t) => s + parseFloat(t.perc_contraparte || 0), 0);

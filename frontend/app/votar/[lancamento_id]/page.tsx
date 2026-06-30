@@ -1,4 +1,5 @@
 "use client"
+import { apiFetch } from "@/lib/api";
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from "react"
@@ -89,7 +90,7 @@ export default function VotarPage() {
 
   // Buscar lançamento
   useEffect(() => {
-    fetch(`${API}/contratos/${contratoId}/lancamentos?status=em_votacao`)
+    apiFetch(`${API}/contratos/${contratoId}/lancamentos?status=em_votacao`)
       .then(r => r.json())
       .then(data => {
         const lanc = data.data?.find((l: Lancamento) => l.id === lancamentoId)
@@ -134,7 +135,7 @@ export default function VotarPage() {
         body.produtor_id = parseInt(papel)
       }
 
-      const r = await fetch(
+      const r = await apiFetch(
         `${API}/contratos/${contratoId}/lancamentos/${lancamentoId}/votar`,
         {
           method: "POST",
