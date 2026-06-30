@@ -112,7 +112,7 @@ export default function Dashboard() {
       const rProp = await apiFetch(`${API}/propriedades-rural/`);
       if (rProp.ok) {
         const dProp = await rProp.json();
-        setTotalPropriedades((dProp.data || []).length);
+        setTotalPropriedades(Array.isArray(dProp.data) ? dProp.data.length : 0);
       }
     } catch(e) { console.error('propriedades', e); }
     setLoading(false);
