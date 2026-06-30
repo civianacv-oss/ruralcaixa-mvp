@@ -1,8 +1,10 @@
+"use client";
+import { apiFetch } from "@/lib/api";
 // app/agricultura/page.tsx  (ou pages/agricultura/index.tsx)
 // Menu "Agricultura" no sidebar -- lista todas as safras por imovel
 
-'use client';
 
+import ImportarModal from "@/components/ImportarModal";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -55,6 +57,7 @@ function fmtBRL(v: number) {
 }
 
 export default function AgriculturaPage() {
+  const [modalImportar, setModalImportar] = useState(false);
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [safras, setSafras] = useState<Safra[]>([]);
   const [filtroImovel, setFiltroImovel] = useState<string>('');
@@ -73,8 +76,8 @@ export default function AgriculturaPage() {
   }, [filtroImovel, filtroAno, filtroCultura, filtroStatus]);
 
   async function fetchImoveis() {
-    const res = await fetch(`${API}/imoveis`);
-    if (res.ok) setImoveis(await res.json());
+    const res = await apiFetch(`${API}/imoveis/buscar?q=`);
+    if (res.ok) { const d = await res.json(); setImoveis(Array.isArray(d) ? d : (d.imoveis || [])); }
   }
 
   async function fetchSafras() {
@@ -85,17 +88,18 @@ export default function AgriculturaPage() {
         if (filtroAno)    params.append('ano_safra', filtroAno);
         if (filtroCultura) params.append('cultura', filtroCultura);
         if (filtroStatus) params.append('status', filtroStatus);
-        const res = await fetch(`${API}/agricultura/imoveis/${filtroImovel}/safras?${params}`);
+        const res = await apiFetch(`${API}/agricultura/imoveis/${filtroImovel}/safras?${params}`);
         if (res.ok) setSafras(await res.json());
       } else {
         // Busca safras de todos os imoveis
         const todas: Safra[] = [];
-        for (const im of imoveis) {
+        const listaImoveis = imoveis.length > 0 ? imoveis : [{id:1},{id:5}];
+        for (const im of listaImoveis) {
           const params = new URLSearchParams();
           if (filtroAno)    params.append('ano_safra', filtroAno);
           if (filtroCultura) params.append('cultura', filtroCultura);
           if (filtroStatus) params.append('status', filtroStatus);
-          const res = await fetch(`${API}/agricultura/imoveis/${im.id}/safras?${params}`);
+          const res = await apiFetch(`${API}/agricultura/imoveis/${im.id}/safras?${params}`);
           if (res.ok) {
             const data = await res.json();
             todas.push(...data);
@@ -124,6 +128,9 @@ export default function AgriculturaPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <div style={{padding:"16px 24px 0"}}>
+        <div style={{display:"flex",gap:8}}><a href="/" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",textDecoration:"none"}}>🏠 Painel Principal</a><button onClick={() => window.history.back()} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:13,color:"#5a8a3a",fontWeight:600,padding:"6px 14px",background:"#fff",borderRadius:8,border:"1px solid #d0e8c0",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",cursor:"pointer"}}>← Voltar</button></div>
+      </div>
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -137,6 +144,7 @@ export default function AgriculturaPage() {
           >
             <span>+</span> Nova Safra
           </button>
+          <button onClick={() => setModalImportar(true)} style={{ padding: "8px 16px", borderRadius: 8, border: "1.5px solid #c8d8c0", background: "#f0f8ea", color: "#2a5a2a", fontSize: 13, fontWeight: 600, cursor: "pointer", marginLeft: 8 }}>📂 Importar planilha</button>
         </div>
       </div>
 
@@ -306,6 +314,13 @@ export default function AgriculturaPage() {
           onSaved={() => { setShowModal(false); fetchSafras(); }}
         />
       )}
+      {modalImportar && (
+        <ImportarModal
+          modulo="agricultura"
+          onClose={() => setModalImportar(false)}
+          onSuccess={(qtd) => { setModalImportar(false); }}
+        />
+      )}
     </div>
   );
 }
@@ -340,14 +355,14 @@ function NovaSafraModal({
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/agricultura/culturas`)
+    apiFetch(`${API}/agricultura/culturas`)
       .then(r => r.json())
       .then(data => setCulturas(data.map((c: { nome: string }) => c.nome)));
   }, []);
 
   function filtrarSugestoes(q: string) {
     if (!q) { setSugestoes([]); return; }
-    setSugestoes(culturas.filter(c => c.toLowerCase().includes(q.toLowerCase())).slice(0, 8));
+    setSugestoes((Array.isArray(culturas) ? culturas : []).filter(c => c.toLowerCase().includes(q.toLowerCase())).slice(0, 8));
   }
 
   async function salvar() {
@@ -358,7 +373,7 @@ function NovaSafraModal({
     setSaving(true);
     setErro('');
     try {
-      const res = await fetch(`${API}/agricultura/imoveis/${form.imovel_id}/safras`, {
+      const res = await apiFetch(`${API}/agricultura/imoveis/${form.imovel_id}/safras`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
