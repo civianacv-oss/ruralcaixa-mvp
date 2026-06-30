@@ -284,6 +284,15 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
               onClick={() => { navigate("/admin/procuracoes"); setMobileOpen(false); }}
             />
           )}
+          {!isAdmin && (
+            <NavButton
+              icon={Users}
+              label="Meus Contadores"
+              isActive={location.startsWith("/contadores")}
+              collapsed={!sidebarOpen}
+              onClick={() => { navigate("/contadores"); setMobileOpen(false); }}
+            />
+          )}
           {BOTTOM_ITEMS.map((item) => (
             <NavButton
               key={item.path}

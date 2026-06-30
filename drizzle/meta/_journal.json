@@ -43,6 +43,13 @@
       "when": 1782773692380,
       "tag": "0005_quick_human_fly",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1782806805640,
+      "tag": "0006_cooing_the_watchers",
+      "breakpoints": true
     }
   ]
 }

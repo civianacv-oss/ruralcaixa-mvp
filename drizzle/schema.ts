@@ -234,3 +234,30 @@ export const insumosCatalogo = mysqlTable("insumos_catalogo", {
 
 export type InsumosCatalogo = typeof insumosCatalogo.$inferSelect;
 export type InsertInsumosCatalogo = typeof insumosCatalogo.$inferInsert;
+
+// ─── Vínculo Contador ↔ Produtor ─────────────────────────────────────────────
+/**
+ * Registra contadores (e procuradores) autorizados pelo próprio produtor.
+ * O produtor informa CPF, nome e telefone do contador; o sistema cria
+ * um registro com role "admin" que permite ao contador fazer login via OTP
+ * e acessar os imóveis do produtor que o cadastrou.
+ */
+export const contadorVinculo = mysqlTable("contador_vinculo", {
+  id: int("id").autoincrement().primaryKey(),
+  /** CPF do contador (11 dígitos, sem formatação) */
+  contadorCpf: varchar("contadorCpf", { length: 14 }).notNull(),
+  /** Nome completo do contador */
+  contadorNome: varchar("contadorNome", { length: 255 }).notNull(),
+  /** Telefone do contador para receber OTP (formato: 5511999999999) */
+  contadorTelefone: varchar("contadorTelefone", { length: 20 }).notNull(),
+  /** CPF do produtor que autorizou o acesso (11 dígitos, sem formatação) */
+  produtorCpf: varchar("produtorCpf", { length: 14 }).notNull(),
+  /** Railway produtor.id do produtor que autorizou */
+  produtorId: int("produtorId").notNull(),
+  /** Status do vínculo */
+  status: mysqlEnum("status_cv", ["ativo", "revogado"]).default("ativo").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ContadorVinculo = typeof contadorVinculo.$inferSelect;
+export type InsertContadorVinculo = typeof contadorVinculo.$inferInsert;

@@ -17,7 +17,10 @@ import {
   ProdutorConfig,
   ReproductiveRecord,
   User,
+  ContadorVinculo,
+  InsertContadorVinculo,
   animals,
+  contadorVinculo,
   financialRecords,
   healthRecords,
   insumosCatalogo,
@@ -532,4 +535,93 @@ export async function upsertInsumosCatalogo(data: {
   const id = (result as { insertId: number }).insertId;
   const rows = await db.select().from(insumosCatalogo).where(eq(insumosCatalogo.id, id)).limit(1);
   return rows[0];
+}
+
+// ─── Vínculo Contador ↔ Produtor ─────────────────────────────────────────────
+
+/** Cadastra um contador autorizado pelo produtor */
+export async function cadastrarContador(data: {
+  contadorCpf: string;
+  contadorNome: string;
+  contadorTelefone: string;
+  produtorCpf: string;
+  produtorId: number;
+}): Promise<ContadorVinculo> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const cpfClean = data.contadorCpf.replace(/\D/g, "");
+  // Verifica se já existe vínculo ativo para este contador+produtor
+  const existing = await db
+    .select()
+    .from(contadorVinculo)
+    .where(
+      and(
+        eq(contadorVinculo.contadorCpf, cpfClean),
+        eq(contadorVinculo.produtorCpf, data.produtorCpf),
+        eq(contadorVinculo.status, "ativo")
+      )
+    )
+    .limit(1);
+  if (existing.length > 0) throw new Error("Este contador já está vinculado a este produtor.");
+  const [result] = await db.insert(contadorVinculo).values({
+    contadorCpf: cpfClean,
+    contadorNome: data.contadorNome.trim(),
+    contadorTelefone: data.contadorTelefone.replace(/\D/g, ""),
+    produtorCpf: data.produtorCpf,
+    produtorId: data.produtorId,
+    status: "ativo",
+  });
+  const id = (result as { insertId: number }).insertId;
+  const rows = await db.select().from(contadorVinculo).where(eq(contadorVinculo.id, id)).limit(1);
+  return rows[0];
+}
+
+/** Lista os contadores ativos vinculados a um produtor */
+export async function listarContadoresPorProdutor(produtorCpf: string): Promise<ContadorVinculo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(contadorVinculo)
+    .where(
+      and(
+        eq(contadorVinculo.produtorCpf, produtorCpf),
+        eq(contadorVinculo.status, "ativo")
+      )
+    )
+    .orderBy(contadorVinculo.createdAt);
+}
+
+/** Revoga o acesso de um contador (soft delete) */
+export async function revogarContador(id: number, produtorCpf: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(contadorVinculo)
+    .set({ status: "revogado" })
+    .where(
+      and(
+        eq(contadorVinculo.id, id),
+        eq(contadorVinculo.produtorCpf, produtorCpf)
+      )
+    );
+}
+
+/**
+ * Busca todos os vínculos ativos para um CPF de contador.
+ * Usado no login OTP para determinar quais produtores o contador pode acessar.
+ */
+export async function getVinculosPorContador(contadorCpf: string): Promise<ContadorVinculo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const cpfClean = contadorCpf.replace(/\D/g, "");
+  return db
+    .select()
+    .from(contadorVinculo)
+    .where(
+      and(
+        eq(contadorVinculo.contadorCpf, cpfClean),
+        eq(contadorVinculo.status, "ativo")
+      )
+    );
 }

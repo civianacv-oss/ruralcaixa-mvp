@@ -388,6 +388,49 @@ export const appRouter = router({
       }),
   }),
 
+  // ── Contadores ────────────────────────────────────────────────────────────
+  contadores: router({
+    /** Lista os contadores ativos vinculados ao produtor logado */
+    listar: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+      if (claims.role !== "user") throw new TRPCError({ code: "FORBIDDEN", message: "Apenas produtores podem gerenciar contadores." });
+      return db.listarContadoresPorProdutor(claims.cpf);
+    }),
+    /** Cadastra um novo contador autorizado pelo produtor logado */
+    cadastrar: publicProcedure
+      .input(z.object({
+        contadorCpf: z.string().min(11, "CPF inválido"),
+        contadorNome: z.string().min(2, "Nome obrigatório"),
+        contadorTelefone: z.string().min(10, "Telefone inválido"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { getClaimsFromRequest } = await import("./railwayProxy");
+        const claims = await getClaimsFromRequest(ctx.req);
+        if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+        if (claims.role !== "user") throw new TRPCError({ code: "FORBIDDEN", message: "Apenas produtores podem cadastrar contadores." });
+        const vinculo = await db.cadastrarContador({
+          contadorCpf: input.contadorCpf,
+          contadorNome: input.contadorNome,
+          contadorTelefone: input.contadorTelefone,
+          produtorCpf: claims.cpf,
+          produtorId: claims.produtorId,
+        });
+        return { success: true, id: vinculo.id };
+      }),
+    /** Revoga o acesso de um contador */
+    revogar: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const { getClaimsFromRequest } = await import("./railwayProxy");
+        const claims = await getClaimsFromRequest(ctx.req);
+        if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+        if (claims.role !== "user") throw new TRPCError({ code: "FORBIDDEN", message: "Apenas produtores podem revogar contadores." });
+        await db.revogarContador(input.id, claims.cpf);
+        return { success: true };
+      }),
+  }),
   // ── Movements ─────────────────────────────────────────────────────────────
   movements: router({
     list: protectedProcedure

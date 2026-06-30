@@ -6,9 +6,14 @@
  *   - If produtor has telegram_chat_id: Telegram direct message via /telegram/mensagem-direta
  *   - If produtor has whatsappPriority=true: WhatsApp first, Telegram as fallback
  *   - Once Meta approves WhatsApp Business: set whatsappPriority=true globally or per-produtor
+ *
+ * Contador flow:
+ *   - Contadores are registered by the produtor (not self-registered)
+ *   - On sendOtp, if CPF matches a contador_vinculo record, OTP is sent to the contador's phone
+ *   - The contador can access all imóveis of the produtores that registered them
  */
 
-import { getProdutorConfig, getUserByCpf, getImoveisForProdutor } from "./db";
+import { getProdutorConfig, getUserByCpf, getImoveisForProdutor, getVinculosPorContador } from "./db";
 
 const RAILWAY_API = "https://ruralcaixa-mvp-production.up.railway.app";
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -212,7 +217,58 @@ export interface SendOtpResult {
 export async function sendOtp(cpf: string): Promise<SendOtpResult> {
   const cpfClean = cleanCpf(cpf);
 
-  // Find produtor in Railway
+  // ── Verificar se é um contador cadastrado por algum produtor ────────────────
+  const vinculos = await getVinculosPorContador(cpfClean).catch(() => [] as Awaited<ReturnType<typeof getVinculosPorContador>>);
+  if (vinculos.length > 0) {
+    // É um contador: usa os dados do vínculo para enviar o OTP
+    const vinculo = vinculos[0];
+
+    // Coleta todos os imóveis dos produtores vinculados (sem duplicatas)
+    const allImovelIds: number[] = [];
+    for (const v of vinculos) {
+      const imovelList = await fetchImoveis(v.produtorCpf).catch(() => [] as ImovelRaw[]);
+      for (const im of imovelList) {
+        if (!allImovelIds.includes(im.id)) allImovelIds.push(im.id);
+      }
+    }
+
+    const code = generateCode();
+    // Para o contador, produtorId = 0 (não é um produtor no Railway)
+    // O imovelId inicial é undefined — o contador escolhe o imóvel na tela de seleção
+    const entry: OtpEntry = {
+      code,
+      cpf: cpfClean,
+      produtorId: 0,
+      produtorNome: vinculo.contadorNome,
+      telefone: vinculo.contadorTelefone,
+      imovelId: undefined,
+      imovelCount: allImovelIds.length,
+      role: "admin",
+      expiresAt: Date.now() + OTP_TTL_MS,
+      attempts: 0,
+    };
+
+    // Envia OTP para o telefone do contador via WhatsApp ou Telegram grupo
+    let channel: SendOtpResult["channel"] = "telegram_group";
+    const wappOk = await sendWhatsApp(vinculo.contadorTelefone, code).catch(() => false);
+    if (wappOk) {
+      channel = "whatsapp";
+    } else {
+      await sendTelegramGroup(code, vinculo.contadorNome);
+    }
+
+    otpStore.set(cpfClean, entry);
+    console.log(`[OTP] Contador ${vinculo.contadorNome} via ${channel} (${maskPhone(vinculo.contadorTelefone)})`);
+
+    return {
+      success: true,
+      channel,
+      maskedPhone: maskPhone(vinculo.contadorTelefone),
+      produtorNome: vinculo.contadorNome,
+    };
+  }
+
+  // ── Fluxo normal: produtor ──────────────────────────────────────────────────
   const produtor = await fetchProdutor(cpfClean);
   if (!produtor) {
     throw new Error("CPF não encontrado. Verifique ou entre em contato.");
@@ -307,7 +363,8 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
   // Valid — remove from store (single use)
   otpStore.delete(cpfClean);
 
-  const openId = `rc_${entry.produtorId}`;
+  // For contadores (produtorId=0), use CPF as openId to avoid collision
+  const openId = entry.produtorId === 0 ? `rc_contador_${cpfClean}` : `rc_${entry.produtorId}`;
 
   return {
     success: true,

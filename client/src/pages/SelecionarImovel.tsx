@@ -1,104 +1,59 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { MapPin, Ruler, Users, ChevronRight, Leaf, Loader2, LogOut } from "lucide-react";
-import { getImoveis, getOvinoDashboard, getBovinoAnimais, clearSession, getProdutorNome, getProdutorId, setSession, setImovelNome, setRcToken, type Imovel } from "@/lib/api";
+import {
+  clearSession,
+  getProdutorNome,
+  getProdutorId,
+  setSession,
+  setImovelNome,
+  setRcToken,
+} from "@/lib/api";
 import { trpc } from "@/lib/trpc";
-
-interface ImovelEnriquecido extends Imovel {
-  totalOvinos?: number;
-  totalBovinos?: number;
-  loading?: boolean;
-}
 
 export default function SelecionarImovel() {
   const [, navigate] = useLocation();
-  const [imoveis, setImoveis] = useState<ImovelEnriquecido[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState<number | null>(null);
-  const [erro, setErro] = useState("");
 
   const produtorNome = getProdutorNome();
   const firstName = produtorNome.split(" ")[0];
 
-  useEffect(() => {
-    const produtorId = getProdutorId();
-    if (!produtorId) { navigate("/login"); return; }
-
-    // We need the CPF to fetch imoveis — stored in localStorage during OTP flow
-    const cpf = localStorage.getItem("rc_produtor_cpf") ?? "";
-    if (!cpf) {
-      // No CPF in session — show empty state instead of redirecting to login
-      setLoading(false);
-      setErro("Sessão expirada. Faça login novamente.");
-      return;
-    }
-
-    setLoading(true);
-    getImoveis(cpf)
-      .then(async (list) => {
-        // If only one imóvel, skip selection but still call switchImovel to mint rc_claims
-        if (list.length === 1) {
-          setSession(produtorId, produtorNome, list[0].id);
-          setImovelNome(list[0].nome);
-          // Fire-and-forget: mint rc_claims server-side, then navigate
-          fetch("/api/trpc/auth.switchImovel", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ json: { imovelId: list[0].id } }),
-            credentials: "include",
-          }).finally(() => navigate("/dashboard"));
-          return;
-        }
-
-        // Set base data immediately
-        setImoveis(list.map((im) => ({ ...im, loading: true })));
-        setLoading(false);
-
-        // Enrich each imóvel with herd counts in parallel
-        const enriched = await Promise.all(
-          list.map(async (im): Promise<ImovelEnriquecido> => {
-            const [ovinoDash, bovinos] = await Promise.allSettled([
-              getOvinoDashboard(im.id),
-              getBovinoAnimais(im.id),
-            ]);
-            return {
-              ...im,
-              loading: false,
-              totalOvinos:
-                ovinoDash.status === "fulfilled"
-                  ? ovinoDash.value.rebanho?.total_ativo ?? 0
-                  : 0,
-              totalBovinos:
-                bovinos.status === "fulfilled"
-                  ? (bovinos.value as unknown[]).length
-                  : 0,
-            };
-          })
-        );
-        setImoveis(enriched);
-      })
-      .catch(() => {
-        setErro("Não foi possível carregar as propriedades. Tente novamente.");
-        setLoading(false);
-      });
-  }, [navigate, produtorNome]);
+  // Busca imóveis via tRPC — o servidor aplica o filtro ACL por produtor
+  const { data: imoveis, isLoading, error } = trpc.railway.imoveis.useQuery(undefined, {
+    retry: false,
+  });
 
   const switchImovelMutation = trpc.auth.switchImovel.useMutation();
 
-  function handleSelect(imovel: ImovelEnriquecido) {
-    if (selecting) return;
-    setSelecting(imovel.id);
-    const produtorId = getProdutorId()!;
-    // Update localStorage for client-side state
-    setSession(produtorId, produtorNome, imovel.id);
-    setImovelNome(imovel.nome);
-    // Re-emit rc_claims cookie server-side so guards reflect the new imovelId
+  // Se só há 1 imóvel, seleciona automaticamente
+  useEffect(() => {
+    if (!imoveis || imoveis.length !== 1) return;
+    const produtorId = getProdutorId();
+    if (!produtorId) { navigate("/login"); return; }
+    const im = imoveis[0];
+    setSession(produtorId, produtorNome, im.id);
+    setImovelNome(im.nome);
     switchImovelMutation.mutate(
-      { imovelId: imovel.id },
+      { imovelId: im.id },
       {
-        onSuccess: (data) => {
-          if (data.rcClaimsToken) setRcToken(data.rcClaimsToken);
-        },
+        onSuccess: (data) => { if (data.rcClaimsToken) setRcToken(data.rcClaimsToken); },
+        onSettled: () => navigate("/dashboard"),
+      }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imoveis]);
+
+  function handleSelect(im: { id: number; nome: string }) {
+    if (selecting) return;
+    setSelecting(im.id);
+    const produtorId = getProdutorId();
+    if (!produtorId) { navigate("/login"); return; }
+    setSession(produtorId, produtorNome, im.id);
+    setImovelNome(im.nome);
+    switchImovelMutation.mutate(
+      { imovelId: im.id },
+      {
+        onSuccess: (data) => { if (data.rcClaimsToken) setRcToken(data.rcClaimsToken); },
         onSettled: () => setTimeout(() => navigate("/dashboard"), 200),
       }
     );
@@ -108,6 +63,8 @@ export default function SelecionarImovel() {
     clearSession();
     navigate("/login");
   }
+
+  const loading = isLoading || (imoveis?.length === 1);
 
   return (
     <div
@@ -137,11 +94,6 @@ export default function SelecionarImovel() {
           @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(18px) scale(0.97); }
             to   { opacity: 1; transform: translateY(0) scale(1); }
-          }
-          @keyframes pulse-ring {
-            0%   { transform: scale(0.95); box-shadow: 0 0 0 0 oklch(0.50 0.14 145 / 0.5); }
-            70%  { transform: scale(1);    box-shadow: 0 0 0 10px oklch(0.50 0.14 145 / 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 oklch(0.50 0.14 145 / 0); }
           }
         `}</style>
 
@@ -215,7 +167,7 @@ export default function SelecionarImovel() {
         )}
 
         {/* Error */}
-        {erro && (
+        {error && (
           <div
             className="rounded-xl px-4 py-3 text-[13px] mb-3"
             style={{
@@ -224,12 +176,12 @@ export default function SelecionarImovel() {
               color: "oklch(0.45 0.20 25)",
             }}
           >
-            {erro}
+            Não foi possível carregar as propriedades. Tente novamente.
           </div>
         )}
 
         {/* Imóvel cards */}
-        {!loading && imoveis.length > 0 && (
+        {!loading && imoveis && imoveis.length > 1 && (
           <div className="space-y-3">
             {imoveis.map((im, idx) => {
               const isSelecting = selecting === im.id;
@@ -269,9 +221,7 @@ export default function SelecionarImovel() {
                       }}
                     >
                       {isSelecting ? (
-                        <Loader2
-                          className="w-5 h-5 text-white animate-spin"
-                        />
+                        <Loader2 className="w-5 h-5 text-white animate-spin" />
                       ) : (
                         <span className="text-xl">🌾</span>
                       )}
@@ -279,19 +229,17 @@ export default function SelecionarImovel() {
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3
-                          className="text-[15px] font-bold truncate transition-colors"
-                          style={{
-                            fontFamily: "'Playfair Display', serif",
-                            color: isSelecting
-                              ? "oklch(0.28 0.10 145)"
-                              : "oklch(0.18 0.04 145)",
-                          }}
-                        >
-                          {im.nome}
-                        </h3>
-                      </div>
+                      <h3
+                        className="text-[15px] font-bold truncate transition-colors mb-1"
+                        style={{
+                          fontFamily: "'Playfair Display', serif",
+                          color: isSelecting
+                            ? "oklch(0.28 0.10 145)"
+                            : "oklch(0.18 0.04 145)",
+                        }}
+                      >
+                        {im.nome}
+                      </h3>
 
                       {/* Meta row */}
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
@@ -323,52 +271,6 @@ export default function SelecionarImovel() {
                           </span>
                         )}
                       </div>
-
-                      {/* Herd badges */}
-                      <div className="flex gap-2 mt-3 flex-wrap">
-                        {im.loading ? (
-                          <div
-                            className="h-5 w-24 rounded-full animate-pulse"
-                            style={{ background: "oklch(0.90 0.02 130)" }}
-                          />
-                        ) : (
-                          <>
-                            {(im.totalOvinos ?? 0) > 0 && (
-                              <span
-                                className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full"
-                                style={{
-                                  background: "oklch(0.94 0.04 145)",
-                                  color: "oklch(0.30 0.10 145)",
-                                }}
-                              >
-                                🐑 {im.totalOvinos} ovinos
-                              </span>
-                            )}
-                            {(im.totalBovinos ?? 0) > 0 && (
-                              <span
-                                className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full"
-                                style={{
-                                  background: "oklch(0.94 0.04 60)",
-                                  color: "oklch(0.35 0.10 60)",
-                                }}
-                              >
-                                🐄 {im.totalBovinos} bovinos
-                              </span>
-                            )}
-                            {(im.totalOvinos ?? 0) === 0 && (im.totalBovinos ?? 0) === 0 && (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full"
-                                style={{
-                                  background: "oklch(0.94 0.01 130)",
-                                  color: "oklch(0.60 0.03 140)",
-                                }}
-                              >
-                                Sem animais cadastrados
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </div>
                     </div>
 
                     {/* Arrow */}
@@ -384,6 +286,21 @@ export default function SelecionarImovel() {
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && imoveis && imoveis.length === 0 && (
+          <div
+            className="rounded-2xl p-8 text-center"
+            style={{
+              background: "oklch(1 0 0 / 0.97)",
+              boxShadow: "0 8px 24px oklch(0.10 0.04 145 / 0.20)",
+            }}
+          >
+            <p className="text-[14px]" style={{ color: "oklch(0.52 0.04 140)" }}>
+              Nenhuma propriedade encontrada para este CPF.
+            </p>
           </div>
         )}
 

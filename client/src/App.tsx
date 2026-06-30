@@ -32,6 +32,7 @@ import DCTFWeb from "./pages/DCTFWeb";
 import Insumos from "./pages/Insumos";
 import SimuladorTributacao from "./pages/SimuladorTributacao";
 import ProcuracaoGate from "./pages/ProcuracaoGate";
+import MeusContadores from "./pages/MeusContadores";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated, getRole } from "./lib/api";
@@ -117,6 +118,7 @@ function Router() {
       {/* Perfil e Admin */}
       <Route path="/perfil">{() => <ProtectedRoute component={Perfil} />}</Route>
       <Route path="/admin/procuracoes">{() => <ProtectedRoute component={AdminProcuracoes} />}</Route>
+      <Route path="/contadores">{() => <ProtectedRoute component={MeusContadores} />}</Route>
 
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

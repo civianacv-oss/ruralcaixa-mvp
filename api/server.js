@@ -360,6 +360,23 @@ var insumosCatalogo = mysqlTable("insumos_catalogo", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
 });
+var contadorVinculo = mysqlTable("contador_vinculo", {
+  id: int("id").autoincrement().primaryKey(),
+  /** CPF do contador (11 dígitos, sem formatação) */
+  contadorCpf: varchar("contadorCpf", { length: 14 }).notNull(),
+  /** Nome completo do contador */
+  contadorNome: varchar("contadorNome", { length: 255 }).notNull(),
+  /** Telefone do contador para receber OTP (formato: 5511999999999) */
+  contadorTelefone: varchar("contadorTelefone", { length: 20 }).notNull(),
+  /** CPF do produtor que autorizou o acesso (11 dígitos, sem formatação) */
+  produtorCpf: varchar("produtorCpf", { length: 14 }).notNull(),
+  /** Railway produtor.id do produtor que autorizou */
+  produtorId: int("produtorId").notNull(),
+  /** Status do vínculo */
+  status: mysqlEnum("status_cv", ["ativo", "revogado"]).default("ativo").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
+});
 
 // server/db.ts
 init_env();
@@ -710,6 +727,61 @@ async function upsertInsumosCatalogo(data) {
   const id = result.insertId;
   const rows = await db.select().from(insumosCatalogo).where(eq(insumosCatalogo.id, id)).limit(1);
   return rows[0];
+}
+async function cadastrarContador(data) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const cpfClean = data.contadorCpf.replace(/\D/g, "");
+  const existing = await db.select().from(contadorVinculo).where(
+    and(
+      eq(contadorVinculo.contadorCpf, cpfClean),
+      eq(contadorVinculo.produtorCpf, data.produtorCpf),
+      eq(contadorVinculo.status, "ativo")
+    )
+  ).limit(1);
+  if (existing.length > 0) throw new Error("Este contador j\xE1 est\xE1 vinculado a este produtor.");
+  const [result] = await db.insert(contadorVinculo).values({
+    contadorCpf: cpfClean,
+    contadorNome: data.contadorNome.trim(),
+    contadorTelefone: data.contadorTelefone.replace(/\D/g, ""),
+    produtorCpf: data.produtorCpf,
+    produtorId: data.produtorId,
+    status: "ativo"
+  });
+  const id = result.insertId;
+  const rows = await db.select().from(contadorVinculo).where(eq(contadorVinculo.id, id)).limit(1);
+  return rows[0];
+}
+async function listarContadoresPorProdutor(produtorCpf) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(contadorVinculo).where(
+    and(
+      eq(contadorVinculo.produtorCpf, produtorCpf),
+      eq(contadorVinculo.status, "ativo")
+    )
+  ).orderBy(contadorVinculo.createdAt);
+}
+async function revogarContador(id, produtorCpf) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(contadorVinculo).set({ status: "revogado" }).where(
+    and(
+      eq(contadorVinculo.id, id),
+      eq(contadorVinculo.produtorCpf, produtorCpf)
+    )
+  );
+}
+async function getVinculosPorContador(contadorCpf) {
+  const db = await getDb();
+  if (!db) return [];
+  const cpfClean = contadorCpf.replace(/\D/g, "");
+  return db.select().from(contadorVinculo).where(
+    and(
+      eq(contadorVinculo.contadorCpf, cpfClean),
+      eq(contadorVinculo.status, "ativo")
+    )
+  );
 }
 
 // server/_core/cookies.ts
@@ -1358,6 +1430,45 @@ async function smartSend(produtorId, telefone, code, nome) {
 }
 async function sendOtp(cpf) {
   const cpfClean = cleanCpf(cpf);
+  const vinculos = await getVinculosPorContador(cpfClean).catch(() => []);
+  if (vinculos.length > 0) {
+    const vinculo = vinculos[0];
+    const allImovelIds = [];
+    for (const v of vinculos) {
+      const imovelList2 = await fetchImoveis(v.produtorCpf).catch(() => []);
+      for (const im of imovelList2) {
+        if (!allImovelIds.includes(im.id)) allImovelIds.push(im.id);
+      }
+    }
+    const code2 = generateCode();
+    const entry2 = {
+      code: code2,
+      cpf: cpfClean,
+      produtorId: 0,
+      produtorNome: vinculo.contadorNome,
+      telefone: vinculo.contadorTelefone,
+      imovelId: void 0,
+      imovelCount: allImovelIds.length,
+      role: "admin",
+      expiresAt: Date.now() + OTP_TTL_MS,
+      attempts: 0
+    };
+    let channel2 = "telegram_group";
+    const wappOk = await sendWhatsApp(vinculo.contadorTelefone, code2).catch(() => false);
+    if (wappOk) {
+      channel2 = "whatsapp";
+    } else {
+      await sendTelegramGroup(code2, vinculo.contadorNome);
+    }
+    otpStore.set(cpfClean, entry2);
+    console.log(`[OTP] Contador ${vinculo.contadorNome} via ${channel2} (${maskPhone(vinculo.contadorTelefone)})`);
+    return {
+      success: true,
+      channel: channel2,
+      maskedPhone: maskPhone(vinculo.contadorTelefone),
+      produtorNome: vinculo.contadorNome
+    };
+  }
   const produtor = await fetchProdutor(cpfClean);
   if (!produtor) {
     throw new Error("CPF n\xE3o encontrado. Verifique ou entre em contato.");
@@ -1419,7 +1530,7 @@ async function verifyOtp(cpf, code) {
     );
   }
   otpStore.delete(cpfClean);
-  const openId = `rc_${entry.produtorId}`;
+  const openId = entry.produtorId === 0 ? `rc_contador_${cpfClean}` : `rc_${entry.produtorId}`;
   return {
     success: true,
     produtorId: entry.produtorId,
@@ -2418,6 +2529,45 @@ var appRouter = router({
         throw new TRPCError5({ code: "FORBIDDEN", message: "Acesso restrito ao administrador." });
       }
       await updateProcuracaoStatus(input.id, input.status, input.adminNota);
+      return { success: true };
+    })
+  }),
+  // ── Contadores ────────────────────────────────────────────────────────────
+  contadores: router({
+    /** Lista os contadores ativos vinculados ao produtor logado */
+    listar: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest: getClaimsFromRequest2 } = await Promise.resolve().then(() => (init_railwayProxy(), railwayProxy_exports));
+      const claims = await getClaimsFromRequest2(ctx.req);
+      if (!claims) throw new TRPCError5({ code: "UNAUTHORIZED", message: "Sess\xE3o inv\xE1lida." });
+      if (claims.role !== "user") throw new TRPCError5({ code: "FORBIDDEN", message: "Apenas produtores podem gerenciar contadores." });
+      return listarContadoresPorProdutor(claims.cpf);
+    }),
+    /** Cadastra um novo contador autorizado pelo produtor logado */
+    cadastrar: publicProcedure.input(z3.object({
+      contadorCpf: z3.string().min(11, "CPF inv\xE1lido"),
+      contadorNome: z3.string().min(2, "Nome obrigat\xF3rio"),
+      contadorTelefone: z3.string().min(10, "Telefone inv\xE1lido")
+    })).mutation(async ({ input, ctx }) => {
+      const { getClaimsFromRequest: getClaimsFromRequest2 } = await Promise.resolve().then(() => (init_railwayProxy(), railwayProxy_exports));
+      const claims = await getClaimsFromRequest2(ctx.req);
+      if (!claims) throw new TRPCError5({ code: "UNAUTHORIZED", message: "Sess\xE3o inv\xE1lida." });
+      if (claims.role !== "user") throw new TRPCError5({ code: "FORBIDDEN", message: "Apenas produtores podem cadastrar contadores." });
+      const vinculo = await cadastrarContador({
+        contadorCpf: input.contadorCpf,
+        contadorNome: input.contadorNome,
+        contadorTelefone: input.contadorTelefone,
+        produtorCpf: claims.cpf,
+        produtorId: claims.produtorId
+      });
+      return { success: true, id: vinculo.id };
+    }),
+    /** Revoga o acesso de um contador */
+    revogar: publicProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input, ctx }) => {
+      const { getClaimsFromRequest: getClaimsFromRequest2 } = await Promise.resolve().then(() => (init_railwayProxy(), railwayProxy_exports));
+      const claims = await getClaimsFromRequest2(ctx.req);
+      if (!claims) throw new TRPCError5({ code: "UNAUTHORIZED", message: "Sess\xE3o inv\xE1lida." });
+      if (claims.role !== "user") throw new TRPCError5({ code: "FORBIDDEN", message: "Apenas produtores podem revogar contadores." });
+      await revogarContador(input.id, claims.cpf);
       return { success: true };
     })
   }),
