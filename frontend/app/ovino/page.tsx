@@ -441,12 +441,14 @@ export default function OvinoDashboard() {
               </span>
             )}
           </div>
-          {resultadoReclass && resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
+            {resultadoReclass && (Array.isArray(resultadoReclass?.detalhes) ? resultadoReclass.detalhes : []).filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
+
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
               <strong style={{ display: "block", marginBottom: 6, color: "#15803d" }}>
                 {resultadoReclass.dry_run ? "Seria movido:" : "Movido:"}
               </strong>
-              {resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
+              {(Array.isArray(resultadoReclass?.detalhes) ? resultadoReclass.detalhes : []).filter...
+                ((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
                 <div key={i} style={{ marginBottom: 2 }}>
                   <span style={{ fontWeight: 600, color: "#15803d" }}>{d.brinco}</span>
                   {" → "}<span style={{ fontWeight: 600 }}>{d.fase}</span>
