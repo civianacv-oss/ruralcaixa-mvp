@@ -17,6 +17,7 @@ import { parse as parseCookieHeader } from "cookie";
 import { ENV } from "./_core/env";
 import { TRPCError } from "@trpc/server";
 import type { Request } from "express";
+import { getRailwayToken } from "./db";
 
 export const RAILWAY_API = "https://ruralcaixa-mvp-production.up.railway.app";
 
@@ -90,11 +91,18 @@ export function assertProdutor(claims: RcClaims, requestedProdutorId: number) {
 
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
-export async function railwayFetch<T>(path: string, options?: RequestInit): Promise<T> {
+export async function railwayFetch<T>(path: string, options?: RequestInit, produtorId?: number): Promise<T> {
+  // Resolve the Railway api_token for this produtor (if available)
+  let authHeader: Record<string, string> = {};
+  if (produtorId) {
+    const token = await getRailwayToken(produtorId).catch(() => null);
+    if (token) authHeader = { Authorization: `Bearer ${token}` };
+  }
   const fetchOptions: RequestInit = {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...(options?.headers ?? {}),
     },
   };

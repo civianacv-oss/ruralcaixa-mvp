@@ -169,6 +169,8 @@ export const produtorImovel = mysqlTable("produtor_imovel", {
   produtorId: int("produtorId").notNull(),
   /** Railway imovel.id */
   imovelId: int("imovelId").notNull(),
+  /** Railway api_token for this produtor (used in Authorization header) */
+  railwayToken: varchar("railwayToken", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

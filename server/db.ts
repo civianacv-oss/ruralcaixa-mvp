@@ -342,6 +342,18 @@ export async function getImoveisForProdutor(produtorId: number): Promise<number[
   return rows.map((r) => r.imovelId);
 }
 
+/** Returns the Railway api_token for a given produtorId (used in Authorization header) */
+export async function getRailwayToken(produtorId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ railwayToken: produtorImovel.railwayToken })
+    .from(produtorImovel)
+    .where(eq(produtorImovel.produtorId, produtorId))
+    .limit(1);
+  return rows[0]?.railwayToken ?? null;
+}
+
 // ─── Procurações ──────────────────────────────────────────────────────────────
 
 /** Cria uma nova procuração com status pendente */

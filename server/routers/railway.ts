@@ -1043,4 +1043,53 @@ export const railwayRouter = router({
       const res = await railwayMutate<unknown>(`/produtores/${input.produtorId}/fechar-mes`, "POST");
       return res;
     }),
+
+  // ── Agricultura ────────────────────────────────────────────────
+  culturas: publicProcedure
+    .query(async ({ ctx }) => {
+      const claims = await requireClaims(ctx.req);
+      const res = await railwayFetch<unknown[]>("/agricultura/culturas", undefined, claims.produtorId);
+      return Array.isArray(res) ? res : [];
+    }),
+
+  safras: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const raw = await railwayFetch<unknown>(
+        `/agricultura/imoveis/${input.imovelId}/safras`,
+        undefined,
+        claims.produtorId,
+      );
+      const data = raw as { safras?: unknown[]; items?: unknown[] } | unknown[];
+      return Array.isArray(data) ? data : (data as { safras?: unknown[] }).safras ?? (data as { items?: unknown[] }).items ?? [];
+    }),
+
+  criarSafra: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      cultura: z.string(),
+      area_ha: z.number().optional(),
+      data_plantio: z.string().optional(),
+      data_colheita_prevista: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayFetch<unknown>(
+        `/agricultura/imoveis/${input.imovelId}/safras`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            cultura: input.cultura,
+            area_ha: input.area_ha,
+            data_plantio: input.data_plantio,
+            data_colheita_prevista: input.data_colheita_prevista,
+            imovel_id: input.imovelId,
+          }),
+        },
+        claims.produtorId,
+      );
+    }),
 });

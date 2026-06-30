@@ -1,15 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Plus, Sprout, RefreshCw, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
+import { getImovelId } from "@/lib/api";
 
 interface Safra {
   id: number;
@@ -27,20 +27,6 @@ interface Cultura {
   nome: string;
 }
 
-async function fetchSafras(imovelId: number): Promise<Safra[]> {
-  const res = await fetch(`${API_BASE}/agricultura/imoveis/${imovelId}/safras`);
-  if (!res.ok) throw new Error("Erro ao buscar safras");
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.safras ?? data.items ?? [];
-}
-
-async function fetchCulturas(): Promise<Cultura[]> {
-  const res = await fetch(`${API_BASE}/agricultura/culturas`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.culturas ?? [];
-}
-
 const STATUS_COLORS: Record<string, string> = {
   plantado: "bg-emerald-100 text-emerald-700",
   em_crescimento: "bg-blue-100 text-blue-700",
@@ -49,60 +35,44 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function Agricultura() {
-  const [safras, setSafras] = useState<Safra[]>([]);
-  const [culturas, setCulturas] = useState<Cultura[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ cultura: "", area_ha: "", data_plantio: "", data_colheita_prevista: "" });
   const imovelId = getImovelId();
+  const utils = trpc.useUtils();
 
-  const load = async () => {
-    if (!imovelId) return;
-    setLoading(true);
-    try {
-      const [s, c] = await Promise.all([fetchSafras(imovelId), fetchCulturas()]);
-      setSafras(s);
-      setCulturas(c);
-    } catch {
-      toast.error("Não foi possível carregar as safras");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const safrasQuery = trpc.railway.safras.useQuery(
+    { imovelId: imovelId! },
+    { enabled: !!imovelId },
+  );
+  const culturasQuery = trpc.railway.culturas.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
 
-  useEffect(() => { load(); }, [imovelId]);
+  const criarSafra = trpc.railway.criarSafra.useMutation({
+    onSuccess: () => {
+      utils.railway.safras.invalidate({ imovelId: imovelId! });
+      setShowNew(false);
+      setForm({ cultura: "", area_ha: "", data_plantio: "", data_colheita_prevista: "" });
+      toast.success("Safra criada com sucesso");
+    },
+    onError: (e) => toast.error(e.message ?? "Erro ao criar safra"),
+  });
+
+  const safras = (safrasQuery.data ?? []) as Safra[];
+  const culturas = (culturasQuery.data ?? []) as Cultura[];
+  const loading = safrasQuery.isLoading;
 
   const totalArea = safras.reduce((s, x) => s + (x.area_ha ?? 0), 0);
   const ativas = safras.filter((s) => s.status === "plantado" || s.status === "em_crescimento").length;
 
-  const handleCreate = async () => {
+  const handleCreate = () => {
     if (!form.cultura.trim()) { toast.error("Informe a cultura"); return; }
     if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
-    setSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/agricultura/imoveis/${imovelId}/safras`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cultura: form.cultura,
-          area_ha: form.area_ha ? Number(form.area_ha) : undefined,
-          data_plantio: form.data_plantio || undefined,
-          data_colheita_prevista: form.data_colheita_prevista || undefined,
-          imovel_id: imovelId,
-        }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? "Erro"); }
-      const nova = await res.json();
-      setSafras((prev) => [nova, ...prev]);
-      setShowNew(false);
-      setForm({ cultura: "", area_ha: "", data_plantio: "", data_colheita_prevista: "" });
-      toast.success("Safra criada com sucesso");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao criar safra");
-    } finally {
-      setSaving(false);
-    }
+    criarSafra.mutate({
+      imovelId,
+      cultura: form.cultura,
+      area_ha: form.area_ha ? Number(form.area_ha) : undefined,
+      data_plantio: form.data_plantio || undefined,
+      data_colheita_prevista: form.data_colheita_prevista || undefined,
+    });
   };
 
   return (
@@ -113,7 +83,7 @@ export default function Agricultura() {
           <p className="text-sm text-muted-foreground mt-0.5">Culturas, safras e produção agrícola</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => safrasQuery.refetch()} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
@@ -215,8 +185,8 @@ export default function Agricultura() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={saving} style={{ background: "oklch(0.42 0.14 145)" }}>
-              {saving ? "Salvando..." : "Criar Safra"}
+            <Button onClick={handleCreate} disabled={criarSafra.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
+              {criarSafra.isPending ? "Salvando..." : "Criar Safra"}
             </Button>
           </DialogFooter>
         </DialogContent>
