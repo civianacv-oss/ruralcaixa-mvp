@@ -3,31 +3,19 @@
   "buildCommand": "pnpm install && pnpm build",
   "installCommand": "pnpm install",
   "framework": null,
-  "functions": {
-    "api/server.js": {
-      "maxDuration": 30
+  "outputDirectory": "dist/public",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/server.js"
+    },
+    {
+      "source": "/manus-storage/:path*",
+      "destination": "/api/server.js"
+    },
+    {
+      "source": "/((?!assets|favicon).*)",
+      "destination": "/index.html"
     }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/server.js"
-    },
-    {
-      "src": "/manus-storage/(.*)",
-      "dest": "/api/server.js"
-    },
-    {
-      "src": "/assets/(.*)",
-      "dest": "/dist/public/assets/$1"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/public/index.html"
-    }
-  ],
-  "outputDirectory": "dist/public"
+  ]
 }
