@@ -1,9 +1,10 @@
 "use client";
+import { getImovelId } from "@/hooks/useImovel";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import GuiaInicio from "@/components/GuiaInicio";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
-const IMOVEL_ID = 1;
 
 // ── tipos ─────────────────────────────────────────────────────
 type Lancamento = {
@@ -46,7 +47,6 @@ const Icons = {
 // ── componente principal ──────────────────────────────────────
 export default function Dashboard() {
   const [activeMenu, setActiveMenu] = useState("dashboard");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [animaisAtivos, setAnimaisAtivos] = useState(0);
   const [showEspecieModal, setShowEspecieModal] = useState(false);
@@ -55,25 +55,43 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [safrasAtivas, setSafrasAtivas] = useState(0);
   const [safrasResumo, setSafrasResumo] = useState<any[]>([]);
+  const [totalPropriedades, setTotalPropriedades] = useState(0);
   const [novoLanc, setNovoLanc] = useState({tipo:"despesa",valor:"",descricao:"",conta:"2.1"});
   const [salvando, setSalvando] = useState(false);
+  const [IMOVEL_ID, setImovelId] = useState<number | null>(null);
 
-  useEffect(() => { carregarDados(); }, []);
+  // ✅ MOVER getImovelId() PARA DENTRO DO useEffect
+  useEffect(() => {
+    try {
+      const id = getImovelId();
+      setImovelId(id);
+    } catch (e) {
+      console.error("Erro ao obter IMOVEL_ID:", e);
+      setImovelId(null);
+    }
+  }, []);
+
+  useEffect(() => { 
+    if (IMOVEL_ID !== null) {
+      carregarDados(); 
+    }
+  }, [IMOVEL_ID]);
 
   async function carregarDados() {
+    if (IMOVEL_ID === null) return;
     setLoading(true);
     try {
       const [lancs, animais] = await Promise.all([
-        fetch(`${API}/produtores/1/lancamentos`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/produtores/1/lancamentos`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API}/ovino/animais?imovel_id=${IMOVEL_ID}&status=ativo`).then(r => r.json()).catch(() => []),
       ]);
       const ls = Array.isArray(lancs) ? lancs : [];
       setLancamentos(ls);
-      const rec = ls.filter((l:Lancamento) => l.tipo==="receita").reduce((s:number,l:Lancamento)=>s+l.valor,0);
-      const desp = ls.filter((l:Lancamento) => l.tipo==="despesa").reduce((s:number,l:Lancamento)=>s+l.valor,0);
+      const rec = (Array.isArray(ls) ? ls : []).filter((l:Lancamento) => l.tipo==="receita").reduce((s:number,l:Lancamento)=>s+l.valor,0);
+      const desp = (Array.isArray(ls) ? ls : []).filter((l:Lancamento) => l.tipo==="despesa").reduce((s:number,l:Lancamento)=>s+l.valor,0);
       setFinanceiro({receitas:rec,despesas:desp,saldo:rec-desp});
       const anim = Array.isArray(animais) ? animais : [];
-      fetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
+      apiFetch(`${API}/bovino/animais/1?status=ativo`).then(r=>r.json()).catch(()=>[]).then(bov=>{
         const bovCount = Array.isArray(bov) ? bov.length : 0;
         setAnimaisAtivos(anim.length + bovCount);
         setTotalAnimaisEspecie({ovino:anim.length,bovino:bovCount,caprino:0,suino:0});
@@ -81,46 +99,25 @@ export default function Dashboard() {
     } catch(e) { console.error(e); }
     // Buscar safras ativas
     try {
-      const resSafras = await fetch(`${API}/agricultura/imoveis/1/safras/resumo`);
+      const resSafras = await apiFetch(`${API}/agricultura/imoveis/1/safras/resumo`);
       if (resSafras.ok) {
         const dataSafras = await resSafras.json();
         const arr = Array.isArray(dataSafras) ? dataSafras : [];
         setSafrasResumo(arr);
-        setSafrasAtivas(arr.filter((s: any) => ['em_andamento','colhida','planejada'].includes(s.status)).length);
+        setSafrasAtivas((Array.isArray(arr) ? arr : []).filter((s: any) => ['em_andamento','colhida','planejada'].includes(s.status)).length);
       }
     } catch(e) { console.error('safras', e); }
+    // Busca propriedades
+    try {
+      const rProp = await apiFetch(`${API}/propriedades-rural/`);
+      if (rProp.ok) {
+        const dProp = await rProp.json();
+        setTotalPropriedades((dProp.data || []).length);
+      }
+    } catch(e) { console.error('propriedades', e); }
     setLoading(false);
   }
 
-  // ── sidebar nav ──────────────────────────────────────────────
-  const navGestao = [
-    {id:"dashboard",   label:"Painel Principal",        icon:Icons.dashboard,  href:"/"},
-    {id:"propriedades",label:"Propriedades",      icon:Icons.property,   href:"/cadastro"},
-    {id:"contratos",   label:"Contratos Rurais",  icon:Icons.contracts,  href:"/contratos"},
-    {id:"acerto-contrato",label:"Acerto de Contrato",icon:Icons.financial,  href:"/contratos/acerto"},
-    {id:"lancamentos", label:"Lançamentos",        icon:Icons.financial,  href:"/lancamentos"},
-    {id:"rebanhos",    label:"Rebanhos",          icon:Icons.animals,    href:"/rebanho"},
-    {id:"agricultura", label:"Agricultura",        icon:Icons.crops,      href:"/agricultura"},
-    {id:"saude",       label:"Saúde Animal",      icon:Icons.health,     href:"/bovino"},
-    {id:"reproducao",  label:"Reprodução",        icon:Icons.reproduce,  href:"/bovino"},
-    {id:"financeiro",  label:"Financeiro",        icon:Icons.financial,  href:"/relatorio"},
-    {id:"relatorios",  label:"Relatórios",        icon:Icons.reports,    href:"/relatorio"},
-    {id:"nfe",         label:"NF-e Produtor",      icon:Icons.financial,  href:"/nfe"},
-    {id:"esocial",     label:"eSocial Rural",      icon:Icons.users,      href:"/esocial"},
-    {id:"compravenda", label:"Compra e Venda",       icon:Icons.financial,  href:"/compravenda"},
-    {id:"acai",         label:"Cultivo de Açaí",       icon:Icons.plant,      href:"/acai"},
-    {id:"efdreinf",       label:"EFD-Reinf / DARF",         icon:Icons.document,   href:"/efdreinf"},
-    {id:"dctfweb",         label:"DCTFWeb",                   icon:Icons.document,   href:"/dctfweb"},
-    {id:"livro-caixa",     label:"Livro Caixa Rural",         icon:Icons.financial,  href:"/livro-caixa"},
-    {id:"dirpf",           label:"DIRPF Atividade Rural",     icon:Icons.document,   href:"/dirpf"},
-    {id:"apuracao-pj",    label:"Apuração PJ",                icon:Icons.calculator, href:"/apuracao-pj"},
-    {id:"acertos-lista",   label:"Acertos (Histórico)",       icon:Icons.financial,  href:"/contratos/acertos"},
-    {id:"simulador-regime",label:"Simulador Tributário",      icon:Icons.calculator, href:"/simulador-regime"},
-  ];
-  const navAdmin = [
-    {id:"usuarios",     label:"Usuários",        icon:Icons.users,     href:"/terceiros"},
-    {id:"configuracoes",label:"Configurações",   icon:Icons.settings,  href:"/"},
-  ];
 
   const especieBar = [
     {label:"Bovinos",  key:"bovino",  color:"#7c9e6b", icon:"🐄"},
@@ -134,73 +131,6 @@ export default function Dashboard() {
     <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans',system-ui,sans-serif",background:"#f5f0e8",overflow:"hidden"}}>
       <GuiaInicio />
 
-      {/* ── SIDEBAR ──────────────────────────────────────────── */}
-      <aside style={{
-        width: sidebarOpen ? 220 : 0,
-        minWidth: sidebarOpen ? 220 : 0,
-        background:"#1a2e1a",
-        color:"#e8e0d0",
-        display:"flex",
-        flexDirection:"column",
-        transition:"all 0.3s ease",
-        overflow:"hidden",
-        flexShrink:0,
-      }}>
-        {/* logo */}
-        <div style={{padding:"20px 20px 8px",borderBottom:"1px solid #2d4a2d"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{background:"#5a8a3a",borderRadius:8,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🌿</div>
-            <div>
-              <div style={{fontWeight:700,fontSize:15,color:"#e8e0d0",letterSpacing:"-0.3px"}}>RuralCaixa</div>
-              <div style={{fontSize:10,color:"#7a9a6a",letterSpacing:"2px",textTransform:"uppercase"}}>Rural</div>
-            </div>
-          </div>
-        </div>
-
-        {/* nav gestão */}
-        <div style={{padding:"16px 8px 8px",flex:1,overflowY:"auto"}}>
-          <div style={{fontSize:10,color:"#5a7a5a",letterSpacing:"2px",textTransform:"uppercase",padding:"0 12px",marginBottom:8}}>Gestão</div>
-          {navGestao.map(item => (
-            <a key={item.id} href={item.href || "#"}
-              onClick={() => setActiveMenu(item.id)}
-              style={{
-                display:"flex",alignItems:"center",gap:10,
-                padding:"9px 12px",borderRadius:8,marginBottom:2,
-                color: activeMenu===item.id ? "#c8e6b0" : "#a0b890",
-                background: activeMenu===item.id ? "#2d4a2d" : "transparent",
-                textDecoration:"none",fontSize:13.5,fontWeight:activeMenu===item.id?600:400,
-                cursor:"pointer",transition:"all 0.15s",
-              }}>
-              <span style={{opacity:activeMenu===item.id?1:0.7}}>{item.icon}</span>
-              {item.label}
-              {activeMenu===item.id && <div style={{marginLeft:"auto",width:6,height:6,borderRadius:"50%",background:"#7ac05a"}}/>}
-            </a>
-          ))}
-
-          <div style={{fontSize:10,color:"#5a7a5a",letterSpacing:"2px",textTransform:"uppercase",padding:"16px 12px 8px",marginTop:8}}>Administração</div>
-          {navAdmin.map(item => (
-            <a key={item.id} href="#"
-              onClick={e => {e.preventDefault();setActiveMenu(item.id);}}
-              style={{
-                display:"flex",alignItems:"center",gap:10,
-                padding:"9px 12px",borderRadius:8,marginBottom:2,
-                color: activeMenu===item.id ? "#c8e6b0" : "#a0b890",
-                background: activeMenu===item.id ? "#2d4a2d" : "transparent",
-                textDecoration:"none",fontSize:13.5,cursor:"pointer",transition:"all 0.15s",
-              }}>
-              <span style={{opacity:0.7}}>{item.icon}</span>
-              {item.label}
-            </a>
-          ))}
-        </div>
-
-        {/* fazenda */}
-        <div style={{padding:"12px 16px",borderTop:"1px solid #2d4a2d",fontSize:12,color:"#7a9a6a"}}>
-          <div style={{fontWeight:600,color:"#a8c890",marginBottom:2}}>Fazenda Boa Esperança</div>
-          <div>Imóvel #1 · Maranhão</div>
-        </div>
-      </aside>
-
       {/* ── MAIN ─────────────────────────────────────────────── */}
       <main style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column"}}>
 
@@ -212,10 +142,6 @@ export default function Dashboard() {
           display:"flex",alignItems:"center",gap:16,
           position:"sticky",top:0,zIndex:10,
         }}>
-          <button onClick={()=>setSidebarOpen(!sidebarOpen)}
-            style={{background:"none",border:"none",cursor:"pointer",color:"#4a6a3a",padding:4}}>
-            {Icons.menu}
-          </button>
           <div>
             <h1 style={{margin:0,fontSize:22,fontWeight:700,color:"#1a2e1a",letterSpacing:"-0.5px"}}>Painel Principal</h1>
             <p style={{margin:0,fontSize:13,color:"#7a8a6a"}}>Visão geral da sua operação agropecuária</p>
@@ -236,7 +162,7 @@ export default function Dashboard() {
           {/* ── KPI CARDS ──────────────────────────────────── */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:24}}>
             {[
-              {label:"Propriedades",    value:"1",          sub:"Imóveis cadastrados",  icon:"📍", color:"#4a6a3a"},
+              {label:"Propriedades",    value:String(totalPropriedades),          sub:"Imóveis cadastrados",  icon:"📍", color:"#4a6a3a"},
               {label:"Animais Ativos",  value:String(animaisAtivos), sub:"Rebanho total",icon:"🐑", color:"#5a7a4a"},
               {label:"Saldo do Ano",    value:fmtBRL(financeiro.saldo), sub:`Receitas: ${fmtBRL(financeiro.receitas)}`, icon:"💰", color:financeiro.saldo>=0?"#3a6a4a":"#8a3a3a", trend:financeiro.saldo>=0?"up":"down"},
               {label:"Lançamentos",     value:String(lancamentos.length), sub:"Registros financeiros", icon:"📋", color:"#4a5a7a"},
@@ -415,4 +341,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

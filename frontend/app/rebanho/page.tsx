@@ -1,10 +1,12 @@
 "use client";
+import { getImovelId } from "@/hooks/useImovel";
+import { apiFetch } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import BannerOrientacao from "@/components/BannerOrientacao";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
-const IMOVEL_ID = 1;
+const IMOVEL_ID = getImovelId();
 
 type EspecieCard = {
   label: string;
@@ -92,9 +94,9 @@ export default function RebanhoPage() {
   const [counts, setCounts] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
-    ESPECIES.filter(e => e.disponivel && e.fetchUrl).forEach(async (e) => {
+    (Array.isArray(ESPECIES) ? ESPECIES : []).filter(e => e.disponivel && e.fetchUrl).forEach(async (e) => {
       try {
-        const r = await fetch(`${API}${e.fetchUrl}`);
+        const r = await apiFetch(`${API}${e.fetchUrl}`);
         const data = await r.json();
         setCounts(prev => ({
           ...prev,
