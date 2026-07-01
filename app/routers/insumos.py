@@ -219,13 +219,30 @@ def criar_insumo(body: InsumoCreate, request: Request):
     fazenda_id = _auth(request)
     with get_db() as conn:
         with conn.cursor() as cur:
+            # ── PROTEÇÃO ANTI-DUPLICATA: verificar se já existe insumo com mesmo nome ──
+            nome_normalizado = body.nome.strip().lower()
+            cur.execute("""
+                SELECT id, nome, estoque_atual FROM insumos
+                WHERE fazenda_id = %s AND ativo = TRUE
+                  AND LOWER(TRIM(nome)) = %s
+                LIMIT 1
+            """, (fazenda_id, nome_normalizado))
+            existente = cur.fetchone()
+            if existente:
+                # Retorna o insumo existente sem criar duplicata (409 Conflict seria ideal,
+                # mas retornamos 200 com o existente para não quebrar fluxos de importação)
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Insumo '{body.nome}' já existe (id={existente['id']}). Use PUT /insumos/{existente['id']} para atualizar."
+                )
+
             cur.execute("""
                 INSERT INTO insumos (fazenda_id, nome, descricao, categoria, unidade, origem,
                     estoque_atual, estoque_minimo, estoque_ideal, preco_estimado,
                     fornecedor_id, reposicao_modo, lead_time_dias)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING *
-            """, (fazenda_id, body.nome, body.descricao, body.categoria, body.unidade,
+            """, (fazenda_id, body.nome.strip(), body.descricao, body.categoria, body.unidade,
                   body.origem, body.estoque_atual, body.estoque_minimo, body.estoque_ideal,
                   body.preco_estimado, body.fornecedor_id, body.reposicao_modo, body.lead_time_dias))
             conn.commit()

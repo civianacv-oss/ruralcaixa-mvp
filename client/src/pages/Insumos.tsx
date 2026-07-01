@@ -205,9 +205,13 @@ export default function Insumos() {
     unmapped: { nome: string; linha: number }[];
     catalog: any[];
     total: number;
+    total_original?: number;
+    duplicatas_removidas?: number;
+    linhas_sem_nome?: number;
+    linhas_zeradas?: { nome: string; linha: number }[];
   } | null>(null);
   const [importMappings, setImportMappings] = useState<Record<string, string>>({});
-  const [importResult, setImportResult] = useState<{ total: number; success: number; errors: number; results: { nome: string; ok: boolean; error?: string; codigo?: string; action?: string }[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ total: number; success: number; errors: number; criados?: number; atualizados?: number; results: { nome: string; ok: boolean; error?: string; codigo?: string; action?: string }[] } | null>(null);
 
   const analisarPlanilha = trpc.railway.analisarPlanilhaInsumos.useMutation({
     onSuccess: (data: any) => {
@@ -397,13 +401,43 @@ export default function Insumos() {
               <div className="space-y-4">
                 <div className="rounded-lg border bg-muted/20 p-3 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold">{importPreview.total} linhas encontradas</p>
+                    <p className="text-sm font-semibold">{importPreview.total} insumos únicos encontrados</p>
                     <p className="text-xs text-muted-foreground">{importPreview.unmapped.length} nome(s) não encontrado(s) no catálogo</p>
                   </div>
                   {importPreview.unmapped.length === 0 && (
                     <Badge className="bg-green-100 text-green-700 border-green-200">Todos mapeados ✓</Badge>
                   )}
                 </div>
+
+                {/* Aviso de duplicatas removidas */}
+                {(importPreview.duplicatas_removidas ?? 0) > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+                    <span className="text-amber-600 text-base mt-0.5">⚠️</span>
+                    <div>
+                      <p className="text-xs font-semibold text-amber-800">
+                        {importPreview.duplicatas_removidas} linha(s) duplicada(s) removida(s) automaticamente
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        A planilha continha nomes repetidos. Apenas a primeira ocorrência de cada insumo foi mantida.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Aviso de valores zerados */}
+                {(importPreview.linhas_zeradas?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 flex items-start gap-2">
+                    <span className="text-blue-600 text-base mt-0.5">ℹ️</span>
+                    <div>
+                      <p className="text-xs font-semibold text-blue-800">
+                        {importPreview.linhas_zeradas!.length} insumo(s) com estoque e preço zerados
+                      </p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        Esses insumos serão cadastrados com estoque zero. Você pode registrar movimentações após a importação.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {importPreview.unmapped.length > 0 ? (
                   <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -470,14 +504,18 @@ export default function Insumos() {
             {/* ETAPA 3: Resultado */}
             {importStep === "resultado" && importResult && (
               <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="grid grid-cols-4 gap-2 text-center">
                   <div className="rounded-lg bg-muted/40 p-3">
                     <p className="text-2xl font-bold">{importResult.total}</p>
                     <p className="text-xs text-muted-foreground">Total</p>
                   </div>
-                  <div className="rounded-lg bg-green-50 border border-green-200 p-3">
-                    <p className="text-2xl font-bold text-green-700">{importResult.success}</p>
-                    <p className="text-xs text-green-600">Importados</p>
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+                    <p className="text-2xl font-bold text-emerald-700">{importResult.criados ?? 0}</p>
+                    <p className="text-xs text-emerald-600">Criados</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                    <p className="text-2xl font-bold text-blue-700">{importResult.atualizados ?? 0}</p>
+                    <p className="text-xs text-blue-600">Atualizados</p>
                   </div>
                   <div className={`rounded-lg p-3 ${importResult.errors > 0 ? "bg-red-50 border border-red-200" : "bg-muted/40"}`}>
                     <p className={`text-2xl font-bold ${importResult.errors > 0 ? "text-red-700" : "text-muted-foreground"}`}>{importResult.errors}</p>

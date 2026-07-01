@@ -832,7 +832,7 @@ export const railwayRouter = router({
       };
 
       // Parsear as 10 colunas oficiais de cada linha
-      const parsedRows = rows.map((row, idx) => ({
+      const allParsedRows = rows.map((row, idx) => ({
         _linha: idx + 2,
         nome: normalize(col(row, "nome", "name", "insumo", "produto")),
         categoria: normalize(col(row, "categoria", "category", "tipo")) || "outros",
@@ -846,10 +846,30 @@ export const railwayRouter = router({
         lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
       }));
 
+      // ── VALIDAÇÃO 1: Normalização de nomes para deduplicação ──────────────────
+      const normalizeNome = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+      // ── VALIDAÇÃO 2: Remover linhas sem nome (cabeçalhos extras, totais, etc.) ─
+      const rowsComNome = allParsedRows.filter(r => r.nome.length > 0);
+
+      // ── VALIDAÇÃO 3: Deduplicar por nome normalizado (manter 1ª ocorrência) ───
+      const seenNomesAnalise = new Set<string>();
+      const parsedRows = rowsComNome.filter(r => {
+        const key = normalizeNome(r.nome);
+        if (seenNomesAnalise.has(key)) return false;
+        seenNomesAnalise.add(key);
+        return true;
+      });
+
+      // ── VALIDAÇÃO 4: Identificar linhas com valores zerados (aviso ao usuário) ─
+      const linhasZeradas = parsedRows
+        .filter(r => r.estoque_atual === 0 && r.preco_estimado === 0)
+        .map(r => ({ nome: r.nome, linha: r._linha }));
+
       // Identificar nomes sem correspondente no catálogo
       const catalog = await listInsumosCatalogo(input.imovelId);
       const catalogNomes = new Set(catalog.map((c) => c.nomeNormalizado));
-      const normalizeNome = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 
       const unmapped: { nome: string; linha: number }[] = [];
       const seen = new Set<string>();
@@ -862,7 +882,16 @@ export const railwayRouter = router({
         }
       }
 
-      return { rows: parsedRows, unmapped, catalog, total: parsedRows.length };
+      return {
+        rows: parsedRows,
+        unmapped,
+        catalog,
+        total: parsedRows.length,
+        total_original: allParsedRows.length,
+        duplicatas_removidas: allParsedRows.length - parsedRows.length - (allParsedRows.length - rowsComNome.length),
+        linhas_sem_nome: allParsedRows.length - rowsComNome.length,
+        linhas_zeradas: linhasZeradas,
+      };
     }),
 
   /**
@@ -891,13 +920,38 @@ export const railwayRouter = router({
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
 
-      const results: { nome: string; codigo?: string; ok: boolean; action?: "criado" | "atualizado"; error?: string }[] = [];
+      const results: { nome: string; codigo?: string; ok: boolean; action?: "criado" | "atualizado" | "ignorado"; error?: string }[] = [];
 
-      for (const row of input.rows) {
+      // ── VALIDAÇÃO 1: Deduplicar as rows recebidas por nome normalizado ───────────────
+      const normalizeNomeConf = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const seenNomesConf = new Set<string>();
+      const rowsUnicas = input.rows.filter(r => {
+        if (!r.nome) return false;
+        const key = normalizeNomeConf(r.nome);
+        if (seenNomesConf.has(key)) return false;
+        seenNomesConf.add(key);
+        return true;
+      });
+
+      // ── VALIDAÇÃO 2: Buscar insumos já existentes no Railway para evitar duplicatas ──
+      let insumosExistentes: Insumo[] = [];
+      try {
+        const existRes = await railwayFetch<{ data: Insumo[] }>("/insumos/", undefined, claims.produtorId);
+        insumosExistentes = existRes?.data ?? [];
+      } catch {
+        // Railway indisponível — continuar sem verificação
+      }
+      const nomesExistentes = new Set(
+        insumosExistentes.map(i => normalizeNomeConf(i.nome))
+      );
+
+      for (const row of rowsUnicas) {
         if (!row.nome) { results.push({ nome: "(sem nome)", ok: false, error: "Nome obrigatório" }); continue; }
 
         // Aplicar de-para: se o nome da planilha foi mapeado para outro, usar o destino
         const nomeDestino = input.mappings[row.nome] ?? row.nome;
+        const nomeNorm = normalizeNomeConf(nomeDestino);
 
         try {
           // Upsert no catálogo local
@@ -908,7 +962,17 @@ export const railwayRouter = router({
             unidade: row.unidade,
           });
 
-          // Tentar enviar para Railway
+          // ── VALIDAÇÃO 3: Verificar se já existe no Railway (anti-duplicata) ────────
+          const jaExisteNoRailway = nomesExistentes.has(nomeNorm) || !!catalogItem.railwayId;
+
+          if (jaExisteNoRailway) {
+            // Insumo já existe: apenas atualiza o catálogo local, não cria duplicata
+            results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "atualizado" });
+            continue;
+          }
+
+          // Tentar enviar para Railway (somente se não existir)
+          let actionFinal: "criado" | "atualizado" = "criado";
           try {
             const payload = {
               fazenda_id: input.imovelId,
@@ -927,12 +991,16 @@ export const railwayRouter = router({
             if (railwayResult && typeof railwayResult === "object" && "id" in railwayResult) {
               await upsertInsumosCatalogo({ imovelId: input.imovelId, nome: nomeDestino, categoria: row.categoria, unidade: row.unidade, railwayId: (railwayResult as { id: number }).id });
             }
-          } catch {
-            // Railway indisponível — ignorar
+          } catch (railwayErr: unknown) {
+            // Erro 409 = insumo já existe no Railway (duplicata detectada pelo backend)
+            const errMsg = railwayErr instanceof Error ? railwayErr.message : String(railwayErr);
+            if (errMsg.includes("409") || errMsg.toLowerCase().includes("já existe") || errMsg.toLowerCase().includes("already exists")) {
+              actionFinal = "atualizado"; // Tratar como atualizado, não como erro
+            }
+            // Outros erros de Railway são ignorados (Railway pode estar indisponível)
           }
 
-          const isNew = !catalogItem.railwayId;
-          results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: isNew ? "criado" : "atualizado" });
+          results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: actionFinal });
         } catch (e: unknown) {
           results.push({ nome: nomeDestino, ok: false, error: e instanceof Error ? e.message : String(e) });
         }
@@ -940,7 +1008,9 @@ export const railwayRouter = router({
 
       const success = results.filter(r => r.ok).length;
       const errors = results.filter(r => !r.ok).length;
-      return { total: input.rows.length, success, errors, results };
+      const criados = results.filter(r => r.action === "criado").length;
+      const atualizados = results.filter(r => r.action === "atualizado").length;
+      return { total: rowsUnicas.length, success, errors, criados, atualizados, results };
     }),
 
   // ─── Simulador de Regime Tributário ───────────────────────────────────────
