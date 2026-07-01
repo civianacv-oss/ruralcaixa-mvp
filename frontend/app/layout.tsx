@@ -52,6 +52,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <GlobalErrorHandler />
+        {/* Cache busting: Force clear all service workers */}
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
