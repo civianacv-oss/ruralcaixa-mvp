@@ -33,6 +33,7 @@ import Insumos from "./pages/Insumos";
 import AnaliseCustos from "./pages/AnaliseCustos";
 import RecomendacoesInsumos from "./pages/RecomendacoesInsumos";
 import RentabilidadeInsumos from "./pages/RentabilidadeInsumos";
+import DashboardRentabilidade from "./pages/DashboardRentabilidade";
 import SimuladorTributacao from "./pages/SimuladorTributacao";
 import ProcuracaoGate from "./pages/ProcuracaoGate";
 import MeusContadores from "./pages/MeusContadores";
@@ -125,6 +126,7 @@ function Router() {
       <Route path="/insumos/analise-custos">{() => <ProtectedRoute component={AnaliseCustos} />}</Route>
       <Route path="/insumos/recomendacoes">{() => <ProtectedRoute component={RecomendacoesInsumos} />}</Route>
       <Route path="/insumos/rentabilidade">{() => <ProtectedRoute component={RentabilidadeInsumos} />}</Route>
+      <Route path="/insumos/dashboard-rentabilidade">{() => <ProtectedRoute component={DashboardRentabilidade} />}</Route>
 
       {/* Relatórios */}
       <Route path="/relatorios">{() => <ProtectedRoute component={Relatorios} />}</Route>

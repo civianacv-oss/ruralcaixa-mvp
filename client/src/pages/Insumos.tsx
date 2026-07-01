@@ -60,6 +60,7 @@ import {
   DollarSign,
   TrendingUp,
   Banknote,
+  LayoutDashboard,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -627,6 +628,11 @@ export default function Insumos() {
           <Link href="/insumos/rentabilidade">
             <Button variant="outline" size="sm" className="gap-1.5">
               <TrendingUp className="h-4 w-4" /> Rentabilidade
+            </Button>
+          </Link>
+          <Link href="/insumos/dashboard-rentabilidade">
+            <Button variant="outline" size="sm" className="gap-1.5 bg-primary/5 border-primary/30 hover:bg-primary/10">
+              <LayoutDashboard className="h-4 w-4 text-primary" /> Dashboard
             </Button>
           </Link>
           <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
