@@ -3,6 +3,29 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import GlobalErrorHandler from "@/components/GlobalErrorHandler";
 
+// Apply safety patches IMMEDIATELY before any other code runs
+if (typeof window !== 'undefined') {
+  // Monkey-patch Array.prototype.filter
+  const originalFilter = Array.prototype.filter;
+  Array.prototype.filter = function(callback: any, thisArg?: any) {
+    if (!Array.isArray(this)) {
+      console.warn('⚠️ filter() called on non-array:', this);
+      return [];
+    }
+    return originalFilter.call(this, callback, thisArg);
+  };
+
+  // Monkey-patch Array.prototype.map
+  const originalMap = Array.prototype.map;
+  Array.prototype.map = function(callback: any, thisArg?: any) {
+    if (!Array.isArray(this)) {
+      console.warn('⚠️ map() called on non-array:', this);
+      return [];
+    }
+    return originalMap.call(this, callback, thisArg);
+  };
+}
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
