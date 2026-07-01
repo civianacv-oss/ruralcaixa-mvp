@@ -268,7 +268,18 @@ export default function Insumos() {
       // Se houver conflitos (insumos já existentes), ir para etapa de resolução
       if (data.conflitos && data.conflitos.length > 0) {
         const decisoesIniciais: Record<string, "adicionar" | "ignorar"> = {};
-        data.conflitos.forEach((c: { nome: string }) => { decisoesIniciais[c.nome] = "ignorar"; });
+        data.conflitos.forEach((c: { nome: string; estoque_planilha: number; estoque_atual: number }) => {
+          if (c.estoque_planilha === 0) {
+            // Valor zero no arquivo → rejeitar automaticamente
+            decisoesIniciais[c.nome] = "ignorar";
+          } else if (c.estoque_planilha > c.estoque_atual) {
+            // Arquivo tem mais que o sistema → aceitar automaticamente
+            decisoesIniciais[c.nome] = "adicionar";
+          } else {
+            // Igual ou menor → deixar o usuário decidir (padrão: adicionar para não perder dado)
+            decisoesIniciais[c.nome] = "adicionar";
+          }
+        });
         setConflitosDecisoes(decisoesIniciais);
         setImportStep("conflitos");
       } else {
@@ -530,73 +541,106 @@ export default function Insumos() {
               </div>
             )}
 
-            {/* ETAPA 2: Resolução de Conflitos */}
-            {importStep === "conflitos" && importPreview && importPreview.conflitos && (
+                        {/* ETAPA 2: Resolução de Conflitos */}
+            {importStep === "conflitos" && importPreview && importPreview.conflitos && (() => {
+              const conflitosComValor = importPreview.conflitos.filter(c => c.estoque_planilha > 0);
+              const conflitosZerados = importPreview.conflitos.filter(c => c.estoque_planilha === 0);
+              const conflitosIguais = conflitosComValor.filter(c => c.estoque_planilha === c.estoque_atual);
+              const conflitosAcima = conflitosComValor.filter(c => c.estoque_planilha > c.estoque_atual);
+              return (
               <div className="space-y-4">
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                {/* Resumo */}
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1">
                   <p className="text-sm font-semibold text-amber-800">
                     ⚠️ {importPreview.conflitos.length} insumo(s) já existem no sistema
                   </p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    Para cada insumo abaixo, escolha se deseja <strong>adicionar ao estoque existente</strong> ou <strong>ignorar</strong> este item da planilha.
-                  </p>
-                </div>
-
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                  {/* Botões de seleção em massa */}
-                  <div className="flex gap-2 pb-2 border-b">
-                    <Button
-                      variant="outline" size="sm" className="text-xs h-7"
-                      onClick={() => {
-                        const todas: Record<string, "adicionar" | "ignorar"> = {};
-                        importPreview.conflitos!.forEach(c => { todas[c.nome] = "adicionar"; });
-                        setConflitosDecisoes(todas);
-                      }}
-                    >
-                      Adicionar todos
-                    </Button>
-                    <Button
-                      variant="outline" size="sm" className="text-xs h-7"
-                      onClick={() => {
-                        const todas: Record<string, "adicionar" | "ignorar"> = {};
-                        importPreview.conflitos!.forEach(c => { todas[c.nome] = "ignorar"; });
-                        setConflitosDecisoes(todas);
-                      }}
-                    >
-                      Ignorar todos
-                    </Button>
+                  <div className="flex flex-wrap gap-3 mt-1 text-xs">
+                    {conflitosAcima.length > 0 && (
+                      <span className="text-emerald-700 font-medium">✅ {conflitosAcima.length} serão atualizados automaticamente (arquivo &gt; sistema)</span>
+                    )}
+                    {conflitosIguais.length > 0 && (
+                      <span className="text-blue-700 font-medium">🔄 {conflitosIguais.length} com valor igual — confirme abaixo</span>
+                    )}
+                    {conflitosZerados.length > 0 && (
+                      <span className="text-gray-500 font-medium">❌ {conflitosZerados.length} rejeitados automaticamente (valor zero)</span>
+                    )}
                   </div>
-
-                  {importPreview.conflitos.map((c) => (
-                    <div key={c.nome} className="rounded-lg border p-3 bg-white">
+                </div>
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {/* Botões de seleção em massa apenas para os que têm valor */}
+                  {conflitosComValor.length > 0 && (
+                    <div className="flex gap-2 pb-2 border-b">
+                      <Button
+                        variant="outline" size="sm" className="text-xs h-7"
+                        onClick={() => {
+                          const todas: Record<string, "adicionar" | "ignorar"> = { ...conflitosDecisoes };
+                          conflitosComValor.forEach(c => { todas[c.nome] = "adicionar"; });
+                          setConflitosDecisoes(todas);
+                        }}
+                      >
+                        Aceitar todos com valor
+                      </Button>
+                      <Button
+                        variant="outline" size="sm" className="text-xs h-7"
+                        onClick={() => {
+                          const todas: Record<string, "adicionar" | "ignorar"> = { ...conflitosDecisoes };
+                          conflitosComValor.forEach(c => { todas[c.nome] = "ignorar"; });
+                          setConflitosDecisoes(todas);
+                        }}
+                      >
+                        Ignorar todos
+                      </Button>
+                    </div>
+                  )}
+                  {importPreview.conflitos.map((c) => {
+                    const isZero = c.estoque_planilha === 0;
+                    const isIgual = !isZero && c.estoque_planilha === c.estoque_atual;
+                    const isAcima = !isZero && c.estoque_planilha > c.estoque_atual;
+                    return (
+                    <div
+                      key={c.nome}
+                      className={`rounded-lg border p-3 ${
+                        isZero ? "bg-gray-50 border-gray-200 opacity-60" :
+                        isIgual ? "bg-blue-50 border-blue-200" :
+                        isAcima ? "bg-emerald-50 border-emerald-200" :
+                        "bg-white border-gray-200"
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{c.nome}</p>
-                          <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                            <span>Estoque atual: <strong>{c.estoque_atual} {c.unidade}</strong></span>
-                            {c.estoque_planilha > 0 && (
-                              <span className="text-emerald-700">Planilha: +{c.estoque_planilha} {c.unidade}</span>
-                            )}
-                            {c.estoque_planilha === 0 && (
-                              <span className="text-muted-foreground">Planilha: 0 {c.unidade}</span>
-                            )}
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{c.nome}</p>
+                            {isZero && <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-medium">Rejeitado</span>}
+                            {isIgual && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Valor igual</span>}
+                            {isAcima && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">Arquivo maior</span>}
                           </div>
-                          {conflitosDecisoes[c.nome] === "adicionar" && c.estoque_planilha > 0 && (
+                          <div className="flex flex-wrap gap-3 mt-1 text-xs text-muted-foreground">
+                            <span>Sistema: <strong>{c.estoque_atual} {c.unidade}</strong></span>
+                            {!isZero && (
+                              <span className={isAcima ? "text-emerald-700 font-medium" : "text-blue-700 font-medium"}>
+                                Arquivo: {c.estoque_planilha} {c.unidade}
+                              </span>
+                            )}
+                            {isZero && <span className="text-gray-400">Arquivo: 0 {c.unidade} — será ignorado</span>}
+                          </div>
+                          {conflitosDecisoes[c.nome] === "adicionar" && !isZero && (
                             <p className="text-xs text-emerald-700 mt-1 font-medium">
-                              → Novo estoque: {(c.estoque_atual + c.estoque_planilha).toFixed(3)} {c.unidade}
+                              → Novo estoque: {(c.estoque_atual + c.estoque_planilha).toFixed(2)} {c.unidade}
                             </p>
                           )}
                         </div>
                         <div className="flex gap-1 shrink-0">
                           <button
-                            onClick={() => setConflitosDecisoes(prev => ({ ...prev, [c.nome]: "adicionar" }))}
+                            disabled={isZero}
+                            onClick={() => !isZero && setConflitosDecisoes(prev => ({ ...prev, [c.nome]: "adicionar" }))}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                              isZero ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" :
                               conflitosDecisoes[c.nome] === "adicionar"
                                 ? "bg-emerald-600 text-white border-emerald-600"
                                 : "bg-white text-gray-600 border-gray-200 hover:border-emerald-400"
                             }`}
                           >
-                            + Adicionar
+                            + Aceitar
                           </button>
                           <button
                             onClick={() => setConflitosDecisoes(prev => ({ ...prev, [c.nome]: "ignorar" }))}
@@ -611,7 +655,8 @@ export default function Insumos() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="flex gap-2">
@@ -624,8 +669,8 @@ export default function Insumos() {
                   </Button>
                 </div>
               </div>
-            )}
-
+              );
+            })()}
             {/* ETAPA 3: De-Para */}
             {importStep === "depara" && importPreview && (
               <div className="space-y-4">
