@@ -50,6 +50,7 @@ import {
   ChevronDown,
   ChevronRight,
   BarChart2,
+  Calculator,
   RefreshCw,
   ShoppingBag,
   UserX,
@@ -616,6 +617,11 @@ export default function Insumos() {
           <Link href="/insumos/analise-custos">
             <Button variant="outline" size="sm" className="gap-1.5">
               <BarChart2 className="h-4 w-4" /> Análise de Custos
+            </Button>
+          </Link>
+          <Link href="/insumos/recomendacoes">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <Calculator className="h-4 w-4" /> Recomendações
             </Button>
           </Link>
           <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
