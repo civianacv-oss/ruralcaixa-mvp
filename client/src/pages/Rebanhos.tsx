@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
-import { Plus, PawPrint, Search, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -11,18 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
-import type { Animal } from "@/lib/api";
+import * as XLSX from "xlsx";
 
-// O tRPC usa "ovinos"/"caprinos"/"suinos"/"bovinos" (plural)
 type EspecieTRPC = "ovinos" | "caprinos" | "suinos" | "bovinos";
-// A UI usa singular para exibição
 type Especie = "ovino" | "caprino" | "suino" | "bovino";
 
 const ESPECIES: { key: Especie; trpc: EspecieTRPC; label: string; emoji: string }[] = [
-  { key: "ovino",   trpc: "ovinos",   label: "Ovinos",  emoji: "🐑" },
+  { key: "ovino",   trpc: "ovinos",   label: "Ovinos",   emoji: "🐑" },
   { key: "caprino", trpc: "caprinos", label: "Caprinos", emoji: "🐐" },
-  { key: "suino",   trpc: "suinos",   label: "Suínos",  emoji: "🐷" },
-  { key: "bovino",  trpc: "bovinos",  label: "Bovinos", emoji: "🐄" },
+  { key: "suino",   trpc: "suinos",   label: "Suínos",   emoji: "🐷" },
+  { key: "bovino",  trpc: "bovinos",  label: "Bovinos",  emoji: "🐄" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -32,69 +29,111 @@ const STATUS_COLORS: Record<string, string> = {
   abatido: "bg-orange-100 text-orange-700",
 };
 
+const FORM_EMPTY = {
+  brinco: "", nome: "", raca: "", sexo: "M",
+  data_nascimento: "", peso_nascimento: "", categoria: "",
+  aptidao_manejo: "corte",
+};
+
+type ImportStep = "upload" | "conflitos" | "resultado";
+
 export default function Rebanhos() {
   const { imovelId } = useRuralAuth();
   const utils = trpc.useUtils();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Lê espécie inicial da URL (?especie=bovino, etc.)
+  // ── Espécie inicial via URL ───────────────────────────────────────────────
   const initialEspecie = (): Especie => {
     const params = new URLSearchParams(window.location.search);
     const e = params.get("especie") as Especie | null;
     return ESPECIES.find((x) => x.key === e) ? e! : "ovino";
   };
   const [especie, setEspecie] = useState<Especie>(initialEspecie);
-
-  // Sincroniza quando a URL muda (navegação pelo menu lateral)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const e = params.get("especie") as Especie | null;
     if (e && ESPECIES.find((x) => x.key === e)) setEspecie(e);
   }, [window.location.search]);
-  const [search, setSearch]   = useState("");
-  const [showNew, setShowNew] = useState(false);
-  const [form, setForm]       = useState({
-    brinco: "", nome: "", raca: "", sexo: "M",
-    data_nascimento: "", peso_nascimento: "", categoria: "",
-    aptidao_manejo: "corte", // obrigatório apenas para bovinos
-  });
+
+  const [search, setSearch] = useState("");
+
+  // ── Dialogs ───────────────────────────────────────────────────────────────
+  const [showNew,    setShowNew]    = useState(false);
+  const [editAnimal, setEditAnimal] = useState<any | null>(null);
+  const [deleteId,   setDeleteId]   = useState<number | null>(null);
+  const [showImport, setShowImport] = useState(false);
+
+  // ── Formulário (novo / editar) ────────────────────────────────────────────
+  const [form, setForm] = useState({ ...FORM_EMPTY });
+
+  // ── Importação ────────────────────────────────────────────────────────────
+  const [importStep,      setImportStep]      = useState<ImportStep>("upload");
+  const [importPreview,   setImportPreview]   = useState<any | null>(null);
+  const [conflitosDecisoes, setConflitosDecisoes] = useState<Record<string, "atualizar" | "ignorar">>({});
+  const [importResult,    setImportResult]    = useState<any | null>(null);
 
   const especieAtual = ESPECIES.find((e) => e.key === especie)!;
 
-  // ── Query via tRPC (com autenticação automática) ──────────────────────────
-  const {
-    data: animais = [],
-    isLoading: loading,
-    error,
-    refetch,
-  } = trpc.railway.animais.useQuery(
+  // ── Queries & Mutations ───────────────────────────────────────────────────
+  const { data: animais = [], isLoading: loading, error, refetch } = trpc.railway.animais.useQuery(
     { imovelId: imovelId!, especie: especieAtual.trpc },
-    {
-      enabled: !!imovelId,
-      retry: 1,
-      onError: (e: any) => {
-        toast.error(`Erro ao carregar rebanho: ${e.message ?? "Verifique sua conexão"}`);
-      },
-    }
+    { enabled: !!imovelId, retry: 1 }
   );
 
-  // ── Mutation para criar animal ────────────────────────────────────────────
   const createAnimal = trpc.railway.createAnimal.useMutation({
     onSuccess: () => {
       toast.success("Animal cadastrado com sucesso");
       utils.railway.animais.invalidate();
       setShowNew(false);
-      setForm({ brinco: "", nome: "", raca: "", sexo: "M", data_nascimento: "", peso_nascimento: "", categoria: "" });
+      setForm({ ...FORM_EMPTY });
     },
-    onError: (e: any) => {
-      toast.error(e.message ?? "Erro ao cadastrar animal");
-    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao cadastrar animal"),
   });
 
+  const updateAnimal = trpc.railway.updateAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Animal atualizado com sucesso");
+      utils.railway.animais.invalidate();
+      setEditAnimal(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao atualizar animal"),
+  });
+
+  const deleteAnimal = trpc.railway.deleteAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Animal removido com sucesso");
+      utils.railway.animais.invalidate();
+      setDeleteId(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao remover animal"),
+  });
+
+  const analisarPlanilha = trpc.railway.analisarPlanilhaAnimais.useMutation({
+    onSuccess: (data) => {
+      setImportPreview(data);
+      const dec: Record<string, "atualizar" | "ignorar"> = {};
+      data.conflitos.forEach((c: any) => { dec[c.brinco] = "ignorar"; });
+      setConflitosDecisoes(dec);
+      setImportStep(data.conflitos.length > 0 ? "conflitos" : "resultado");
+      if (data.conflitos.length === 0) handleConfirmarImportacao(data.rows_novas, []);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha"),
+  });
+
+  const confirmarImportacao = trpc.railway.confirmarImportacaoAnimais.useMutation({
+    onSuccess: (data) => {
+      setImportResult(data);
+      setImportStep("resultado");
+      utils.railway.animais.invalidate();
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao importar animais"),
+  });
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleCreate = () => {
     if (!form.brinco.trim()) { toast.error("Informe o brinco/identificação"); return; }
     if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
-    // Bovinos exigem aptidao_manejo e categoria como campos obrigatórios
-    if (especie === "bovino" && !form.categoria.trim()) { toast.error("Informe a categoria do bovino (ex: novilho, matriz, reprodutor)"); return; }
+    if (especie === "bovino" && !form.categoria.trim()) { toast.error("Informe a categoria do bovino"); return; }
     createAnimal.mutate({
       imovelId: imovelId!,
       especie: especieAtual.trpc,
@@ -105,34 +144,176 @@ export default function Rebanhos() {
       data_nascimento: form.data_nascimento || undefined,
       peso_nascimento: form.peso_nascimento ? Number(form.peso_nascimento) : undefined,
       categoria: form.categoria || undefined,
-      // aptidao_manejo e aptidao são campos extras passados via observacoes no tRPC
-      // Para bovinos, precisamos passá-los diretamente
       ...(especie === "bovino" ? { aptidao_manejo: form.aptidao_manejo } : {}),
     } as any);
   };
 
-  const filtered = (animais as Animal[]).filter((a) =>
+  const handleEdit = (a: any) => {
+    setEditAnimal(a);
+    setForm({
+      brinco: a.brinco ?? "",
+      nome: a.nome ?? "",
+      raca: a.raca ?? a.raca_nome ?? "",
+      sexo: a.sexo ?? "M",
+      data_nascimento: a.data_nascimento ?? "",
+      peso_nascimento: a.peso_nascimento ? String(a.peso_nascimento) : "",
+      categoria: a.categoria ?? "",
+      aptidao_manejo: a.aptidao_manejo ?? "corte",
+    });
+  };
+
+  const handleUpdate = () => {
+    if (!editAnimal || !imovelId) return;
+    updateAnimal.mutate({
+      animalId: editAnimal.id,
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      brinco: form.brinco || undefined,
+      nome: form.nome || undefined,
+      raca: form.raca || undefined,
+      sexo: form.sexo as "M" | "F",
+    });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !imovelId) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target?.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        if (rows.length === 0) { toast.error("Planilha vazia ou sem dados reconhecíveis"); return; }
+        analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+      } catch {
+        toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
+  const handleConfirmarImportacao = (rows_novas: any[], conflitos: any[]) => {
+    if (!imovelId) return;
+    const decisoes = conflitos.map((c: any) => ({
+      brinco: c.brinco,
+      existente_id: c.existente_id,
+      acao: conflitosDecisoes[c.brinco] ?? "ignorar",
+      dados: c.parsed,
+    }));
+    confirmarImportacao.mutate({
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      rows_novas,
+      conflitos_decisoes: decisoes,
+    });
+  };
+
+  const resetImport = () => {
+    setImportStep("upload");
+    setImportPreview(null);
+    setConflitosDecisoes({});
+    setImportResult(null);
+    setShowImport(false);
+  };
+
+  const filtered = (animais as any[]).filter((a) =>
     a.brinco?.toLowerCase().includes(search.toLowerCase()) ||
     a.nome?.toLowerCase().includes(search.toLowerCase()) ||
-    a.raca?.toLowerCase().includes(search.toLowerCase()) ||
-    (a as any).raca_nome?.toLowerCase().includes(search.toLowerCase())
+    (a.raca ?? a.raca_nome ?? "").toLowerCase().includes(search.toLowerCase())
+  );
+  const ativos = (animais as any[]).filter((a) => a.status === "ativo").length;
+
+  // ── Formulário reutilizável ───────────────────────────────────────────────
+  const FormFields = () => (
+    <div className="space-y-4 py-2">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Brinco / ID *</Label>
+          <Input placeholder="Ex: 001" value={form.brinco} onChange={(e) => setForm({ ...form, brinco: e.target.value })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Nome</Label>
+          <Input placeholder="Opcional" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Sexo *</Label>
+          <Select value={form.sexo} onValueChange={(v) => setForm({ ...form, sexo: v })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="M">Macho</SelectItem>
+              <SelectItem value="F">Fêmea</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Raça</Label>
+          <Input placeholder="Ex: Santa Inês" value={form.raca} onChange={(e) => setForm({ ...form, raca: e.target.value })} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Data Nascimento</Label>
+          <Input type="date" value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Peso Nasc. (kg)</Label>
+          <Input type="number" placeholder="0.0" value={form.peso_nascimento} onChange={(e) => setForm({ ...form, peso_nascimento: e.target.value })} />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Categoria{especie === "bovino" ? " *" : ""}</Label>
+        {especie === "bovino" ? (
+          <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
+            <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+            <SelectContent>
+              {["novilho","novilha","matriz","reprodutor","bezerro","bezerra","touro","vaca","boi"].map((c) => (
+                <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input placeholder="Ex: Matriz, Reprodutor, Cria..." value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
+        )}
+      </div>
+      {especie === "bovino" && (
+        <div className="space-y-1.5">
+          <Label>Aptidão de Manejo *</Label>
+          <Select value={form.aptidao_manejo} onValueChange={(v) => setForm({ ...form, aptidao_manejo: v })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="corte">Corte</SelectItem>
+              <SelectItem value="leite">Leite</SelectItem>
+              <SelectItem value="dupla">Dupla Aptidão</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
   );
 
-  const ativos = (animais as Animal[]).filter((a) => a.status === "ativo").length;
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>Rebanhos</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Gestão do rebanho por espécie</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
-          <Button size="sm" onClick={() => setShowNew(true)} style={{ background: "oklch(0.42 0.14 145)" }}>
+          <Button variant="outline" size="sm" onClick={() => { setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
+            <Upload className="w-4 h-4 mr-2" />
+            Importar Planilha
+          </Button>
+          <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Animal
           </Button>
@@ -142,37 +323,33 @@ export default function Rebanhos() {
       {/* Erro de conexão */}
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex items-center gap-2">
-          <span>⚠️</span>
-          <span>Não foi possível carregar o rebanho. Verifique sua conexão e tente novamente.</span>
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>Não foi possível carregar o rebanho. Verifique sua conexão.</span>
           <Button variant="outline" size="sm" className="ml-auto" onClick={() => refetch()}>Tentar novamente</Button>
         </div>
       )}
 
-      {/* Species tabs */}
+      {/* Abas de espécie */}
       <div className="flex gap-2 flex-wrap">
         {ESPECIES.map((e) => (
           <button
             key={e.key}
             onClick={() => setEspecie(e.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              especie === e.key
-                ? "text-white shadow-sm"
-                : "bg-white border hover:bg-gray-50 text-gray-700"
+              especie === e.key ? "text-white shadow-sm" : "bg-white border hover:bg-gray-50 text-gray-700"
             }`}
             style={especie === e.key ? { background: "oklch(0.42 0.14 145)" } : undefined}
           >
             <span>{e.emoji}</span>
             {e.label}
             {especie === e.key && !loading && (
-              <span className="ml-1 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {ativos}
-              </span>
+              <span className="ml-1 bg-white/20 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{ativos}</span>
             )}
           </button>
         ))}
       </div>
 
-      {/* Search */}
+      {/* Busca */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
@@ -186,10 +363,10 @@ export default function Rebanhos() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Total",  value: (animais as Animal[]).length },
+          { label: "Total",  value: (animais as any[]).length },
           { label: "Ativos", value: ativos },
-          { label: "Fêmeas", value: (animais as Animal[]).filter((a) => a.sexo === "F").length },
-          { label: "Machos", value: (animais as Animal[]).filter((a) => a.sexo === "M").length },
+          { label: "Fêmeas", value: (animais as any[]).filter((a) => a.sexo === "F").length },
+          { label: "Machos", value: (animais as any[]).filter((a) => a.sexo === "M").length },
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-3 pb-2">
@@ -202,14 +379,14 @@ export default function Rebanhos() {
         ))}
       </div>
 
-      {/* List */}
+      {/* Lista */}
       {loading ? (
-        <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+        <div className="space-y-2">{[1,2,3,4,5].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <PawPrint className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">Nenhum animal encontrado</p>
-          <p className="text-sm mt-1">Clique em "Novo Animal" para cadastrar</p>
+          <p className="text-sm mt-1">Clique em "Novo Animal" ou "Importar Planilha" para cadastrar</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -218,10 +395,7 @@ export default function Rebanhos() {
               <CardContent className="p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-base"
-                      style={{ background: "oklch(0.92 0.04 145)" }}
-                    >
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-lg" style={{ background: "oklch(0.92 0.04 145)" }}>
                       {especieAtual.emoji}
                     </div>
                     <div className="min-w-0">
@@ -232,13 +406,32 @@ export default function Rebanhos() {
                           {a.status}
                         </span>
                       </div>
-                      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+                      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
                         <span>{a.sexo === "M" ? "Macho" : "Fêmea"}</span>
                         {(a.raca || a.raca_nome) && <span>{a.raca_nome ?? a.raca}</span>}
                         {a.categoria && <span>{a.categoria}</span>}
                         {a.ultimo_peso && <span>{a.ultimo_peso} kg</span>}
                       </div>
                     </div>
+                  </div>
+                  {/* Botões de ação */}
+                  <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost" size="icon"
+                      className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                      title="Editar animal"
+                      onClick={() => handleEdit(a)}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="w-8 h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      title="Excluir animal"
+                      onClick={() => setDeleteId(a.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -247,120 +440,221 @@ export default function Rebanhos() {
         </div>
       )}
 
-      {/* New Animal Dialog */}
+      {/* ── Dialog: Novo Animal ─────────────────────────────────────────────── */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Novo Animal — {especieAtual.emoji} {especieAtual.label}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Brinco / ID *</Label>
-                <Input
-                  placeholder="Ex: 001"
-                  value={form.brinco}
-                  onChange={(e) => setForm({ ...form, brinco: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Nome</Label>
-                <Input
-                  placeholder="Opcional"
-                  value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Sexo *</Label>
-                <Select value={form.sexo} onValueChange={(v) => setForm({ ...form, sexo: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="M">Macho</SelectItem>
-                    <SelectItem value="F">Fêmea</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Raça</Label>
-                <Input
-                  placeholder="Ex: Santa Inês"
-                  value={form.raca}
-                  onChange={(e) => setForm({ ...form, raca: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Data Nascimento</Label>
-                <Input
-                  type="date"
-                  value={form.data_nascimento}
-                  onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Peso Nasc. (kg)</Label>
-                <Input
-                  type="number"
-                  placeholder="0.0"
-                  value={form.peso_nascimento}
-                  onChange={(e) => setForm({ ...form, peso_nascimento: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Categoria{especie === "bovino" ? " *" : ""}</Label>
-              {especie === "bovino" ? (
-                <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="novilho">Novilho</SelectItem>
-                    <SelectItem value="novilha">Novilha</SelectItem>
-                    <SelectItem value="matriz">Matriz</SelectItem>
-                    <SelectItem value="reprodutor">Reprodutor</SelectItem>
-                    <SelectItem value="bezerro">Bezerro</SelectItem>
-                    <SelectItem value="bezerra">Bezerra</SelectItem>
-                    <SelectItem value="touro">Touro</SelectItem>
-                    <SelectItem value="vaca">Vaca</SelectItem>
-                    <SelectItem value="boi">Boi</SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  placeholder="Ex: Matriz, Reprodutor, Cria..."
-                  value={form.categoria}
-                  onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                />
-              )}
-            </div>
-
-            {/* Campo Aptidão de Manejo — obrigatório apenas para bovinos */}
-            {especie === "bovino" && (
-              <div className="space-y-1.5">
-                <Label>Aptidão de Manejo *</Label>
-                <Select value={form.aptidao_manejo} onValueChange={(v) => setForm({ ...form, aptidao_manejo: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="corte">Corte</SelectItem>
-                    <SelectItem value="leite">Leite</SelectItem>
-                    <SelectItem value="dupla">Dupla Aptidão</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
+          <FormFields />
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
-            <Button
-              onClick={handleCreate}
-              disabled={createAnimal.isPending}
-              style={{ background: "oklch(0.42 0.14 145)" }}
-            >
+            <Button onClick={handleCreate} disabled={createAnimal.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
               {createAnimal.isPending ? "Salvando..." : "Cadastrar Animal"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Editar Animal ───────────────────────────────────────────── */}
+      <Dialog open={!!editAnimal} onOpenChange={(o) => { if (!o) setEditAnimal(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Animal — #{editAnimal?.brinco}</DialogTitle>
+          </DialogHeader>
+          <FormFields />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditAnimal(null)}>Cancelar</Button>
+            <Button onClick={handleUpdate} disabled={updateAnimal.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
+              {updateAnimal.isPending ? "Salvando..." : "Salvar Alterações"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Confirmar Exclusão ──────────────────────────────────────── */}
+      <Dialog open={deleteId !== null} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" /> Excluir Animal
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Tem certeza que deseja excluir este animal? Esta ação não pode ser desfeita.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteAnimal.isPending}
+              onClick={() => {
+                if (!deleteId || !imovelId) return;
+                deleteAnimal.mutate({ animalId: deleteId, imovelId: imovelId!, especie: especieAtual.trpc });
+              }}
+            >
+              {deleteAnimal.isPending ? "Excluindo..." : "Excluir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Importar Planilha ───────────────────────────────────────── */}
+      <Dialog open={showImport} onOpenChange={(o) => { if (!o) resetImport(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+              Importar Planilha — {especieAtual.emoji} {especieAtual.label}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Indicador de etapas */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+            {[
+              { id: "upload",    label: "1. Upload" },
+              { id: "conflitos", label: "2. Conflitos" },
+              { id: "resultado", label: "3. Resultado" },
+            ].map((s, i) => (
+              <span key={s.id} className="flex items-center gap-1">
+                {i > 0 && <span className="text-gray-300">›</span>}
+                <span className={importStep === s.id ? "font-semibold text-emerald-700" : ""}>{s.label}</span>
+              </span>
+            ))}
+          </div>
+
+          {/* ETAPA 1: Upload */}
+          {importStep === "upload" && (
+            <div className="space-y-4 py-2">
+              <div
+                className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 transition-colors"
+                style={{ borderColor: "oklch(0.80 0.04 145)" }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="font-medium text-sm">Clique para selecionar o arquivo Excel</p>
+                <p className="text-xs text-muted-foreground mt-1">Formatos aceitos: .xlsx, .xls, .csv</p>
+              </div>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
+
+              <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
+                <p className="font-semibold">Colunas reconhecidas automaticamente:</p>
+                <p><strong>Brinco/ID</strong> (obrigatório) · Nome · Raça · Sexo (M/F) · Data Nascimento · Peso · Categoria{especie === "bovino" ? " · Aptidão de Manejo" : ""}</p>
+              </div>
+
+              {analisarPlanilha.isPending && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Analisando planilha...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ETAPA 2: Conflitos */}
+          {importStep === "conflitos" && importPreview && (
+            <div className="space-y-3 py-2 max-h-[400px] overflow-y-auto">
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                <p className="font-semibold mb-1">⚠️ {importPreview.conflitos.length} animal(is) já cadastrado(s)</p>
+                <p className="text-xs">Escolha o que fazer com cada um. A decisão padrão é <strong>Ignorar</strong>.</p>
+              </div>
+
+              <div className="flex gap-2 text-xs">
+                <Button size="sm" variant="outline" className="h-7 text-xs"
+                  onClick={() => {
+                    const dec: Record<string, "atualizar" | "ignorar"> = {};
+                    importPreview.conflitos.forEach((c: any) => { dec[c.brinco] = "atualizar"; });
+                    setConflitosDecisoes(dec);
+                  }}>
+                  Atualizar todos
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs"
+                  onClick={() => {
+                    const dec: Record<string, "atualizar" | "ignorar"> = {};
+                    importPreview.conflitos.forEach((c: any) => { dec[c.brinco] = "ignorar"; });
+                    setConflitosDecisoes(dec);
+                  }}>
+                  Ignorar todos
+                </Button>
+              </div>
+
+              {importPreview.conflitos.map((c: any) => (
+                <div key={c.brinco} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">#{c.brinco} {c.existente?.nome ? `— ${c.existente.nome}` : ""}</p>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setConflitosDecisoes((d) => ({ ...d, [c.brinco]: "atualizar" }))}
+                        className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${conflitosDecisoes[c.brinco] === "atualizar" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-blue-50"}`}
+                      >
+                        Atualizar
+                      </button>
+                      <button
+                        onClick={() => setConflitosDecisoes((d) => ({ ...d, [c.brinco]: "ignorar" }))}
+                        className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${conflitosDecisoes[c.brinco] === "ignorar" ? "bg-gray-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      >
+                        Ignorar
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
+                    <span>Atual: {c.existente?.sexo === "M" ? "Macho" : "Fêmea"} · {c.existente?.raca_nome ?? c.existente?.raca ?? "—"} · {c.existente?.status}</span>
+                    <span>Planilha: {c.parsed.sexo === "M" ? "Macho" : "Fêmea"} · {c.parsed.raca ?? "—"} · {c.parsed.categoria ?? "—"}</span>
+                  </div>
+                </div>
+              ))}
+
+              {importPreview.rows_novas.length > 0 && (
+                <p className="text-xs text-emerald-700 font-medium">
+                  + {importPreview.rows_novas.length} animal(is) novo(s) serão criados
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ETAPA 3: Resultado */}
+          {importStep === "resultado" && importResult && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center gap-2 text-emerald-700">
+                <CheckCircle2 className="w-5 h-5" />
+                <p className="font-semibold">Importação concluída!</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "Total",     value: importResult.total,      color: "text-gray-700" },
+                  { label: "Criados",   value: importResult.criados,    color: "text-emerald-700" },
+                  { label: "Atualizados", value: importResult.atualizados, color: "text-blue-700" },
+                  { label: "Ignorados", value: importResult.ignorados,  color: "text-amber-700" },
+                  { label: "Erros",     value: importResult.erros,      color: "text-red-700" },
+                ].map((s) => (
+                  <div key={s.label} className="border rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
+                    <p className={`text-xl font-bold mt-0.5 ${s.color}`}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {importStep === "conflitos" && (
+              <>
+                <Button variant="outline" onClick={() => { setImportStep("upload"); setImportPreview(null); }}>Voltar</Button>
+                <Button
+                  onClick={() => handleConfirmarImportacao(importPreview.rows_novas, importPreview.conflitos)}
+                  disabled={confirmarImportacao.isPending}
+                  style={{ background: "oklch(0.42 0.14 145)" }}
+                >
+                  {confirmarImportacao.isPending ? "Importando..." : "Confirmar Importação"}
+                </Button>
+              </>
+            )}
+            {importStep === "resultado" && (
+              <Button onClick={resetImport} style={{ background: "oklch(0.42 0.14 145)" }}>Fechar</Button>
+            )}
+            {importStep === "upload" && (
+              <Button variant="outline" onClick={resetImport}>Cancelar</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -345,6 +345,129 @@ export const railwayRouter = router({
       return railwayMutate<Animal>(`/${prefix}/animais/${animalId}/status`, "PATCH", fields, claims.produtorId);
     }),
 
+  deleteAnimal: publicProcedure
+    .input(z.object({
+      animalId: z.number(),
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      await railwayMutate<unknown>(`/${prefix}/animais/${input.animalId}`, "DELETE", undefined, claims.produtorId);
+      return { success: true };
+    }),
+
+  analisarPlanilhaAnimais: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      rows: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+
+      let existentes: Animal[] = [];
+      try {
+        if (input.especie === "bovinos") {
+          existentes = await railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`, undefined, claims.produtorId);
+        } else {
+          existentes = await railwayFetch<Animal[]>(`/${prefix}/animais?imovel_id=${input.imovelId}`, undefined, claims.produtorId);
+        }
+      } catch (_) { existentes = []; }
+
+      const brincoExistente = new Set(existentes.map((a) => String(a.brinco ?? "").toLowerCase().trim()));
+
+      const COL_BRINCO = ["brinco", "id", "identificacao", "numero", "tag", "brinco/id"];
+      const COL_NOME   = ["nome", "name"];
+      const COL_RACA   = ["raca", "ra\u00e7a", "breed", "raca_nome"];
+      const COL_SEXO   = ["sexo", "sex", "genero", "g\u00eanero"];
+      const COL_NASC   = ["data_nascimento", "nascimento", "data nasc", "dt_nasc", "birth_date"];
+      const COL_PESO   = ["peso", "peso_nascimento", "peso nasc", "peso_kg"];
+      const COL_CAT    = ["categoria", "category"];
+      const COL_APT    = ["aptidao_manejo", "aptidao", "aptid\u00e3o", "manejo"];
+
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        for (const k of keys) {
+          const found = Object.keys(row).find((c) => c.toLowerCase().trim() === k);
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+
+      const rows_novas: any[] = [];
+      const conflitos: any[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        if (!brinco) { ignoradas_count++; continue; }
+
+        const parsed = {
+          brinco,
+          nome:            findCol(row, COL_NOME),
+          raca:            findCol(row, COL_RACA),
+          sexo:            (findCol(row, COL_SEXO) ?? "M").toUpperCase().startsWith("F") ? "F" : "M",
+          data_nascimento: findCol(row, COL_NASC),
+          peso_nascimento: findCol(row, COL_PESO) ? Number(findCol(row, COL_PESO)) : undefined,
+          categoria:       findCol(row, COL_CAT),
+          aptidao_manejo:  findCol(row, COL_APT) ?? "corte",
+        };
+
+        if (brincoExistente.has(brinco.toLowerCase())) {
+          const existente = existentes.find((a) => String(a.brinco ?? "").toLowerCase().trim() === brinco.toLowerCase());
+          conflitos.push({ brinco, parsed, existente_id: existente?.id, existente });
+        } else {
+          rows_novas.push(parsed);
+        }
+      }
+
+      return { rows_novas, conflitos, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  confirmarImportacaoAnimais: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      rows_novas: z.array(z.record(z.string(), z.any())),
+      conflitos_decisoes: z.array(z.object({
+        brinco: z.string(),
+        existente_id: z.number().optional(),
+        acao: z.enum(["atualizar", "ignorar"]),
+        dados: z.record(z.string(), z.any()).optional(),
+      })).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+
+      let criados = 0, atualizados = 0, ignorados = 0, erros = 0;
+
+      for (const row of input.rows_novas) {
+        try {
+          await railwayMutate<Animal>(`/${prefix}/animais`, "POST", { imovel_id: input.imovelId, ...row }, claims.produtorId);
+          criados++;
+        } catch (_) { erros++; }
+      }
+
+      for (const dec of (input.conflitos_decisoes ?? [])) {
+        if (dec.acao === "atualizar" && dec.existente_id) {
+          try {
+            await railwayMutate<Animal>(`/${prefix}/animais/${dec.existente_id}`, "PATCH", dec.dados ?? {}, claims.produtorId);
+            atualizados++;
+          } catch (_) { erros++; }
+        } else {
+          ignorados++;
+        }
+      }
+
+      return { criados, atualizados, ignorados, erros, total: criados + atualizados + ignorados + erros };
+    }),
+
   // ── Dashboard ──────────────────────────────────────────────────────────────
   ovinoDashboard: publicProcedure
     .input(z.object({ imovelId: z.number() }))
