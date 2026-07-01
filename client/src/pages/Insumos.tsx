@@ -777,68 +777,101 @@ export default function Insumos() {
             )}
 
             {/* ETAPA 4: Resultado */}
-            {importStep === "resultado" && importResult && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-5 gap-2 text-center">
-                  <div className="rounded-lg bg-muted/40 p-3">
-                    <p className="text-2xl font-bold">{importResult.total}</p>
-                    <p className="text-xs text-muted-foreground">Total</p>
-                  </div>
-                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-                    <p className="text-2xl font-bold text-emerald-700">{importResult.criados ?? 0}</p>
-                    <p className="text-xs text-emerald-600">Criados</p>
-                  </div>
-                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
-                    <p className="text-2xl font-bold text-blue-700">{importResult.atualizados ?? 0}</p>
-                    <p className="text-xs text-blue-600">Estoque +</p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 border border-gray-200 p-3">
-                    <p className="text-2xl font-bold text-gray-600">{(importResult as any).ignorados ?? 0}</p>
-                    <p className="text-xs text-gray-500">Ignorados</p>
-                  </div>
-                  <div className={`rounded-lg p-3 ${importResult.errors > 0 ? "bg-red-50 border border-red-200" : "bg-muted/40"}`}>
-                    <p className={`text-2xl font-bold ${importResult.errors > 0 ? "text-red-700" : "text-muted-foreground"}`}>{importResult.errors}</p>
-                    <p className={`text-xs ${importResult.errors > 0 ? "text-red-600" : "text-muted-foreground"}`}>Erros</p>
-                  </div>
-                </div>
-
-                {importResult.success > 0 && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 max-h-48 overflow-y-auto">
-                    <p className="text-xs font-semibold text-green-700 mb-2">Insumos processados:</p>
-                    {importResult.results.filter(r => r.ok).map((r, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-green-700 mb-1">
-                        <CheckCircle2 className="h-3 w-3 shrink-0" />
-                        <span className="font-mono text-muted-foreground">{r.codigo}</span>
-                        <span className="font-medium">{r.nome}</span>
-                        <Badge variant="outline" className={`text-xs h-4 px-1 ${
-                          r.action === "criado" ? "border-emerald-400 text-emerald-700" :
-                          r.action === "atualizado" ? "border-blue-400 text-blue-700" :
-                          "border-gray-300 text-gray-500"
-                        }`}>
-                          {r.action === "criado" ? "Novo" : r.action === "atualizado" ? "Estoque +" : "Ignorado"}
-                        </Badge>
+            {importStep === "resultado" && importResult && (() => {
+                // Separar resultados por categoria
+                const rCriados = importResult.results.filter(r => r.ok && r.action === "criado");
+                const rAtualizados = importResult.results.filter(r => r.ok && r.action === "atualizado");
+                const rIgnorados = importResult.results.filter(r => r.ok && r.action === "ignorado");
+                const rFalhas = importResult.results.filter(r => !r.ok);
+                return (
+                  <div className="space-y-4">
+                    {/* Cards de resumo */}
+                    <div className="grid grid-cols-5 gap-2 text-center">
+                      <div className="rounded-lg bg-muted/40 p-3">
+                        <p className="text-2xl font-bold">{importResult.total}</p>
+                        <p className="text-xs text-muted-foreground">Total</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {importResult.errors > 0 && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 max-h-32 overflow-y-auto">
-                    <p className="text-xs font-semibold text-red-700 mb-2">Linhas com erro:</p>
-                    {importResult.results.filter(r => !r.ok).map((r, i) => (
-                      <div key={i} className="flex items-start gap-2 text-xs text-red-700 mb-1">
-                        <XCircle className="h-3 w-3 shrink-0 mt-0.5" />
-                        <span><strong>{r.nome}</strong>: {r.error}</span>
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+                        <p className="text-2xl font-bold text-emerald-700">{rCriados.length}</p>
+                        <p className="text-xs text-emerald-600">Criados</p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                        <p className="text-2xl font-bold text-blue-700">{rAtualizados.length}</p>
+                        <p className="text-xs text-blue-600">Estoque +</p>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+                        <p className="text-2xl font-bold text-gray-600">{rIgnorados.length}</p>
+                        <p className="text-xs text-gray-500">Ignorados</p>
+                      </div>
+                      <div className={`rounded-lg p-3 ${rFalhas.length > 0 ? "bg-red-50 border border-red-200" : "bg-muted/40"}`}>
+                        <p className={`text-2xl font-bold ${rFalhas.length > 0 ? "text-red-700" : "text-muted-foreground"}`}>{rFalhas.length}</p>
+                        <p className={`text-xs ${rFalhas.length > 0 ? "text-red-600" : "text-muted-foreground"}`}>Erros</p>
+                      </div>
+                    </div>
 
-                <Button className="w-full" onClick={() => { setOpenImport(false); resetImport(); }}>
-                  Fechar
-                </Button>
-              </div>
-            )}
+                    {/* Itens criados ou com estoque atualizado */}
+                    {(rCriados.length + rAtualizados.length) > 0 && (
+                      <div className="rounded-lg border border-green-200 bg-green-50 p-3 max-h-48 overflow-y-auto">
+                        <p className="text-xs font-semibold text-green-700 mb-2">✅ Importados com sucesso ({rCriados.length + rAtualizados.length}):</p>
+                        {[...rCriados, ...rAtualizados].map((r, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs text-green-700 mb-1">
+                            <CheckCircle2 className="h-3 w-3 shrink-0" />
+                            <span className="font-mono text-muted-foreground text-[10px]">{r.codigo}</span>
+                            <span className="font-medium flex-1 truncate">{r.nome}</span>
+                            <Badge variant="outline" className={`text-xs h-4 px-1 shrink-0 ${
+                              r.action === "criado" ? "border-emerald-400 text-emerald-700" : "border-blue-400 text-blue-700"
+                            }`}>
+                              {r.action === "criado" ? "Novo" : "Estoque +"}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Itens ignorados intencionalmente (valor zero) */}
+                    {rIgnorados.length > 0 && (
+                      <details className="rounded-lg border border-gray-200 bg-gray-50">
+                        <summary className="cursor-pointer p-3 text-xs font-semibold text-gray-600 select-none">
+                          ⏭️ Ignorados — valor zero no arquivo ({rIgnorados.length})
+                        </summary>
+                        <div className="px-3 pb-3 max-h-36 overflow-y-auto">
+                          {rIgnorados.map((r, i) => (
+                            <div key={i} className="flex items-center gap-2 text-xs text-gray-500 mb-1">
+                              <span className="font-mono text-[10px]">{r.codigo}</span>
+                              <span className="flex-1 truncate">{r.nome}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
+                    {/* Itens com falha na API — erro específico por item */}
+                    {rFalhas.length > 0 && (
+                      <div className="rounded-lg border border-red-300 bg-red-50 p-3 max-h-48 overflow-y-auto">
+                        <p className="text-xs font-semibold text-red-700 mb-2">❌ Falhas na importação ({rFalhas.length}) — verifique os detalhes:</p>
+                        {rFalhas.map((r, i) => (
+                          <div key={i} className="mb-2 last:mb-0">
+                            <div className="flex items-start gap-2 text-xs">
+                              <XCircle className="h-3 w-3 shrink-0 mt-0.5 text-red-600" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-red-800">
+                                  <span className="font-mono text-[10px] text-red-500 mr-1">{r.codigo}</span>
+                                  {r.nome}
+                                </p>
+                                <p className="text-red-600 mt-0.5 break-words">{r.error ?? "Erro desconhecido"}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <Button className="w-full" onClick={() => { setOpenImport(false); resetImport(); }}>
+                      Fechar
+                    </Button>
+                  </div>
+                );
+            })()}
           </DialogContent>
         </Dialog>
       </div>
