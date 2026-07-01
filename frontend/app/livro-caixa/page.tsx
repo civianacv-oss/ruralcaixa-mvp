@@ -35,6 +35,9 @@ export default function LivroCaixaPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{tipo:"ok"|"err";texto:string}|null>(null);
   const [filtroTipo, setFiltroTipo] = useState("");
+  const [modalImport, setModalImport] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [importResult, setImportResult] = useState<{total_linhas:number; importados:number; erros:{linha:number;msg:string}[]} | null>(null);
 
   const [form, setForm] = useState({
     data_lancamento: new Date().toISOString().split("T")[0],
@@ -92,6 +95,23 @@ export default function LivroCaixaPage() {
     loadLancamentos();
   };
 
+  const importarLancamentos = async (file: File) => {
+    setImportando(true);
+    const fd = new FormData();
+    fd.append("arquivo", file);
+    try {
+      const r = await fetch(`${API}/livro-caixa/${IMOVEL_ID}/importar?ano_base=${anoBase}`, {
+        method: "POST", body: fd,
+      });
+      const data = await r.json();
+      setImportResult(data);
+      if (data.importados > 0) loadLancamentos();
+    } catch {
+      showMsg("err", "Erro ao importar arquivo");
+    }
+    setImportando(false);
+  };
+
   const totalReceitas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l=>l.tipo==="receita").reduce((s,l)=>s+l.valor,0);
   const totalDespesas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l=>l.tipo==="despesa").reduce((s,l)=>s+l.valor,0);
   const saldo = totalReceitas - totalDespesas;
@@ -137,9 +157,58 @@ export default function LivroCaixaPage() {
             style={{ ...s.input, width:90 }}>
             {[2022,2023,2024,2025,2026].map(y=><option key={y}>{y}</option>)}
           </select>
+          <button style={btn("#475569")} onClick={()=>{setModalImport(true); setImportResult(null);}}>📂 Importar</button>
           <button style={btn("#1e40af")} onClick={()=>setAba("novo")}>+ Lançamento</button>
         </div>
       </div>
+
+      {/* Modal de importação */}
+      {modalImport && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50}}
+          onClick={e => { if (e.target===e.currentTarget) { setModalImport(false); setImportResult(null); } }}>
+          <div style={{background:"#fff",borderRadius:14,maxWidth:440,width:"90%",boxShadow:"0 10px 40px rgba(0,0,0,.2)"}}>
+            <div style={{padding:"20px 24px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:16,fontWeight:700,color:"#1e293b"}}>📂 Importar lançamentos</div>
+              <button onClick={() => {setModalImport(false);setImportResult(null);}}
+                style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>×</button>
+            </div>
+            <div style={{padding:"16px 24px 24px"}}>
+              {!importResult ? (
+                <>
+                  <div style={{background:"#eff6ff",borderRadius:8,padding:"12px 14px",marginBottom:16,fontSize:13,color:"#1e40af"}}>
+                    <strong>Colunas esperadas:</strong><br/>
+                    data, tipo (receita/despesa), categoria, descricao, valor<br/>
+                    <span style={{color:"#64748b"}}>Opcionais: documento, observacoes</span>
+                  </div>
+                  <div style={{border:"2px dashed #cbd5e1",borderRadius:10,padding:28,textAlign:"center",cursor:"pointer",background:"#f8fafc"}}
+                    onClick={() => document.getElementById("imp-fin-input")?.click()}>
+                    <div style={{fontSize:32,marginBottom:8}}>📄</div>
+                    <div style={{fontSize:14,fontWeight:600,color:"#1e40af",marginBottom:4}}>
+                      {importando ? "Importando..." : "Clique para selecionar"}
+                    </div>
+                    <div style={{fontSize:12,color:"#94a3b8"}}>Excel (.xlsx) ou CSV</div>
+                    <input id="imp-fin-input" type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+                      onChange={e => { if (e.target.files?.[0]) importarLancamentos(e.target.files[0]); }} />
+                  </div>
+                </>
+              ) : (
+                <div style={{textAlign:"center",padding:"16px 0"}}>
+                  <div style={{fontSize:44,marginBottom:12}}>{importResult.erros.length===0 ? "✅" : "⚠️"}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:"#1e293b",marginBottom:4}}>{importResult.importados} lançamentos importados</div>
+                  <div style={{fontSize:13,color:"#64748b",marginBottom:16}}>de {importResult.total_linhas} linhas · {importResult.erros.length} erros</div>
+                  {importResult.erros.length > 0 && importResult.erros.slice(0,5).map((e,i) => (
+                    <div key={i} style={{fontSize:12,color:"#b91c1c",marginBottom:4,textAlign:"left"}}>Linha {e.linha}: {e.msg}</div>
+                  ))}
+                  <button onClick={() => {setModalImport(false);setImportResult(null);}}
+                    style={{marginTop:12,padding:"9px 20px",borderRadius:10,border:"none",background:"#1e40af",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                    Fechar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div style={s.kpiGrid}>

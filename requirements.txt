@@ -19,3 +19,4 @@ Pillow>=10.0.0
 # Force rebuild v3
 
 # cache bust 3
+openpyxl>=3.1.0

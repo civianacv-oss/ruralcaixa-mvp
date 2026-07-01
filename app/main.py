@@ -58,6 +58,13 @@ except Exception as e:
     locacoes_pontos_router = None
 
 try:
+    from app.routers.importacao_financeiro import router as importacao_financeiro_router
+    print("IMPORTACAO_FINANCEIRO ROUTER LOADED OK")
+except Exception as e:
+    print(f"IMPORTACAO_FINANCEIRO ROUTER FAILED: {e}")
+    importacao_financeiro_router = None
+
+try:
     from app.routers.acai import router as acai_router
     print("ACAI ROUTER LOADED OK")
 except Exception as e:
@@ -88,6 +95,7 @@ if caprino_router: app.include_router(caprino_router)
 if suino_router: app.include_router(suino_router)
 if compravenda_router: app.include_router(compravenda_router)
 if locacoes_pontos_router: app.include_router(locacoes_pontos_router)
+if importacao_financeiro_router: app.include_router(importacao_financeiro_router)
 if acai_router: app.include_router(acai_router)
 if efdreinf_router: app.include_router(efdreinf_router)
 
