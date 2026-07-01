@@ -262,6 +262,62 @@ export const railwayRouter = router({
   }),
 
   // ── Raças por espécie ──────────────────────────────────────────────────────
+
+  // ── Criar Imóvel ──────────────────────────────────────────────────────────
+  criarImovel: publicProcedure
+    .input(z.object({
+      nome: z.string().min(1),
+      nirf: z.string().optional(),
+      car: z.string().optional(),
+      caepf: z.string().optional(),
+      cnpj: z.string().optional(),
+      municipio: z.string().optional(),
+      uf: z.string().optional(),
+      area_ha: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      const body: Record<string, unknown> = { nome: input.nome };
+      if (input.nirf)      body.nirf       = input.nirf;
+      if (input.car)       body.car        = input.car;
+      if (input.caepf)     body.caepf      = input.caepf;
+      if (input.cnpj)      body.cnpj       = input.cnpj;
+      if (input.municipio) body.municipio  = input.municipio;
+      if (input.uf)        body.uf         = input.uf;
+      if (input.area_ha)   body.area_total = input.area_ha;
+      const novo = await railwayMutate<{ id: number; nome: string }>(
+        `/propriedades-rural/`, "POST", body, claims.produtorId
+      );
+      await seedImoveisAcl(claims.produtorId, [novo.id]);
+      return novo;
+    }),
+
+  // ── Editar Imóvel ──────────────────────────────────────────────────────────
+  editarImovel: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      nome: z.string().optional(),
+      nirf: z.string().optional(),
+      car: z.string().optional(),
+      municipio: z.string().optional(),
+      uf: z.string().optional(),
+      area_ha: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const body: Record<string, unknown> = {};
+      if (input.nome)      body.nome       = input.nome;
+      if (input.nirf)      body.nirf       = input.nirf;
+      if (input.car)       body.car        = input.car;
+      if (input.municipio) body.municipio  = input.municipio;
+      if (input.uf)        body.uf         = input.uf;
+      if (input.area_ha)   body.area_total = input.area_ha;
+      return railwayMutate(
+        `/imoveis-rurais/${input.imovelId}`, "PUT", body, claims.produtorId
+      );
+    }),
+
   racas: publicProcedure
     .input(z.object({ especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
     .query(async ({ ctx, input }) => {
