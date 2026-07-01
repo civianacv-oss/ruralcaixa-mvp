@@ -1281,12 +1281,12 @@ export default function Insumos() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                     <TableRow>
-                      <TableHead className="min-w-[180px]">Nome</TableHead>
-                      <TableHead className="text-right">Estoque Atual</TableHead>
-                      <TableHead className="text-right hidden sm:table-cell">Mínimo</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
-                      <TableHead className="text-right w-[110px]">Ação</TableHead>
+                      <TableHead className="w-[260px] max-w-[260px]">Nome</TableHead>
+                      <TableHead className="w-[110px] text-right">Estoque Atual</TableHead>
+                      <TableHead className="w-[90px] text-right hidden sm:table-cell">Mínimo</TableHead>
+                      <TableHead className="w-[100px]">Status</TableHead>
+                      <TableHead className="w-[160px] hidden md:table-cell">Fornecedor</TableHead>
+                      <TableHead className="w-[140px] text-right">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1325,14 +1325,14 @@ export default function Insumos() {
                                 return (
                                   <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
                                     {/* Coluna 1: Código + Nome */}
-                                    <TableCell>
+                                    <TableCell className="max-w-[260px]">
                                       <div className="flex flex-col gap-0.5">
                                         {catalogEntry && (
                                           <span className="font-mono text-[10px] text-muted-foreground">{catalogEntry.codigo}</span>
                                         )}
-                                        <span className="font-medium text-sm flex items-center gap-1.5">
-                                          <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
-                                          {ins.nome}
+                                        <span className="font-medium text-sm flex items-center gap-1.5 truncate" title={ins.nome}>
+                                          <span className="text-sm leading-none shrink-0">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
+                                          <span className="truncate">{ins.nome}</span>
                                         </span>
                                       </div>
                                     </TableCell>
@@ -1434,14 +1434,14 @@ export default function Insumos() {
                           return (
                             <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
                               {/* Coluna 1: Código + Nome */}
-                              <TableCell>
+                              <TableCell className="max-w-[260px]">
                                 <div className="flex flex-col gap-0.5">
                                   {catalogEntry && (
                                     <span className="font-mono text-[10px] text-muted-foreground">{catalogEntry.codigo}</span>
                                   )}
-                                  <span className="font-medium text-sm flex items-center gap-1.5">
-                                    <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
-                                    {ins.nome}
+                                  <span className="font-medium text-sm flex items-center gap-1.5 truncate" title={ins.nome}>
+                                    <span className="text-sm leading-none shrink-0">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
+                                    <span className="truncate">{ins.nome}</span>
                                   </span>
                                 </div>
                               </TableCell>
