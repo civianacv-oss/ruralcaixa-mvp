@@ -222,9 +222,11 @@ export default function Insumos() {
   // ── Importação de planilha (3 etapas: upload → de-para → resultado) ────────────────────────────────────────────────────
   const [openImport, setOpenImport] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importStep, setImportStep] = useState<"upload" | "depara" | "resultado">("upload");
+  const [importStep, setImportStep] = useState<"upload" | "depara" | "conflitos" | "resultado">("upload");
   const [importPreview, setImportPreview] = useState<{
     rows: any[];
+    rows_novas?: any[];
+    conflitos?: { nome: string; linha: number; estoque_planilha: number; estoque_atual: number; insumo_id: number; unidade: string }[];
     unmapped: { nome: string; linha: number }[];
     catalog: any[];
     total: number;
@@ -234,6 +236,8 @@ export default function Insumos() {
     linhas_zeradas?: { nome: string; linha: number }[];
   } | null>(null);
   const [importMappings, setImportMappings] = useState<Record<string, string>>({});
+  // Decisões de conflito: { [nome]: "adicionar" | "ignorar" }
+  const [conflitosDecisoes, setConflitosDecisoes] = useState<Record<string, "adicionar" | "ignorar">>({});
   const [importResult, setImportResult] = useState<{ total: number; success: number; errors: number; criados?: number; atualizados?: number; results: { nome: string; ok: boolean; error?: string; codigo?: string; action?: string }[] } | null>(null);
 
   const analisarPlanilha = trpc.railway.analisarPlanilhaInsumos.useMutation({
@@ -242,7 +246,15 @@ export default function Insumos() {
       const initial: Record<string, string> = {};
       data.unmapped.forEach((u: { nome: string }) => { initial[u.nome] = u.nome; });
       setImportMappings(initial);
-      setImportStep("depara");
+      // Se houver conflitos (insumos já existentes), ir para etapa de resolução
+      if (data.conflitos && data.conflitos.length > 0) {
+        const decisoesIniciais: Record<string, "adicionar" | "ignorar"> = {};
+        data.conflitos.forEach((c: { nome: string }) => { decisoesIniciais[c.nome] = "ignorar"; });
+        setConflitosDecisoes(decisoesIniciais);
+        setImportStep("conflitos");
+      } else {
+        setImportStep("depara");
+      }
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -272,7 +284,12 @@ export default function Insumos() {
 
   const handleConfirmarImportacao = () => {
     if (!importPreview || !imovelId) return;
-    confirmarImportacao.mutate({ imovelId, rows: importPreview.rows, mappings: importMappings });
+    confirmarImportacao.mutate({
+      imovelId,
+      rows: importPreview.rows,
+      mappings: importMappings,
+      conflitos_decisoes: conflitosDecisoes,
+    });
   };
 
   const resetImport = () => {
@@ -280,6 +297,7 @@ export default function Insumos() {
     setImportStep("upload");
     setImportPreview(null);
     setImportMappings({});
+    setConflitosDecisoes({});
     setImportResult(null);
   };
 
@@ -357,9 +375,15 @@ export default function Insumos() {
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                 <span className={importStep === "upload" ? "font-semibold text-primary" : ""}>1. Upload</span>
                 <span>→</span>
-                <span className={importStep === "depara" ? "font-semibold text-primary" : ""}>2. De-Para</span>
+                {importPreview?.conflitos && importPreview.conflitos.length > 0 && (
+                  <>
+                    <span className={importStep === "conflitos" ? "font-semibold text-amber-600" : ""}>2. Conflitos</span>
+                    <span>→</span>
+                  </>
+                )}
+                <span className={importStep === "depara" ? "font-semibold text-primary" : ""}>3. De-Para</span>
                 <span>→</span>
-                <span className={importStep === "resultado" ? "font-semibold text-primary" : ""}>3. Resultado</span>
+                <span className={importStep === "resultado" ? "font-semibold text-primary" : ""}>4. Resultado</span>
               </div>
             </DialogHeader>
 
@@ -419,7 +443,103 @@ export default function Insumos() {
               </div>
             )}
 
-            {/* ETAPA 2: De-Para */}
+            {/* ETAPA 2: Resolução de Conflitos */}
+            {importStep === "conflitos" && importPreview && importPreview.conflitos && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-800">
+                    ⚠️ {importPreview.conflitos.length} insumo(s) já existem no sistema
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Para cada insumo abaixo, escolha se deseja <strong>adicionar ao estoque existente</strong> ou <strong>ignorar</strong> este item da planilha.
+                  </p>
+                </div>
+
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {/* Botões de seleção em massa */}
+                  <div className="flex gap-2 pb-2 border-b">
+                    <Button
+                      variant="outline" size="sm" className="text-xs h-7"
+                      onClick={() => {
+                        const todas: Record<string, "adicionar" | "ignorar"> = {};
+                        importPreview.conflitos!.forEach(c => { todas[c.nome] = "adicionar"; });
+                        setConflitosDecisoes(todas);
+                      }}
+                    >
+                      Adicionar todos
+                    </Button>
+                    <Button
+                      variant="outline" size="sm" className="text-xs h-7"
+                      onClick={() => {
+                        const todas: Record<string, "adicionar" | "ignorar"> = {};
+                        importPreview.conflitos!.forEach(c => { todas[c.nome] = "ignorar"; });
+                        setConflitosDecisoes(todas);
+                      }}
+                    >
+                      Ignorar todos
+                    </Button>
+                  </div>
+
+                  {importPreview.conflitos.map((c) => (
+                    <div key={c.nome} className="rounded-lg border p-3 bg-white">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{c.nome}</p>
+                          <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                            <span>Estoque atual: <strong>{c.estoque_atual} {c.unidade}</strong></span>
+                            {c.estoque_planilha > 0 && (
+                              <span className="text-emerald-700">Planilha: +{c.estoque_planilha} {c.unidade}</span>
+                            )}
+                            {c.estoque_planilha === 0 && (
+                              <span className="text-muted-foreground">Planilha: 0 {c.unidade}</span>
+                            )}
+                          </div>
+                          {conflitosDecisoes[c.nome] === "adicionar" && c.estoque_planilha > 0 && (
+                            <p className="text-xs text-emerald-700 mt-1 font-medium">
+                              → Novo estoque: {(c.estoque_atual + c.estoque_planilha).toFixed(3)} {c.unidade}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            onClick={() => setConflitosDecisoes(prev => ({ ...prev, [c.nome]: "adicionar" }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                              conflitosDecisoes[c.nome] === "adicionar"
+                                ? "bg-emerald-600 text-white border-emerald-600"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-emerald-400"
+                            }`}
+                          >
+                            + Adicionar
+                          </button>
+                          <button
+                            onClick={() => setConflitosDecisoes(prev => ({ ...prev, [c.nome]: "ignorar" }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                              conflitosDecisoes[c.nome] === "ignorar"
+                                ? "bg-gray-700 text-white border-gray-700"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                            }`}
+                          >
+                            Ignorar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setImportStep("upload")}>← Voltar</Button>
+                  <Button
+                    className="flex-1"
+                    onClick={() => setImportStep("depara")}
+                  >
+                    Continuar →
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ETAPA 3: De-Para */}
             {importStep === "depara" && importPreview && (
               <div className="space-y-4">
                 <div className="rounded-lg border bg-muted/20 p-3 flex items-center justify-between">
@@ -524,10 +644,10 @@ export default function Insumos() {
               </div>
             )}
 
-            {/* ETAPA 3: Resultado */}
+            {/* ETAPA 4: Resultado */}
             {importStep === "resultado" && importResult && (
               <div className="space-y-4">
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="grid grid-cols-5 gap-2 text-center">
                   <div className="rounded-lg bg-muted/40 p-3">
                     <p className="text-2xl font-bold">{importResult.total}</p>
                     <p className="text-xs text-muted-foreground">Total</p>
@@ -538,7 +658,11 @@ export default function Insumos() {
                   </div>
                   <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
                     <p className="text-2xl font-bold text-blue-700">{importResult.atualizados ?? 0}</p>
-                    <p className="text-xs text-blue-600">Atualizados</p>
+                    <p className="text-xs text-blue-600">Estoque +</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+                    <p className="text-2xl font-bold text-gray-600">{(importResult as any).ignorados ?? 0}</p>
+                    <p className="text-xs text-gray-500">Ignorados</p>
                   </div>
                   <div className={`rounded-lg p-3 ${importResult.errors > 0 ? "bg-red-50 border border-red-200" : "bg-muted/40"}`}>
                     <p className={`text-2xl font-bold ${importResult.errors > 0 ? "text-red-700" : "text-muted-foreground"}`}>{importResult.errors}</p>
@@ -548,13 +672,19 @@ export default function Insumos() {
 
                 {importResult.success > 0 && (
                   <div className="rounded-lg border border-green-200 bg-green-50 p-3 max-h-48 overflow-y-auto">
-                    <p className="text-xs font-semibold text-green-700 mb-2">Insumos importados:</p>
+                    <p className="text-xs font-semibold text-green-700 mb-2">Insumos processados:</p>
                     {importResult.results.filter(r => r.ok).map((r, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs text-green-700 mb-1">
                         <CheckCircle2 className="h-3 w-3 shrink-0" />
                         <span className="font-mono text-muted-foreground">{r.codigo}</span>
                         <span className="font-medium">{r.nome}</span>
-                        <Badge variant="outline" className="text-xs h-4 px-1">{r.action === "criado" ? "Novo" : "Atualizado"}</Badge>
+                        <Badge variant="outline" className={`text-xs h-4 px-1 ${
+                          r.action === "criado" ? "border-emerald-400 text-emerald-700" :
+                          r.action === "atualizado" ? "border-blue-400 text-blue-700" :
+                          "border-gray-300 text-gray-500"
+                        }`}>
+                          {r.action === "criado" ? "Novo" : r.action === "atualizado" ? "Estoque +" : "Ignorado"}
+                        </Badge>
                       </div>
                     ))}
                   </div>

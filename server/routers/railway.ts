@@ -909,8 +909,54 @@ export const railwayRouter = router({
         }
       }
 
+      // ── VALIDAÇÃO 5: Detectar conflitos com insumos já existentes no Railway ───
+      // Busca insumos já cadastrados para identificar quais da planilha já existem
+      let insumosExistentesAnalise: Insumo[] = [];
+      try {
+        const existResAnalise = await railwayFetch<{ data: Insumo[] }>("/insumos/", undefined, claims.produtorId);
+        insumosExistentesAnalise = existResAnalise?.data ?? [];
+      } catch {
+        // Railway indisponível — continuar sem verificação de conflitos
+      }
+
+      // Mapa: nomeNormalizado → insumo existente (com estoque atual)
+      const mapaExistentes = new Map<string, Insumo>();
+      for (const ins of insumosExistentesAnalise) {
+        mapaExistentes.set(normalizeNome(ins.nome), ins);
+      }
+
+      // Separar linhas em: novas (não existem) e conflitos (já existem)
+      const rowsNovas: typeof parsedRows = [];
+      const conflitos: {
+        nome: string;
+        linha: number;
+        estoque_planilha: number;
+        estoque_atual: number;
+        insumo_id: number;
+        unidade: string;
+      }[] = [];
+
+      for (const r of parsedRows) {
+        const key = normalizeNome(r.nome);
+        const existente = mapaExistentes.get(key);
+        if (existente) {
+          conflitos.push({
+            nome: r.nome,
+            linha: r._linha,
+            estoque_planilha: r.estoque_atual,
+            estoque_atual: existente.estoque_atual ?? 0,
+            insumo_id: existente.id,
+            unidade: existente.unidade ?? r.unidade,
+          });
+        } else {
+          rowsNovas.push(r);
+        }
+      }
+
       return {
         rows: parsedRows,
+        rows_novas: rowsNovas,
+        conflitos,
         unmapped,
         catalog,
         total: parsedRows.length,
@@ -942,6 +988,8 @@ export const railwayRouter = router({
         lead_time_dias: z.number(),
       })),
       mappings: z.record(z.string(), z.string()), // { nomePlanilha: nomeDestino }
+      // Decisões do usuário para insumos já existentes: "adicionar" = soma estoque | "ignorar" = pula
+      conflitos_decisoes: z.record(z.string(), z.enum(["adicionar", "ignorar"])).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
@@ -961,7 +1009,7 @@ export const railwayRouter = router({
         return true;
       });
 
-      // ── VALIDAÇÃO 2: Buscar insumos já existentes no Railway para evitar duplicatas ──
+      // ── VALIDAÇÃO 2: Buscar insumos já existentes no Railway ────────────────────────
       let insumosExistentes: Insumo[] = [];
       try {
         const existRes = await railwayFetch<{ data: Insumo[] }>("/insumos/", undefined, claims.produtorId);
@@ -969,9 +1017,14 @@ export const railwayRouter = router({
       } catch {
         // Railway indisponível — continuar sem verificação
       }
-      const nomesExistentes = new Set(
-        insumosExistentes.map(i => normalizeNomeConf(i.nome))
-      );
+      // Mapa: nomeNormalizado → insumo existente completo (para obter o ID e estoque atual)
+      const mapaExistentesConf = new Map<string, Insumo>();
+      for (const ins of insumosExistentes) {
+        mapaExistentesConf.set(normalizeNomeConf(ins.nome), ins);
+      }
+
+      // Decisões do usuário: { nomePlanilha: "adicionar" | "ignorar" }
+      const decisoes = input.conflitos_decisoes ?? {};
 
       for (const row of rowsUnicas) {
         if (!row.nome) { results.push({ nome: "(sem nome)", ok: false, error: "Nome obrigatório" }); continue; }
@@ -989,16 +1042,43 @@ export const railwayRouter = router({
             unidade: row.unidade,
           });
 
-          // ── VALIDAÇÃO 3: Verificar se já existe no Railway (anti-duplicata) ────────
-          const jaExisteNoRailway = nomesExistentes.has(nomeNorm) || !!catalogItem.railwayId;
+          // Verificar se já existe no Railway
+          const insumoExistente = mapaExistentesConf.get(nomeNorm) ||
+            (catalogItem.railwayId ? insumosExistentes.find(i => i.id === catalogItem.railwayId) : undefined);
+          const jaExisteNoRailway = !!insumoExistente;
 
-          if (jaExisteNoRailway) {
-            // Insumo já existe: apenas atualiza o catálogo local, não cria duplicata
-            results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "atualizado" });
+          if (jaExisteNoRailway && insumoExistente) {
+            // ── DECISÃO DO USUÁRIO: adicionar ao estoque ou ignorar ──────────────────
+            // Verificar a decisão usando o nome original da planilha (antes do de-para)
+            const decisao = decisoes[row.nome] ?? decisoes[nomeDestino] ?? "ignorar";
+
+            if (decisao === "adicionar" && row.estoque_atual > 0) {
+              // Somar o estoque da planilha ao estoque existente via movimentação
+              try {
+                await railwayMutate(
+                  `/insumos/${insumoExistente.id}/movimentar`,
+                  "POST",
+                  {
+                    tipo: "entrada",
+                    quantidade: row.estoque_atual,
+                    motivo: "Importação de planilha",
+                    custo_unitario: row.preco_estimado || undefined,
+                  },
+                  claims.produtorId
+                );
+                results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "atualizado" });
+              } catch {
+                // Fallback: registrar como ignorado se a movimentação falhar
+                results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "ignorado" });
+              }
+            } else {
+              // Ignorar: não altera o estoque existente
+              results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "ignorado" });
+            }
             continue;
           }
 
-          // Tentar enviar para Railway (somente se não existir)
+          // Insumo não existe: criar novo no Railway
           let actionFinal: "criado" | "atualizado" = "criado";
           try {
             const payload = {
@@ -1019,12 +1099,11 @@ export const railwayRouter = router({
               await upsertInsumosCatalogo({ imovelId: input.imovelId, nome: nomeDestino, categoria: row.categoria, unidade: row.unidade, railwayId: (railwayResult as { id: number }).id });
             }
           } catch (railwayErr: unknown) {
-            // Erro 409 = insumo já existe no Railway (duplicata detectada pelo backend)
+            // Erro 409 = insumo já existe no Railway (race condition)
             const errMsg = railwayErr instanceof Error ? railwayErr.message : String(railwayErr);
             if (errMsg.includes("409") || errMsg.toLowerCase().includes("já existe") || errMsg.toLowerCase().includes("already exists")) {
-              actionFinal = "atualizado"; // Tratar como atualizado, não como erro
+              actionFinal = "atualizado";
             }
-            // Outros erros de Railway são ignorados (Railway pode estar indisponível)
           }
 
           results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: actionFinal });
@@ -1037,7 +1116,8 @@ export const railwayRouter = router({
       const errors = results.filter(r => !r.ok).length;
       const criados = results.filter(r => r.action === "criado").length;
       const atualizados = results.filter(r => r.action === "atualizado").length;
-      return { total: rowsUnicas.length, success, errors, criados, atualizados, results };
+      const ignorados = results.filter(r => r.action === "ignorado").length;
+      return { total: rowsUnicas.length, success, errors, criados, atualizados, ignorados, results };
     }),
 
   // ─── Simulador de Regime Tributário ───────────────────────────────────────
