@@ -1369,21 +1369,23 @@ export const railwayRouter = router({
             if (decisao === "adicionar" && row.estoque_atual > 0) {
               // Somar o estoque da planilha ao estoque existente via movimentação
               try {
+                // Usa ajuste_positivo para adicionar estoque via importação
                 await railwayMutate(
                   `/insumos/${insumoExistente.id}/movimentar`,
                   "POST",
                   {
-                    tipo: "entrada",
-                    quantidade: row.estoque_atual,
-                    motivo: "Importação de planilha",
+                    tipo: "ajuste_positivo",
+                    quantidade: Math.abs(row.estoque_atual),
+                    observacao: "Importação de planilha",
                     custo_unitario: row.preco_estimado || undefined,
                   },
                   claims.produtorId
                 );
                 results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "atualizado" });
-              } catch {
-                // Fallback: registrar como ignorado se a movimentação falhar
-                results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "ignorado" });
+              } catch (movErr: unknown) {
+                // Reportar erro real em vez de silenciosamente ignorar
+                const errMsg = movErr instanceof Error ? movErr.message : String(movErr);
+                results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: false, action: "ignorado", erro: `Falha ao movimentar: ${errMsg}` });
               }
             } else {
               // Ignorar: não altera o estoque existente
