@@ -52,26 +52,25 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <GlobalErrorHandler />
-        {/* Cache busting: Force clear all service workers */}
+        {/* Service Worker completely disabled - unregister all SWs and clear caches */}
         <script dangerouslySetInnerHTML={{ __html: `
+          // Unregister ALL service workers immediately
           if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-              navigator.serviceWorker.getRegistrations()
-                .then(function(regs) {
-                  regs.forEach(function(reg) {
-                    reg.unregister();
-                  });
-                })
-                .catch(function(e) { console.warn('Error unregistering SW:', e); });
-              
-              if ('caches' in window) {
-                caches.keys().then(function(names) {
-                  names.forEach(function(name) {
-                    caches.delete(name);
-                  });
+            navigator.serviceWorker.getRegistrations()
+              .then(function(regs) {
+                regs.forEach(function(reg) {
+                  reg.unregister().catch(function(e) { console.log('SW unregister error:', e); });
                 });
-              }
-            });
+              })
+              .catch(function(e) { console.log('SW getRegistrations error:', e); });
+          }
+          // Clear all caches
+          if ('caches' in window) {
+            caches.keys().then(function(names) {
+              names.forEach(function(name) {
+                caches.delete(name).catch(function(e) { console.log('Cache delete error:', e); });
+              });
+            }).catch(function(e) { console.log('Caches.keys error:', e); });
           }
         ` }} />
         {children}
