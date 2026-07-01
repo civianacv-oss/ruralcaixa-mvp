@@ -257,40 +257,7 @@ def criar_insumo(body: InsumoCreate, request: Request):
                 conn.commit()
             return {"data": insumo}
 
-@router.get("/insumos/{iid}")
-def obter_insumo(iid: int, request: Request):
-    fazenda_id = _auth(request)
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT i.*, f.nome AS fornecedor_nome, f.whatsapp AS fornecedor_whatsapp
-                FROM insumos i LEFT JOIN fornecedores f ON f.id = i.fornecedor_id
-                WHERE i.id=%s AND i.fazenda_id=%s
-            """, (iid, fazenda_id))
-            row = cur.fetchone()
-            if not row: raise HTTPException(404, "Insumo não encontrado")
-            # Busca últimas movimentações
-            cur.execute("""
-                SELECT * FROM movimentacoes_insumo
-                WHERE insumo_id=%s ORDER BY criado_em DESC LIMIT 20
-            """, (iid,))
-            row["movimentacoes"] = cur.fetchall()
-            return {"data": row}
-
-@router.delete("/insumos/{iid}")
-def excluir_insumo(iid: int, request: Request):
-    """Desativa (soft delete) um insumo. Insumos com movimentações não são apagados fisicamente."""
-    fazenda_id = _auth(request)
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM insumos WHERE id=%s AND fazenda_id=%s AND ativo=TRUE", (iid, fazenda_id))
-            if not cur.fetchone():
-                raise HTTPException(404, "Insumo não encontrado")
-            cur.execute("UPDATE insumos SET ativo=FALSE, atualizado_em=NOW() WHERE id=%s AND fazenda_id=%s", (iid, fazenda_id))
-            conn.commit()
-            return {"ok": True, "id": iid}
-
-
+# ── ROTAS ESTÁTICAS PRIMEIRO (evitar conflito com /insumos/{iid}) ──────────────────────
 @router.get("/insumos/duplicados")
 def listar_duplicados(request: Request):
     """Lista grupos de insumos com nomes duplicados (case-insensitive) para facilitar limpeza."""
@@ -320,7 +287,6 @@ def limpar_duplicados(request: Request):
     fazenda_id = _auth(request)
     with get_db() as conn:
         with conn.cursor() as cur:
-            # Busca grupos duplicados
             cur.execute("""
                 SELECT LOWER(TRIM(nome)) AS nome_norm,
                        array_agg(id ORDER BY criado_em ASC) AS ids
@@ -333,11 +299,10 @@ def limpar_duplicados(request: Request):
 
             removidos = 0
             for grupo in grupos:
-                ids = grupo["ids"]  # ordenados por criado_em ASC: primeiro é o mais antigo
+                ids = grupo["ids"]
                 id_manter = ids[0]
                 ids_remover = ids[1:]
 
-                # Somar estoques dos duplicados no insumo principal
                 cur.execute("""
                     SELECT COALESCE(SUM(estoque_atual), 0) AS total_estoque
                     FROM insumos WHERE id = ANY(%s) AND ativo = TRUE
@@ -345,19 +310,16 @@ def limpar_duplicados(request: Request):
                 estoque_extra = cur.fetchone()["total_estoque"]
 
                 if estoque_extra > 0:
-                    # Transfere o estoque dos duplicados para o insumo principal
                     cur.execute("""
                         UPDATE insumos SET estoque_atual = estoque_atual + %s, atualizado_em=NOW()
                         WHERE id = %s
                     """, (estoque_extra, id_manter))
-                    # Registra movimentação de ajuste
                     cur.execute("""
                         INSERT INTO movimentacoes_insumo
                             (insumo_id, fazenda_id, tipo, quantidade, observacao, data_movim)
                         VALUES (%s, %s, 'ajuste_positivo', %s, 'Mescla de duplicatas', %s)
                     """, (id_manter, fazenda_id, estoque_extra, date.today()))
 
-                # Desativa os duplicados
                 cur.execute("""
                     UPDATE insumos SET ativo=FALSE, atualizado_em=NOW()
                     WHERE id = ANY(%s)
@@ -366,6 +328,40 @@ def limpar_duplicados(request: Request):
 
             conn.commit()
             return {"ok": True, "removidos": removidos, "grupos_processados": len(grupos)}
+
+
+# ── ROTAS DINÂMICAS (com parâmetro {iid}) ───────────────────────────────────────────
+@router.get("/insumos/{iid}")
+def obter_insumo(iid: int, request: Request):
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT i.*, f.nome AS fornecedor_nome, f.whatsapp AS fornecedor_whatsapp
+                FROM insumos i LEFT JOIN fornecedores f ON f.id = i.fornecedor_id
+                WHERE i.id=%s AND i.fazenda_id=%s
+            """, (iid, fazenda_id))
+            row = cur.fetchone()
+            if not row: raise HTTPException(404, "Insumo não encontrado")
+            cur.execute("""
+                SELECT * FROM movimentacoes_insumo
+                WHERE insumo_id=%s ORDER BY criado_em DESC LIMIT 20
+            """, (iid,))
+            row["movimentacoes"] = cur.fetchall()
+            return {"data": row}
+
+@router.delete("/insumos/{iid}")
+def excluir_insumo(iid: int, request: Request):
+    """Desativa (soft delete) um insumo. Insumos com movimentações não são apagados fisicamente."""
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM insumos WHERE id=%s AND fazenda_id=%s AND ativo=TRUE", (iid, fazenda_id))
+            if not cur.fetchone():
+                raise HTTPException(404, "Insumo não encontrado")
+            cur.execute("UPDATE insumos SET ativo=FALSE, atualizado_em=NOW() WHERE id=%s AND fazenda_id=%s", (iid, fazenda_id))
+            conn.commit()
+            return {"ok": True, "id": iid}
 
 
 @router.put("/insumos/{iid}")
