@@ -152,13 +152,13 @@ export default function CompraVendaPage() {
         fetch(`${API}/compravenda/despesas?imovel_id=${IMOVEL_ID}`).then(r => r.ok ? r.json() : []),
         fetch(`${API}/compravenda/alertas-fiscais/${IMOVEL_ID}?dias_aviso=10`).then(r => r.ok ? r.json() : null),
       ]);
-      if (prodRes.status === "fulfilled") setProdutos(prodRes.value || []);
-      if (compRes.status === "fulfilled") setCompras(compRes.value || []);
-      if (vendRes.status === "fulfilled") setVendas(vendRes.value || []);
-      if (fluxRes.status === "fulfilled") setFluxo(fluxRes.value || []);
+      if (prodRes.status === "fulfilled") setProdutos(Array.isArray(prodRes.value) ? prodRes.value : []);
+      if (compRes.status === "fulfilled") setCompras(Array.isArray(compRes.value) ? compRes.value : []);
+      if (vendRes.status === "fulfilled") setVendas(Array.isArray(vendRes.value) ? vendRes.value : []);
+      if (fluxRes.status === "fulfilled") setFluxo(Array.isArray(fluxRes.value) ? fluxRes.value : []);
       if (dashRes.status === "fulfilled") setDashboard(dashRes.value);
       if (dreRes.status === "fulfilled") setDre(dreRes.value);
-      if (despRes.status === "fulfilled") setDespesas(despRes.value || []);
+      if (despRes.status === "fulfilled") setDespesas(Array.isArray(despRes.value) ? despRes.value : []);
       const alertRes = [prodRes, compRes, vendRes, fluxRes, dashRes, dreRes, despRes][7] as PromiseSettledResult<AlertasResponse | null> | undefined;
       // fetch alertas separately since it's the 8th item
       try {
@@ -496,8 +496,8 @@ export default function CompraVendaPage() {
         {aba === "compras" && (
           <div>
             {/* Alerta de itens próximos/acima do prazo fiscal */}
-            {compras.length > 0 && (() => {
-              const alertas = compras.filter(c => {
+            {(Array.isArray(compras) ? compras : []).length > 0 && (() => {
+              const alertas = (Array.isArray(compras) ? compras : []).filter(c => {
                     const { status } = calcularStatusFiscal(c.data_compra, c.regime || "pasto");
                     return status === "rural" || status === "alerta";
                   });
@@ -631,7 +631,7 @@ export default function CompraVendaPage() {
                   <select value={novaVenda.produto_id} onChange={e => setNovaVenda(p => ({ ...p, produto_id: e.target.value }))}
                     style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14, width: 200 }}>
                     <option value="">Selecione...</option>
-                    {produtos.filter(p => Number(p.estoque_atual) > 0).map(p => (
+                    {(Array.isArray(produtos) ? produtos : []).filter(p => Number(p.estoque_atual) > 0).map(p => (
                       <option key={p.id} value={p.id}>{p.nome} — estoque: {Number(p.estoque_atual).toFixed(2)} {p.unidade}</option>
                     ))}
                   </select>

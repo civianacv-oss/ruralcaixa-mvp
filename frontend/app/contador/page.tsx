@@ -69,8 +69,8 @@ function validarDocumento(doc: string): { valido: boolean; tipo: string } {
 
 // Badge de alerta
 function AlertaBadge({ alertas }: { alertas: Alerta[] }) {
-  const erros = alertas.filter(a => a.nivel === "erro").length;
-  const avisos = alertas.filter(a => a.nivel === "aviso").length;
+  const erros = (Array.isArray(alertas) ? alertas : []).filter(a => a.nivel === "erro").length;
+  const avisos = (Array.isArray(alertas) ? alertas : []).filter(a => a.nivel === "aviso").length;
   if (alertas.length === 0) return null;
   return (
     <div className="flex gap-1.5">
@@ -197,7 +197,7 @@ export default function Contador() {
       const validacaoPromises = todosImoveis.map((im: { id: number }) =>
         fetch(`${API}/imoveis/${im.id}/terceiros/validacao`).then(r => r.json()).catch(() => null)
       );
-      const validacoes = (await Promise.all(validacaoPromises)).filter(Boolean);
+      const validacoes = (Array.isArray(await Promise.all(validacaoPromises)) ? await Promise.all(validacaoPromises) : []).filter(Boolean);
       const todosTerceiros = validacoes.flatMap((v: { terceiros?: unknown[] }) => v.terceiros || []);
       setTerceiros(todosTerceiros as Terceiro[]);
 
@@ -225,7 +225,7 @@ export default function Contador() {
         }
       });
 
-      const semImovel = (lancs as Lancamento[]).filter((l) => !(l as unknown as { imovel_id?: number }).imovel_id && l.confirmado);
+      const semImovel = (Array.isArray(lancs) ? lancs : []).filter((l) => !(l as unknown as { imovel_id?: number }).imovel_id && l.confirmado);
       if (semImovel.length > 0) {
         novosAlertas.push({
           nivel: "aviso",
@@ -266,7 +266,7 @@ export default function Contador() {
   const totalReceita = produtores.reduce((s, p) => s + p.receita, 0);
   const totalDespesa = produtores.reduce((s, p) => s + p.despesa, 0);
   const totalPendentes = produtores.reduce((s, p) => s + p.pendentes, 0);
-  const errosCount = alertas.filter(a => a.nivel === "erro").length;
+  const errosCount = (Array.isArray(alertas) ? alertas : []).filter(a => a.nivel === "erro").length;
 
   return (
     <div className="min-h-screen bg-gray-50 max-w-md mx-auto pb-6">

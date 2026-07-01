@@ -219,16 +219,16 @@ export default function OvinoDashboard() {
         apiFetch(`${API}/caprino/tarefas/resumo/${IMOVEL_ID}`).then(r => r.json()).catch(() => null),
       ]);
       setDashboard(dash);
-      setAnimais(anim);
-      setLotes(lots);
-      setAlertas(alert);
+      setAnimais(Array.isArray(anim) ? anim : []);
+      setLotes(Array.isArray(lots) ? lots : []);
+      setAlertas(Array.isArray(alert) ? alert : []);
       setTarefas(Array.isArray(taref) ? taref : []);
       setResumoTarefas(resumoT);
       setInsumos(Array.isArray(ins) ? ins : []);
       if (indic && indic.por_lote) setIndicadores(indic);
       if (rac && rac.totais) setRacao(rac);
       setMortes(Array.isArray(mort) ? mort : []);
-      if (pastAlertas) { setPiquetes(pastAlertas.piquetes || []); setAlertasPastagem(pastAlertas.alertas || []); }
+      if (pastAlertas) { setPiquetes(Array.isArray(pastAlertas.piquetes) ? pastAlertas.piquetes : []); setAlertasPastagem(Array.isArray(pastAlertas.alertas) ? pastAlertas.alertas : []); }
       if (sazonal) setSazonalidade(sazonal);
       if (indicMort) setIndicMortalidade(indicMort);
       setCarencias(Array.isArray(car) ? car : []);
@@ -432,12 +432,12 @@ export default function OvinoDashboard() {
               </span>
             )}
           </div>
-          {resultadoReclass && resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
+          {resultadoReclass && Array.isArray(resultadoReclass.detalhes) && resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
               <strong style={{ display: "block", marginBottom: 6, color: "#15803d" }}>
                 {resultadoReclass.dry_run ? "Seria movido:" : "Movido:"}
               </strong>
-              {resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
+              {(Array.isArray(resultadoReclass.detalhes) ? resultadoReclass.detalhes : []).filter((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
                 <div key={i} style={{ marginBottom: 2 }}>
                   <span style={{ fontWeight: 600, color: "#15803d" }}>{d.brinco}</span>
                   {" → "}<span style={{ fontWeight: 600 }}>{d.fase}</span>
@@ -506,10 +506,10 @@ export default function OvinoDashboard() {
       {aba === "pastagem" && (
         <div>
           {/* Alertas */}
-          {alertasPastagem.filter(a=>a.severidade==="alta").length > 0 && (
+          {(Array.isArray(alertasPastagem) ? alertasPastagem : []).filter(a=>a.severidade==="alta").length > 0 && (
             <div style={{ background:"#fff1f2", border:"1px solid #fecdd3", borderRadius:10, padding:"12px 16px", marginBottom:16 }}>
               <div style={{ fontWeight:700, color:"#dc2626", marginBottom:8 }}>🚨 Alertas de pastagem</div>
-              {alertasPastagem.filter(a=>a.severidade==="alta").map((a:any,i:number) => (
+              {(Array.isArray(alertasPastagem) ? alertasPastagem : []).filter(a=>a.severidade==="alta").map((a:any,i:number) => (
                 <div key={i} style={{ fontSize:13, marginBottom:4 }}>
                   <strong>{a.piquete}:</strong> {a.mensagem}
                 </div>
@@ -601,10 +601,10 @@ export default function OvinoDashboard() {
           )}
 
           {/* Alertas médios */}
-          {alertasPastagem.filter(a=>a.severidade==="media").length > 0 && (
+          {(Array.isArray(alertasPastagem) ? alertasPastagem : []).filter(a=>a.severidade==="media").length > 0 && (
             <div style={{ marginTop:16 }}>
               <div style={{ fontWeight:600, fontSize:13, color:"#d97706", marginBottom:8 }}>🟡 Alertas médios</div>
-              {alertasPastagem.filter(a=>a.severidade==="media").map((a:any,i:number) => (
+              {(Array.isArray(alertasPastagem) ? alertasPastagem : []).filter(a=>a.severidade==="media").map((a:any,i:number) => (
                 <div key={i} style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:8, padding:"8px 12px", marginBottom:6, fontSize:13 }}>
                   <strong>{a.piquete}:</strong> {a.mensagem}
                 </div>
@@ -1049,14 +1049,14 @@ export default function OvinoDashboard() {
           )}
 
           {/* Lista de tarefas */}
-          {tarefas.filter(t => t.status === "pendente").length === 0 ? (
+          {(Array.isArray(tarefas) ? tarefas : []).filter(t => t.status === "pendente").length === 0 ? (
             <div style={{ textAlign: "center", padding: 40, color: "#16a34a" }}>
               ✅ Nenhuma tarefa pendente nos próximos 30 dias.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {["alta","media","baixa"].map(prio => {
-                const grupo = tarefas.filter(t => t.prioridade === prio && t.status === "pendente");
+                const grupo = (Array.isArray(tarefas) ? tarefas : []).filter(t => t.prioridade === prio && t.status === "pendente");
                 if (!grupo.length) return null;
                 const cores: Record<string,any> = {
                   alta:  {badge:"#dc2626", label:"🔴 Alta"},
@@ -1141,7 +1141,7 @@ export default function OvinoDashboard() {
                 <option value={0}>Selecione insumo *</option>
                 {["vacina","vermifugo","medicamento"].map(cat => (
                   <optgroup key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}>
-                    {insumos.filter(i=>i.categoria===cat).map(i => (
+                    {(Array.isArray(insumos) ? insumos : []).filter(i=>i.categoria===cat).map(i => (
                       <option key={i.id} value={i.id}>{i.nome_comercial}</option>
                     ))}
                   </optgroup>
@@ -1239,7 +1239,7 @@ export default function OvinoDashboard() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {["alta","media","baixa"].map(prio => {
-                const grupo = alertas.filter(a => a.prioridade === prio && a.status === "pendente");
+                const grupo = (Array.isArray(alertas) ? alertas : []).filter(a => a.prioridade === prio && a.status === "pendente");
                 if (!grupo.length) return null;
                 const cores: Record<string,{bg:string,border:string,badge:string,text:string}> = {
                   alta:  {bg:"#fff1f2",border:"#fecdd3",badge:"#dc2626",text:"🔴 Alta prioridade"},
