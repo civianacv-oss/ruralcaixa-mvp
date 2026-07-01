@@ -15,11 +15,22 @@ export default function GlobalErrorHandler() {
       return originalFilter.call(this, callback, thisArg);
     };
 
+    // Monkey-patch Array.prototype.map to add safety
+    const originalMap = Array.prototype.map;
+    Array.prototype.map = function(callback: any, thisArg?: any) {
+      // If this is not an array, return empty array
+      if (!Array.isArray(this)) {
+        console.warn('⚠️ map() called on non-array:', this);
+        return [];
+      }
+      return originalMap.call(this, callback, thisArg);
+    };
+
     // Handle uncaught errors
     const handleError = (event: ErrorEvent) => {
-      // Suppress filter errors - they're already handled by the monkey-patch
-      if (event.message?.includes('filter is not a function')) {
-        console.warn('⚠️ Suppressed filter error (handled by safety patch)');
+      // Suppress filter/map errors - they're already handled by the monkey-patch
+      if (event.message?.includes('filter is not a function') || event.message?.includes('map is not a function')) {
+        console.warn('⚠️ Suppressed array method error (handled by safety patch)');
         event.preventDefault();
         return;
       }
@@ -36,9 +47,9 @@ export default function GlobalErrorHandler() {
 
     // Handle unhandled promise rejections
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      // Suppress filter errors
-      if (event.reason?.message?.includes('filter is not a function')) {
-        console.warn('⚠️ Suppressed filter error in promise (handled by safety patch)');
+      // Suppress filter/map errors
+      if (event.reason?.message?.includes('filter is not a function') || event.reason?.message?.includes('map is not a function')) {
+        console.warn('⚠️ Suppressed array method error in promise (handled by safety patch)');
         event.preventDefault();
         return;
       }
