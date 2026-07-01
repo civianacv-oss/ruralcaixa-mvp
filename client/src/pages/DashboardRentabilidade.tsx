@@ -12,7 +12,7 @@
  * - Simulador de cenários (preço de venda / custo)
  * - Tabela de detalhamento por insumo com sparkline
  */
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Link } from "wouter";
 import {
   ArrowLeft,
@@ -27,6 +27,9 @@ import {
   BarChart3,
   RefreshCw,
   Download,
+  Loader2,
+  Info,
+  Zap,
 } from "lucide-react";
 import {
   AreaChart,
@@ -338,6 +341,61 @@ export default function DashboardRentabilidade() {
   const [historico, setHistorico] = useState<PontoPeriodo[]>([]);
   const [labelPeriodo, setLabelPeriodo] = useState("Jul/26");
   const [presetPeriodo, setPresetPeriodo] = useState<string>("Mensal (30 dias)");
+  const [dadosIntegrados, setDadosIntegrados] = useState(false);
+
+  // Buscar dados do rebanho para pré-preenchimento
+  const { data: bovinosData, isLoading: loadingBovinos } = trpc.railway.animais.useQuery(
+    { imovelId: imovelId ?? 0, especie: "bovinos" },
+    { enabled: !!imovelId }
+  );
+  const { data: ovinosData } = trpc.railway.animais.useQuery(
+    { imovelId: imovelId ?? 0, especie: "ovinos" },
+    { enabled: !!imovelId }
+  );
+  const { data: caprinosData } = trpc.railway.animais.useQuery(
+    { imovelId: imovelId ?? 0, especie: "caprinos" },
+    { enabled: !!imovelId }
+  );
+  const { data: suinosData } = trpc.railway.animais.useQuery(
+    { imovelId: imovelId ?? 0, especie: "suinos" },
+    { enabled: !!imovelId }
+  );
+
+  // Calcular totais do rebanho integrado
+  const rebanhoIntegrado = useMemo(() => {
+    const bovinos = (bovinosData as any[]) ?? [];
+    const ovinos = (ovinosData as any[]) ?? [];
+    const caprinos = (caprinosData as any[]) ?? [];
+    const suinos = (suinosData as any[]) ?? [];
+    const ativos = (arr: any[]) => arr.filter((a) => a.status === "ativo" || a.status === "Ativo" || !a.status);
+    const totalCorte = ativos(bovinos).length + ativos(ovinos).length + ativos(caprinos).length + ativos(suinos).length;
+    const pesoMedioCorte = (() => {
+      const todos = [...ativos(bovinos), ...ativos(ovinos), ...ativos(caprinos), ...ativos(suinos)];
+      const comPeso = todos.filter((a) => a.ultimo_peso && a.ultimo_peso > 0);
+      if (comPeso.length === 0) return 0;
+      return Math.round(comPeso.reduce((s, a) => s + a.ultimo_peso, 0) / comPeso.length);
+    })();
+    const especiesPrincipal = [
+      { nome: "Bovinos", qtd: ativos(bovinos).length },
+      { nome: "Ovinos", qtd: ativos(ovinos).length },
+      { nome: "Caprinos", qtd: ativos(caprinos).length },
+      { nome: "Suínos", qtd: ativos(suinos).length },
+    ].filter((e) => e.qtd > 0);
+    return { totalCorte, pesoMedioCorte, especiesPrincipal };
+  }, [bovinosData, ovinosData, caprinosData, suinosData]);
+
+  // Pré-preencher formulário com dados do sistema quando carregados
+  useEffect(() => {
+    if (dadosIntegrados) return;
+    if (rebanhoIntegrado.totalCorte > 0) {
+      setFormCorte((p) => ({
+        ...p,
+        numeroAnimais: rebanhoIntegrado.totalCorte,
+        ...(rebanhoIntegrado.pesoMedioCorte > 0 ? { pesoInicial: rebanhoIntegrado.pesoMedioCorte } : {}),
+      }));
+      setDadosIntegrados(true);
+    }
+  }, [rebanhoIntegrado, dadosIntegrados]);
 
   // Aplicar preset de período
   const aplicarPreset = useCallback((label: string) => {
@@ -375,11 +433,31 @@ export default function DashboardRentabilidade() {
   const [insumosSelecionados, setInsumosSelecionados] = useState<InsumoSelecionado[]>([]);
 
   // Buscar insumos do estoque
-  const { data: insumosData } = trpc.railway.insumos.useQuery(
+  const { data: insumosData, isLoading: loadingInsumos } = trpc.railway.insumos.useQuery(
     { imovelId: imovelId ?? 0 },
     { enabled: !!imovelId }
   );
   const insumosEstoque = (insumosData as any[]) ?? [];
+
+  // Adicionar todos os insumos com custo médio de uma vez
+  const adicionarTodosInsumos = useCallback(() => {
+    const comCusto = insumosEstoque.filter(
+      (i: any) => (i.custo_medio ?? 0) > 0 && !insumosSelecionados.some((s) => s.id === i.id)
+    );
+    if (comCusto.length === 0) return;
+    setInsumosSelecionados((prev) => [
+      ...prev,
+      ...comCusto.map((i: any) => ({
+        id: i.id,
+        nome: i.nome,
+        categoria: i.categoria ?? "outros",
+        unidade: i.unidade ?? "kg",
+        custoMedio: i.custo_medio ?? 0,
+        estoqueAtual: i.estoque_atual ?? 0,
+        quantidadeUsada: 0,
+      })),
+    ]);
+  }, [insumosEstoque, insumosSelecionados]);
 
   // Adicionar insumo à lista
   const adicionarInsumo = useCallback((id: number) => {
@@ -558,7 +636,7 @@ export default function DashboardRentabilidade() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-lg font-bold leading-none">Dashboard de Rentabilidade</h1>
+            <h1 className="text-lg font-bold leading-none">Painel de Rentabilidade</h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               Análise interativa — Metodologia Embrapa BR-CORTE / PSP Leite
             </p>
@@ -604,6 +682,28 @@ export default function DashboardRentabilidade() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {/* Banner de integração com o sistema */}
+                {rebanhoIntegrado.totalCorte > 0 && (
+                  <div className="rounded-md bg-primary/5 border border-primary/20 px-3 py-2 text-xs text-primary flex items-start gap-2">
+                    <Zap className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <div>
+                      <strong>Dados integrados do sistema:</strong>{" "}
+                      {rebanhoIntegrado.especiesPrincipal.map((e) => `${e.nome}: ${e.qtd}`).join(" · ")}
+                      {rebanhoIntegrado.pesoMedioCorte > 0 && (
+                        <span> · Peso médio: {rebanhoIntegrado.pesoMedioCorte} kg</span>
+                      )}
+                      <span className="block mt-0.5 text-primary/70">
+                        Campos pré-preenchidos. Ajuste se necessário.
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {loadingBovinos && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando dados do rebanho…
+                  </div>
+                )}
+
                 {/* Seletor de período predefinido */}
                 <div>
                   <Label className="text-xs">Período de análise</Label>
@@ -821,7 +921,28 @@ export default function DashboardRentabilidade() {
             {/* Seleção de insumos */}
             <Card>
               <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-sm">Insumos do Período</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Insumos do Período</CardTitle>
+                  {insumosEstoque.filter((i: any) => (i.custo_medio ?? 0) > 0 && !insumosSelecionados.some((s) => s.id === i.id)).length > 0 && (
+                    <button
+                      onClick={adicionarTodosInsumos}
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      <Zap className="h-3 w-3" /> Adicionar todos
+                    </button>
+                  )}
+                </div>
+                {insumosEstoque.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <Info className="h-3 w-3" />
+                    {insumosEstoque.length} insumos no estoque — custo médio ponderado integrado
+                  </p>
+                )}
+                {loadingInsumos && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Carregando estoque…
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="space-y-2">
                 <Select onValueChange={(v) => adicionarInsumo(+v)}>

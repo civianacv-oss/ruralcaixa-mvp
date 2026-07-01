@@ -632,7 +632,7 @@ export default function Insumos() {
           </Link>
           <Link href="/insumos/dashboard-rentabilidade">
             <Button variant="outline" size="sm" className="gap-1.5 bg-primary/5 border-primary/30 hover:bg-primary/10">
-              <LayoutDashboard className="h-4 w-4 text-primary" /> Dashboard
+              <LayoutDashboard className="h-4 w-4 text-primary" /> Painel de Rentabilidade
             </Button>
           </Link>
           <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
