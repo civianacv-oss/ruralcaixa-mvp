@@ -53,9 +53,21 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-              navigator.serviceWorker.register('/sw.js')
-                .then(function(reg) { console.log('SW registrado:', reg.scope); })
-                .catch(function(e) { console.warn('SW falhou:', e); });
+              navigator.serviceWorker.getRegistrations()
+                .then(function(regs) {
+                  regs.forEach(function(reg) {
+                    reg.unregister();
+                  });
+                })
+                .catch(function(e) { console.warn('Error unregistering SW:', e); });
+              
+              if ('caches' in window) {
+                caches.keys().then(function(names) {
+                  names.forEach(function(name) {
+                    caches.delete(name);
+                  });
+                });
+              }
             });
           }
         ` }} />
