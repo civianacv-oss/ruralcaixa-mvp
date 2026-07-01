@@ -42,6 +42,7 @@ export default function Rebanhos() {
   const [form, setForm]       = useState({
     brinco: "", nome: "", raca: "", sexo: "M",
     data_nascimento: "", peso_nascimento: "", categoria: "",
+    aptidao_manejo: "corte", // obrigatório apenas para bovinos
   });
 
   const especieAtual = ESPECIES.find((e) => e.key === especie)!;
@@ -79,6 +80,8 @@ export default function Rebanhos() {
   const handleCreate = () => {
     if (!form.brinco.trim()) { toast.error("Informe o brinco/identificação"); return; }
     if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
+    // Bovinos exigem aptidao_manejo e categoria como campos obrigatórios
+    if (especie === "bovino" && !form.categoria.trim()) { toast.error("Informe a categoria do bovino (ex: novilho, matriz, reprodutor)"); return; }
     createAnimal.mutate({
       imovelId: imovelId!,
       especie: especieAtual.trpc,
@@ -88,8 +91,11 @@ export default function Rebanhos() {
       sexo: form.sexo as "M" | "F",
       data_nascimento: form.data_nascimento || undefined,
       peso_nascimento: form.peso_nascimento ? Number(form.peso_nascimento) : undefined,
-      observacoes: form.categoria ? `Categoria: ${form.categoria}` : undefined,
-    });
+      categoria: form.categoria || undefined,
+      // aptidao_manejo e aptidao são campos extras passados via observacoes no tRPC
+      // Para bovinos, precisamos passá-los diretamente
+      ...(especie === "bovino" ? { aptidao_manejo: form.aptidao_manejo } : {}),
+    } as any);
   };
 
   const filtered = (animais as Animal[]).filter((a) =>
@@ -293,13 +299,45 @@ export default function Rebanhos() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Categoria</Label>
-              <Input
-                placeholder="Ex: Matriz, Reprodutor, Cria..."
-                value={form.categoria}
-                onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-              />
+              <Label>Categoria{especie === "bovino" ? " *" : ""}</Label>
+              {especie === "bovino" ? (
+                <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="novilho">Novilho</SelectItem>
+                    <SelectItem value="novilha">Novilha</SelectItem>
+                    <SelectItem value="matriz">Matriz</SelectItem>
+                    <SelectItem value="reprodutor">Reprodutor</SelectItem>
+                    <SelectItem value="bezerro">Bezerro</SelectItem>
+                    <SelectItem value="bezerra">Bezerra</SelectItem>
+                    <SelectItem value="touro">Touro</SelectItem>
+                    <SelectItem value="vaca">Vaca</SelectItem>
+                    <SelectItem value="boi">Boi</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="Ex: Matriz, Reprodutor, Cria..."
+                  value={form.categoria}
+                  onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                />
+              )}
             </div>
+
+            {/* Campo Aptidão de Manejo — obrigatório apenas para bovinos */}
+            {especie === "bovino" && (
+              <div className="space-y-1.5">
+                <Label>Aptidão de Manejo *</Label>
+                <Select value={form.aptidao_manejo} onValueChange={(v) => setForm({ ...form, aptidao_manejo: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="corte">Corte</SelectItem>
+                    <SelectItem value="leite">Leite</SelectItem>
+                    <SelectItem value="dupla">Dupla Aptidão</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>

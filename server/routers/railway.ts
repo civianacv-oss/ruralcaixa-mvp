@@ -295,6 +295,9 @@ export const railwayRouter = router({
       data_nascimento: z.string().optional(),
       peso_nascimento: z.number().optional(),
       observacoes: z.string().optional(),
+      // Campos específicos de bovinos (obrigatórios na API, opcionais aqui para outras espécies)
+      categoria: z.string().optional(),
+      aptidao_manejo: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
