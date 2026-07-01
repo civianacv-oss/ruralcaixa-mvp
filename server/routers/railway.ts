@@ -567,6 +567,33 @@ export const railwayRouter = router({
       return (data as { data: MovimentacaoInsumo }).data ?? data;
     }),
 
+  deleteInsumo: publicProcedure
+    .input(z.object({ imovelId: z.number(), insumoId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayMutate<{ ok: boolean; id: number }>(`/insumos/${input.insumoId}`, "DELETE", undefined, claims.produtorId);
+      return data;
+    }),
+
+  duplicadosInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayFetch<{ data: { nome_norm: string; total: number; ids: number[]; nomes: string[]; estoques: number[] }[]; total_grupos: number }>(`/insumos/duplicados?fazenda_id=${input.imovelId}`, undefined, claims.produtorId);
+      return data;
+    }),
+
+  limparDuplicadosInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayMutate<{ ok: boolean; removidos: number; grupos_processados: number }>(`/insumos/limpar-duplicados?fazenda_id=${input.imovelId}`, "POST", undefined, claims.produtorId);
+      return data;
+    }),
+
   // ── Fornecedores ───────────────────────────────────────────────────────────
   fornecedores: publicProcedure
     .input(z.object({ imovelId: z.number() }))

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Plus, PawPrint, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,103 +9,97 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId, type Animal } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
+import { useRuralAuth } from "@/hooks/useRuralAuth";
+import type { Animal } from "@/lib/api";
 
+// O tRPC usa "ovinos"/"caprinos"/"suinos"/"bovinos" (plural)
+type EspecieTRPC = "ovinos" | "caprinos" | "suinos" | "bovinos";
+// A UI usa singular para exibição
 type Especie = "ovino" | "caprino" | "suino" | "bovino";
 
-const ESPECIES: { key: Especie; label: string; emoji: string }[] = [
-  { key: "ovino", label: "Ovinos", emoji: "🐑" },
-  { key: "caprino", label: "Caprinos", emoji: "🐐" },
-  { key: "suino", label: "Suínos", emoji: "🐷" },
-  { key: "bovino", label: "Bovinos", emoji: "🐄" },
+const ESPECIES: { key: Especie; trpc: EspecieTRPC; label: string; emoji: string }[] = [
+  { key: "ovino",   trpc: "ovinos",   label: "Ovinos",  emoji: "🐑" },
+  { key: "caprino", trpc: "caprinos", label: "Caprinos", emoji: "🐐" },
+  { key: "suino",   trpc: "suinos",   label: "Suínos",  emoji: "🐷" },
+  { key: "bovino",  trpc: "bovinos",  label: "Bovinos", emoji: "🐄" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  ativo: "bg-emerald-100 text-emerald-700",
+  ativo:   "bg-emerald-100 text-emerald-700",
   vendido: "bg-blue-100 text-blue-700",
-  morto: "bg-gray-100 text-gray-600",
+  morto:   "bg-gray-100 text-gray-600",
   abatido: "bg-orange-100 text-orange-700",
 };
 
-async function fetchAnimais(especie: Especie, imovelId: number): Promise<Animal[]> {
-  const res = await fetch(`${API_BASE}/${especie}/animais?imovel_id=${imovelId}`);
-  if (!res.ok) throw new Error("Erro ao buscar animais");
-  const data = await res.json();
-  return Array.isArray(data) ? data : data.animais ?? data.items ?? [];
-}
-
-async function createAnimal(especie: Especie, data: Partial<Animal>): Promise<Animal> {
-  const res = await fetch(`${API_BASE}/${especie}/animais`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? "Erro"); }
-  return res.json();
-}
-
 export default function Rebanhos() {
-  const [especie, setEspecie] = useState<Especie>("ovino");
-  const [animais, setAnimais] = useState<Animal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [showNew, setShowNew] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ brinco: "", nome: "", raca: "", sexo: "M", data_nascimento: "", peso_nascimento: "", categoria: "" });
-  const imovelId = getImovelId();
+  const { imovelId } = useRuralAuth();
+  const utils = trpc.useUtils();
 
-  const load = async () => {
-    if (!imovelId) return;
-    setLoading(true);
-    try {
-      const data = await fetchAnimais(especie, imovelId);
-      setAnimais(data);
-    } catch {
-      toast.error("Não foi possível carregar os animais");
-    } finally {
-      setLoading(false);
+  const [especie, setEspecie] = useState<Especie>("ovino");
+  const [search, setSearch]   = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm]       = useState({
+    brinco: "", nome: "", raca: "", sexo: "M",
+    data_nascimento: "", peso_nascimento: "", categoria: "",
+  });
+
+  const especieAtual = ESPECIES.find((e) => e.key === especie)!;
+
+  // ── Query via tRPC (com autenticação automática) ──────────────────────────
+  const {
+    data: animais = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = trpc.railway.animais.useQuery(
+    { imovelId: imovelId!, especie: especieAtual.trpc },
+    {
+      enabled: !!imovelId,
+      retry: 1,
+      onError: (e: any) => {
+        toast.error(`Erro ao carregar rebanho: ${e.message ?? "Verifique sua conexão"}`);
+      },
     }
+  );
+
+  // ── Mutation para criar animal ────────────────────────────────────────────
+  const createAnimal = trpc.railway.createAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Animal cadastrado com sucesso");
+      utils.railway.animais.invalidate();
+      setShowNew(false);
+      setForm({ brinco: "", nome: "", raca: "", sexo: "M", data_nascimento: "", peso_nascimento: "", categoria: "" });
+    },
+    onError: (e: any) => {
+      toast.error(e.message ?? "Erro ao cadastrar animal");
+    },
+  });
+
+  const handleCreate = () => {
+    if (!form.brinco.trim()) { toast.error("Informe o brinco/identificação"); return; }
+    if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
+    createAnimal.mutate({
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      brinco: form.brinco,
+      nome: form.nome || undefined,
+      raca: form.raca || undefined,
+      sexo: form.sexo as "M" | "F",
+      data_nascimento: form.data_nascimento || undefined,
+      peso_nascimento: form.peso_nascimento ? Number(form.peso_nascimento) : undefined,
+      observacoes: form.categoria ? `Categoria: ${form.categoria}` : undefined,
+    });
   };
 
-  useEffect(() => { load(); }, [especie, imovelId]);
-
-  const filtered = animais.filter((a) =>
+  const filtered = (animais as Animal[]).filter((a) =>
     a.brinco?.toLowerCase().includes(search.toLowerCase()) ||
     a.nome?.toLowerCase().includes(search.toLowerCase()) ||
     a.raca?.toLowerCase().includes(search.toLowerCase()) ||
-    a.raca_nome?.toLowerCase().includes(search.toLowerCase())
+    (a as any).raca_nome?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const ativos = animais.filter((a) => a.status === "ativo").length;
-
-  const handleCreate = async () => {
-    if (!form.brinco.trim()) { toast.error("Informe o brinco/identificação"); return; }
-    if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
-    setSaving(true);
-    try {
-      const novo = await createAnimal(especie, {
-        brinco: form.brinco,
-        nome: form.nome || undefined,
-        raca: form.raca || undefined,
-        sexo: form.sexo as "M" | "F",
-        imovel_id: imovelId,
-        data_nascimento: form.data_nascimento || undefined,
-        peso_nascimento: form.peso_nascimento ? Number(form.peso_nascimento) : undefined,
-        categoria: form.categoria || undefined,
-        status: "ativo",
-      });
-      setAnimais((prev) => [novo, ...prev]);
-      setShowNew(false);
-      setForm({ brinco: "", nome: "", raca: "", sexo: "M", data_nascimento: "", peso_nascimento: "", categoria: "" });
-      toast.success("Animal cadastrado com sucesso");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar animal");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const especieAtual = ESPECIES.find((e) => e.key === especie)!;
+  const ativos = (animais as Animal[]).filter((a) => a.status === "ativo").length;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -115,7 +109,7 @@ export default function Rebanhos() {
           <p className="text-sm text-muted-foreground mt-0.5">Gestão do rebanho por espécie</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
@@ -125,6 +119,15 @@ export default function Rebanhos() {
           </Button>
         </div>
       </div>
+
+      {/* Erro de conexão */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex items-center gap-2">
+          <span>⚠️</span>
+          <span>Não foi possível carregar o rebanho. Verifique sua conexão e tente novamente.</span>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => refetch()}>Tentar novamente</Button>
+        </div>
+      )}
 
       {/* Species tabs */}
       <div className="flex gap-2 flex-wrap">
@@ -153,21 +156,28 @@ export default function Rebanhos() {
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder={`Buscar ${especieAtual.label.toLowerCase()} por brinco, nome ou raça...`} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+        <Input
+          placeholder={`Buscar ${especieAtual.label.toLowerCase()} por brinco, nome ou raça...`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Total", value: animais.length },
-          { label: "Ativos", value: animais.filter((a) => a.status === "ativo").length },
-          { label: "Fêmeas", value: animais.filter((a) => a.sexo === "F").length },
-          { label: "Machos", value: animais.filter((a) => a.sexo === "M").length },
+          { label: "Total",  value: (animais as Animal[]).length },
+          { label: "Ativos", value: ativos },
+          { label: "Fêmeas", value: (animais as Animal[]).filter((a) => a.sexo === "F").length },
+          { label: "Machos", value: (animais as Animal[]).filter((a) => a.sexo === "M").length },
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-3 pb-2">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
-              <p className="text-xl font-bold mt-0.5" style={{ color: "oklch(0.35 0.12 145)" }}>{loading ? "—" : s.value}</p>
+              <p className="text-xl font-bold mt-0.5" style={{ color: "oklch(0.35 0.12 145)" }}>
+                {loading ? "—" : s.value}
+              </p>
             </CardContent>
           </Card>
         ))}
@@ -184,12 +194,15 @@ export default function Rebanhos() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((a) => (
+          {filtered.map((a: any) => (
             <Card key={a.id} className="hover:shadow-sm transition-shadow">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-base" style={{ background: "oklch(0.92 0.04 145)" }}>
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-base"
+                      style={{ background: "oklch(0.92 0.04 145)" }}
+                    >
                       {especieAtual.emoji}
                     </div>
                     <div className="min-w-0">
@@ -225,11 +238,19 @@ export default function Rebanhos() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Brinco / ID *</Label>
-                <Input placeholder="Ex: 001" value={form.brinco} onChange={(e) => setForm({ ...form, brinco: e.target.value })} />
+                <Input
+                  placeholder="Ex: 001"
+                  value={form.brinco}
+                  onChange={(e) => setForm({ ...form, brinco: e.target.value })}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Nome</Label>
-                <Input placeholder="Opcional" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                <Input
+                  placeholder="Opcional"
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -245,28 +266,49 @@ export default function Rebanhos() {
               </div>
               <div className="space-y-1.5">
                 <Label>Raça</Label>
-                <Input placeholder="Ex: Santa Inês" value={form.raca} onChange={(e) => setForm({ ...form, raca: e.target.value })} />
+                <Input
+                  placeholder="Ex: Santa Inês"
+                  value={form.raca}
+                  onChange={(e) => setForm({ ...form, raca: e.target.value })}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Data Nascimento</Label>
-                <Input type="date" value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} />
+                <Input
+                  type="date"
+                  value={form.data_nascimento}
+                  onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Peso Nasc. (kg)</Label>
-                <Input type="number" placeholder="0.0" value={form.peso_nascimento} onChange={(e) => setForm({ ...form, peso_nascimento: e.target.value })} />
+                <Input
+                  type="number"
+                  placeholder="0.0"
+                  value={form.peso_nascimento}
+                  onChange={(e) => setForm({ ...form, peso_nascimento: e.target.value })}
+                />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>Categoria</Label>
-              <Input placeholder="Ex: Matriz, Reprodutor, Cria..." value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
+              <Input
+                placeholder="Ex: Matriz, Reprodutor, Cria..."
+                value={form.categoria}
+                onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={saving} style={{ background: "oklch(0.42 0.14 145)" }}>
-              {saving ? "Salvando..." : "Cadastrar Animal"}
+            <Button
+              onClick={handleCreate}
+              disabled={createAnimal.isPending}
+              style={{ background: "oklch(0.42 0.14 145)" }}
+            >
+              {createAnimal.isPending ? "Salvando..." : "Cadastrar Animal"}
             </Button>
           </DialogFooter>
         </DialogContent>

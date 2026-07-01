@@ -37,6 +37,7 @@ import {
   XCircle,
   ChevronsUpDown,
   Hash,
+  Trash2,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -189,11 +190,33 @@ export default function Insumos() {
     onError: (e) => toast.error(e.message),
   });
 
+  const deleteInsumo = trpc.railway.deleteInsumo.useMutation({
+    onSuccess: () => {
+      toast.success("Insumo excluído com sucesso");
+      utils.railway.insumos.invalidate();
+      utils.railway.insumosAlertas.invalidate();
+      setConfirmDeleteId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const limparDuplicados = trpc.railway.limparDuplicadosInsumos.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.removidos} duplicata(s) removida(s) com sucesso!`);
+      utils.railway.insumos.invalidate();
+      utils.railway.insumosAlertas.invalidate();
+      setOpenLimparDuplicados(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   // ── Dialog states ────────────────────────────────────────────────────────────
   const [openNovoInsumo, setOpenNovoInsumo] = useState(false);
   const [openMovim, setOpenMovim] = useState(false);
   const [openNovoFornecedor, setOpenNovoFornecedor] = useState(false);
   const [openNovoPedido, setOpenNovoPedido] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [openLimparDuplicados, setOpenLimparDuplicados] = useState(false);
   const [movimInsumoId, setMovimInsumoId] = useState<number | null>(null);
 
   // ── Importação de planilha (3 etapas: upload → de-para → resultado) ────────────────────────────────────────────────────
@@ -617,7 +640,14 @@ export default function Insumos() {
 
         {/* ── ABA ESTOQUE ── */}
         <TabsContent value="estoque">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <Button
+              variant="outline" size="sm"
+              className="text-amber-700 border-amber-300 hover:bg-amber-50"
+              onClick={() => setOpenLimparDuplicados(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Limpar Duplicados
+            </Button>
             <Dialog open={openNovoInsumo} onOpenChange={setOpenNovoInsumo}>
               <DialogTrigger asChild>
                 <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Novo Insumo</Button>
@@ -886,6 +916,13 @@ export default function Insumos() {
                           >
                             <Plus className="h-3 w-3 mr-1" /> Movimentar
                           </Button>
+                          <Button
+                            variant="outline" size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                            onClick={() => setConfirmDeleteId(ins.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -942,6 +979,63 @@ export default function Insumos() {
             </DialogContent>
           </Dialog>
         </TabsContent>
+
+        {/* Dialog: Confirmar exclusão de insumo */}
+        <Dialog open={!!confirmDeleteId} onOpenChange={(o) => { if (!o) setConfirmDeleteId(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-red-700 flex items-center gap-2">
+                <Trash2 className="h-5 w-5" /> Excluir Insumo
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Tem certeza que deseja excluir este insumo? Esta ação desativa o registro (soft delete).
+                O histórico de movimentações será preservado.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
+                <Button
+                  variant="destructive" className="flex-1"
+                  disabled={deleteInsumo.isPending}
+                  onClick={() => confirmDeleteId && deleteInsumo.mutate({ imovelId: imovelId!, insumoId: confirmDeleteId })}
+                >
+                  {deleteInsumo.isPending ? "Excluindo..." : "Sim, excluir"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog: Limpar duplicados */}
+        <Dialog open={openLimparDuplicados} onOpenChange={setOpenLimparDuplicados}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                ⚠️ Limpar Insumos Duplicados
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Esta ação irá <strong>remover automaticamente todas as duplicatas</strong>, mantendo apenas
+                o registro mais antigo de cada insumo. Estoques dos duplicados serão somados ao registro principal.
+              </p>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Esta operação não pode ser desfeita. Verifique os insumos antes de continuar.
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setOpenLimparDuplicados(false)}>Cancelar</Button>
+                <Button
+                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                  disabled={limparDuplicados.isPending}
+                  onClick={() => limparDuplicados.mutate({ imovelId: imovelId! })}
+                >
+                  {limparDuplicados.isPending ? "Limpando..." : "Limpar Duplicatas"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* ── ABA FORNECEDORES ── */}
         <TabsContent value="fornecedores">

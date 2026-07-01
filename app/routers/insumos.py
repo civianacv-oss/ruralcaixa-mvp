@@ -277,6 +277,97 @@ def obter_insumo(iid: int, request: Request):
             row["movimentacoes"] = cur.fetchall()
             return {"data": row}
 
+@router.delete("/insumos/{iid}")
+def excluir_insumo(iid: int, request: Request):
+    """Desativa (soft delete) um insumo. Insumos com movimentações não são apagados fisicamente."""
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM insumos WHERE id=%s AND fazenda_id=%s AND ativo=TRUE", (iid, fazenda_id))
+            if not cur.fetchone():
+                raise HTTPException(404, "Insumo não encontrado")
+            cur.execute("UPDATE insumos SET ativo=FALSE, atualizado_em=NOW() WHERE id=%s AND fazenda_id=%s", (iid, fazenda_id))
+            conn.commit()
+            return {"ok": True, "id": iid}
+
+
+@router.get("/insumos/duplicados")
+def listar_duplicados(request: Request):
+    """Lista grupos de insumos com nomes duplicados (case-insensitive) para facilitar limpeza."""
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT LOWER(TRIM(nome)) AS nome_norm, COUNT(*) AS total,
+                       array_agg(id ORDER BY criado_em ASC) AS ids,
+                       array_agg(nome ORDER BY criado_em ASC) AS nomes,
+                       array_agg(estoque_atual ORDER BY criado_em ASC) AS estoques,
+                       array_agg(criado_em ORDER BY criado_em ASC) AS datas
+                FROM insumos
+                WHERE fazenda_id = %s AND ativo = TRUE
+                GROUP BY LOWER(TRIM(nome))
+                HAVING COUNT(*) > 1
+                ORDER BY nome_norm
+            """, (fazenda_id,))
+            grupos = cur.fetchall()
+            return {"data": grupos, "total_grupos": len(grupos)}
+
+
+@router.post("/insumos/limpar-duplicados")
+def limpar_duplicados(request: Request):
+    """Remove automaticamente duplicatas mantendo o insumo mais antigo de cada grupo.
+    Insumos duplicados com estoque > 0 são mesclados antes da exclusão."""
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Busca grupos duplicados
+            cur.execute("""
+                SELECT LOWER(TRIM(nome)) AS nome_norm,
+                       array_agg(id ORDER BY criado_em ASC) AS ids
+                FROM insumos
+                WHERE fazenda_id = %s AND ativo = TRUE
+                GROUP BY LOWER(TRIM(nome))
+                HAVING COUNT(*) > 1
+            """, (fazenda_id,))
+            grupos = cur.fetchall()
+
+            removidos = 0
+            for grupo in grupos:
+                ids = grupo["ids"]  # ordenados por criado_em ASC: primeiro é o mais antigo
+                id_manter = ids[0]
+                ids_remover = ids[1:]
+
+                # Somar estoques dos duplicados no insumo principal
+                cur.execute("""
+                    SELECT COALESCE(SUM(estoque_atual), 0) AS total_estoque
+                    FROM insumos WHERE id = ANY(%s) AND ativo = TRUE
+                """, (ids_remover,))
+                estoque_extra = cur.fetchone()["total_estoque"]
+
+                if estoque_extra > 0:
+                    # Transfere o estoque dos duplicados para o insumo principal
+                    cur.execute("""
+                        UPDATE insumos SET estoque_atual = estoque_atual + %s, atualizado_em=NOW()
+                        WHERE id = %s
+                    """, (estoque_extra, id_manter))
+                    # Registra movimentação de ajuste
+                    cur.execute("""
+                        INSERT INTO movimentacoes_insumo
+                            (insumo_id, fazenda_id, tipo, quantidade, observacao, data_movim)
+                        VALUES (%s, %s, 'ajuste_positivo', %s, 'Mescla de duplicatas', %s)
+                    """, (id_manter, fazenda_id, estoque_extra, date.today()))
+
+                # Desativa os duplicados
+                cur.execute("""
+                    UPDATE insumos SET ativo=FALSE, atualizado_em=NOW()
+                    WHERE id = ANY(%s)
+                """, (ids_remover,))
+                removidos += len(ids_remover)
+
+            conn.commit()
+            return {"ok": True, "removidos": removidos, "grupos_processados": len(grupos)}
+
+
 @router.put("/insumos/{iid}")
 def atualizar_insumo(iid: int, body: InsumoCreate, request: Request):
     fazenda_id = _auth(request)
