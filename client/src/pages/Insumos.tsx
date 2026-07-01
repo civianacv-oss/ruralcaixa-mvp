@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,6 +51,9 @@ import {
   RefreshCw,
   ShoppingBag,
   UserX,
+  LayoutGrid,
+  LayoutList,
+  ArrowUpDown,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -456,6 +459,14 @@ export default function Insumos() {
   const [filtroSemFornecedor, setFiltroSemFornecedor] = useState(false);
   const [agruparCategoria, setAgruparCategoria] = useState(false);
   const [categoriasExpandidas, setCategoriasExpandidas] = useState<Set<string>>(new Set());
+  // Toggle de visualização
+  const [viewMode, setViewMode] = useState<"tabela" | "cards">("tabela");
+  // Paginação (modo cards)
+  const [pagina, setPagina] = useState(1);
+  const ITENS_POR_PAGINA = 12;
+  // Ordenação (modo cards)
+  const [ordenarPor, setOrdenarPor] = useState<"nome" | "estoque" | "status">("nome");
+  const [ordemDesc, setOrdemDesc] = useState(false);
 
   if (!imovelId) {
     return (
@@ -529,6 +540,47 @@ export default function Insumos() {
       if (!insumosAgrupados[cat]) insumosAgrupados[cat] = [];
       insumosAgrupados[cat].push(ins);
     });
+  }
+
+  // Ordenação (modo cards)
+  const STATUS_ORDER_MAP: Record<string, number> = { critico: 0, baixo: 1, atencao: 2, ok: 3 };
+  const insumosFiltradosOrdenados = useMemo(() => {
+    return [...insumosFiltrados].sort((a: any, b: any) => {
+      let cmp = 0;
+      if (ordenarPor === "nome") cmp = (a.nome ?? "").localeCompare(b.nome ?? "");
+      else if (ordenarPor === "estoque") cmp = (a.estoque_atual ?? 0) - (b.estoque_atual ?? 0);
+      else if (ordenarPor === "status") {
+        cmp = (STATUS_ORDER_MAP[a.status_estoque] ?? 9) - (STATUS_ORDER_MAP[b.status_estoque] ?? 9);
+      }
+      return ordemDesc ? -cmp : cmp;
+    });
+  }, [insumosFiltrados, ordenarPor, ordemDesc]);
+
+  // Paginação (modo cards)
+  const totalPaginas = Math.ceil(insumosFiltradosOrdenados.length / ITENS_POR_PAGINA);
+  const insumosPaginados = insumosFiltradosOrdenados.slice((pagina - 1) * ITENS_POR_PAGINA, pagina * ITENS_POR_PAGINA);
+
+  // Exportar CSV
+  function exportarCSV() {
+    const headers = ["Código", "Nome", "Categoria", "Unidade", "Estoque Atual", "Mínimo", "Ideal", "Fornecedor", "Status", "Preço Unit."];
+    const rows = insumosFiltrados.map((i: any) => [
+      i.codigo ?? "",
+      `"${i.nome ?? ""}"`
+      , i.categoria ?? "",
+      i.unidade ?? "",
+      i.estoque_atual ?? 0,
+      i.estoque_minimo ?? 0,
+      i.estoque_ideal ?? 0,
+      i.fornecedor_nome ? `"${i.fornecedor_nome}"` : "",
+      i.status_estoque ?? "",
+      i.preco_estimado ?? "",
+    ]);
+    const csv = [headers.join(","), ...rows.map((r: any[]) => r.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `insumos_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
   }
 
   return (
@@ -1361,17 +1413,67 @@ export default function Insumos() {
                 </Select>
               )}
 
-              {/* Toggle agrupamento */}
-              <button
-                onClick={() => setAgruparCategoria(v => !v)}
-                className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-all flex items-center gap-1 ${
-                  agruparCategoria
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-border hover:bg-muted"
-                }`}
-              >
-                <BarChart2 className="h-3 w-3" /> Agrupar
-              </button>
+              {/* Toggle agrupamento (só visível em modo tabela) */}
+              {viewMode === "tabela" && (
+                <button
+                  onClick={() => setAgruparCategoria(v => !v)}
+                  className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-all flex items-center gap-1 ${
+                    agruparCategoria
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  }`}
+                >
+                  <BarChart2 className="h-3 w-3" /> Agrupar
+                </button>
+              )}
+
+              {/* Ordenação (só visível em modo cards) */}
+              {viewMode === "cards" && (
+                <div className="flex items-center gap-1">
+                  <select
+                    value={ordenarPor}
+                    onChange={e => { setOrdenarPor(e.target.value as any); setPagina(1); }}
+                    className="text-xs border border-border rounded-md px-2 py-1 bg-background text-foreground"
+                  >
+                    <option value="nome">Nome</option>
+                    <option value="estoque">Estoque</option>
+                    <option value="status">Status</option>
+                  </select>
+                  <button
+                    onClick={() => setOrdemDesc(v => !v)}
+                    className="text-xs px-2 py-1 rounded-md border border-border bg-background text-muted-foreground hover:bg-muted"
+                    title={ordemDesc ? "Decrescente" : "Crescente"}
+                  >
+                    <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Toggle Tabela / Cards */}
+              <div className="flex items-center border border-border rounded-md overflow-hidden ml-auto">
+                <button
+                  onClick={() => setViewMode("tabela")}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-all ${
+                    viewMode === "tabela"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                  title="Visualização em tabela"
+                >
+                  <LayoutList className="h-3 w-3" /> Tabela
+                </button>
+                <button
+                  onClick={() => { setViewMode("cards"); setPagina(1); }}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-all ${
+                    viewMode === "cards"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                  title="Visualização em cards"
+                >
+                  <LayoutGrid className="h-3 w-3" /> Cards
+                </button>
+              </div>
 
               {/* Pill: Sem fornecedor */}
               {semFornecedor > 0 && (
@@ -1414,6 +1516,132 @@ export default function Insumos() {
               <Search className="h-10 w-10 mx-auto mb-2 opacity-30" />
               <p>Nenhum insumo encontrado com os filtros aplicados.</p>
               <button className="text-sm text-primary underline mt-2" onClick={() => { setBuscaTexto(""); setFiltroStatus("todos"); setFiltroCategoria("todas"); }}>Limpar filtros</button>
+            </div>
+          ) : viewMode === "cards" ? (
+            /* ===== MODO CARDS ===== */
+            <div>
+              {/* Grade de cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {insumosPaginados.map((ins: any) => {
+                  const st = ins.status_estoque ?? "ok";
+                  const progresso = ins.estoque_ideal > 0
+                    ? Math.min(100, Math.round((ins.estoque_atual / ins.estoque_ideal) * 100))
+                    : ins.estoque_minimo > 0
+                      ? Math.min(100, Math.round((ins.estoque_atual / ins.estoque_minimo) * 100))
+                      : 100;
+                  const corBarra = st === "critico" ? "bg-red-500" : st === "baixo" || st === "atencao" ? "bg-orange-400" : "bg-green-500";
+                  return (
+                    <div key={ins.id} className={`relative bg-card rounded-xl border p-4 flex flex-col gap-3 hover:shadow-md transition-shadow ${
+                      st === "critico" ? "border-red-200" : st === "baixo" || st === "atencao" ? "border-orange-200" : "border-border"
+                    }`}>
+                      {/* Badge status */}
+                      <span className={`absolute top-3 right-3 text-xs px-2 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[st]}`}>
+                        {STATUS_LABELS[st]}
+                      </span>
+
+                      {/* Nome e categoria */}
+                      <div className="pr-16">
+                        {ins.codigo && <div className="text-[10px] font-mono text-muted-foreground mb-0.5">{ins.codigo}</div>}
+                        <div className="font-semibold text-sm text-foreground leading-tight">{ins.nome}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {ins.categoria}
+                          {ins.fornecedor_nome && <span className="ml-1">· 🏭 {ins.fornecedor_nome}</span>}
+                        </div>
+                      </div>
+
+                      {/* Barra de progresso */}
+                      <div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                          <span>Estoque</span>
+                          <span>{progresso}%</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${corBarra}`} style={{ width: `${progresso}%` }} />
+                        </div>
+                      </div>
+
+                      {/* Valores */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[{label: "Atual", val: fmtEstoque(ins.estoque_atual, ins.unidade), color: st === "critico" ? "text-red-600" : st === "baixo" || st === "atencao" ? "text-orange-600" : "text-green-700"},
+                          {label: "Mínimo", val: ins.estoque_minimo ?? 0, color: "text-foreground"},
+                          {label: "Ideal", val: ins.estoque_ideal ?? 0, color: "text-foreground"}].map(({label, val, color}) => (
+                          <div key={label} className="bg-muted/50 rounded-lg p-2 text-center">
+                            <div className="text-[9px] text-muted-foreground uppercase tracking-wide">{label}</div>
+                            <div className={`text-sm font-bold ${color}`}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Fornecedor ausente */}
+                      {!ins.fornecedor_nome && (
+                        <button
+                          className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
+                          onClick={() => setOpenNovoFornecedor(true)}
+                        >
+                          <AlertTriangle className="h-3 w-3" /> Cadastrar fornecedor
+                        </button>
+                      )}
+
+                      {/* Botões */}
+                      <div className="flex gap-1.5 mt-auto">
+                        <button
+                          className="flex-1 text-xs py-1.5 rounded-lg border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-colors font-medium"
+                          onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}
+                        >📊 Movimentar</button>
+                        {(st === "critico" || st === "baixo" || st === "atencao") && (
+                          <button
+                            className="flex-1 text-xs py-1.5 rounded-lg border border-orange-500 text-orange-600 hover:bg-orange-500 hover:text-white transition-colors font-medium"
+                            onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
+                          >🛒 Pedido</button>
+                        )}
+                        <button
+                          className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
+                          onClick={() => setConfirmDeleteId(ins.id)}
+                        ><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Paginação */}
+              {totalPaginas > 1 && (
+                <div className="flex items-center justify-center gap-1.5 mt-6 flex-wrap">
+                  <button
+                    onClick={() => setPagina(p => Math.max(1, p - 1))}
+                    disabled={pagina === 1}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background disabled:opacity-40 hover:bg-muted"
+                  >←</button>
+                  {Array.from({ length: Math.min(totalPaginas, 7) }, (_, i) => {
+                    const num = totalPaginas <= 7 ? i + 1 : pagina <= 4 ? i + 1 : pagina >= totalPaginas - 3 ? totalPaginas - 6 + i : pagina - 3 + i;
+                    return (
+                      <button key={num} onClick={() => setPagina(num)}
+                        className={`px-3 py-1.5 text-sm rounded-lg border font-medium transition-colors ${
+                          pagina === num ? "bg-primary text-primary-foreground border-primary" : "border-border bg-background hover:bg-muted"
+                        }`}
+                      >{num}</button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
+                    disabled={pagina === totalPaginas}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background disabled:opacity-40 hover:bg-muted"
+                  >→</button>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {insumosFiltradosOrdenados.length} itens · Pág. {pagina} de {totalPaginas}
+                  </span>
+                </div>
+              )}
+
+              {/* Botão Exportar CSV */}
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={exportarCSV}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  <Download className="h-3 w-3" /> Exportar CSV ({insumosFiltrados.length})
+                </button>
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border overflow-hidden">
