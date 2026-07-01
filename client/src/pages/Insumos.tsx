@@ -48,6 +48,8 @@ import {
   ChevronRight,
   BarChart2,
   RefreshCw,
+  ShoppingBag,
+  UserX,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,10 +60,17 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  critico: "Crítico",
-  baixo: "Baixo",
+  critico: "Urgente",
+  baixo: "Atenção",
   atencao: "Atenção",
   ok: "OK",
+};
+
+const STATUS_ICONS: Record<string, string> = {
+  critico: "🟥",
+  baixo: "🟧",
+  atencao: "🟡",
+  ok: "🟢",
 };
 
 const PEDIDO_STATUS_COLORS: Record<string, string> = {
@@ -347,6 +356,7 @@ export default function Insumos() {
   const [buscaTexto, setBuscaTexto] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "critico" | "baixo" | "atencao" | "ok">("todos");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
+  const [filtroSemFornecedor, setFiltroSemFornecedor] = useState(false);
   const [agruparCategoria, setAgruparCategoria] = useState(false);
   const [categoriasExpandidas, setCategoriasExpandidas] = useState<Set<string>>(new Set());
 
@@ -362,6 +372,25 @@ export default function Insumos() {
   const alertasBaixos = alertas.filter((a: any) => a.status_estoque === "baixo").length;
   const alertasAtencao = alertas.filter((a: any) => a.status_estoque === "atencao").length;
   const pedidosPendentes = pedidos.filter((p: any) => p.status === "pendente").length;
+
+  // Métricas dinâmicas
+  const abaixoMinimo = insumos.filter((i: any) => {
+    const atual = Number(i.estoque_atual ?? 0);
+    const min = Number(i.estoque_minimo ?? 0);
+    return min > 0 && atual < min;
+  }).length;
+
+  const semFornecedor = insumos.filter((i: any) => !i.fornecedor_nome && !i.fornecedor_id).length;
+
+  // Dias médios de cobertura: estoque_atual / consumo_medio_diario (se disponível) ou estimativa
+  const diasCobertura = (() => {
+    const comConsumo = insumos.filter((i: any) => i.consumo_medio_diario > 0);
+    if (comConsumo.length === 0) return null;
+    const media = comConsumo.reduce((acc: number, i: any) => {
+      return acc + (Number(i.estoque_atual) / Number(i.consumo_medio_diario));
+    }, 0) / comConsumo.length;
+    return Math.round(media);
+  })();
 
   // Detectar se o backend de insumos ainda não foi deployado (404 = endpoint não existe)
   const backendPendente = !loadingInsumos && insumos.length === 0 && !loadingAlertas && alertas.length === 0;
@@ -388,7 +417,8 @@ export default function Insumos() {
     ].some(f => f?.toLowerCase().includes(buscaTexto.toLowerCase()));
     const statusMatch = filtroStatus === "todos" || ins.status_estoque === filtroStatus;
     const catMatch = filtroCategoria === "todas" || ins.categoria === filtroCategoria;
-    return textoMatch && statusMatch && catMatch;
+    const fornecedorMatch = !filtroSemFornecedor || (!ins.fornecedor_nome && !ins.fornecedor_id);
+    return textoMatch && statusMatch && catMatch && fornecedorMatch;
   });
 
   // Categorias únicas para filtro
@@ -782,26 +812,56 @@ export default function Insumos() {
         </div>
       )}
 
-      {/* ── Resumo operacional (Fase 1) ── */}
+      {/* ── Resumo operacional dinâmico ── */}
       {!backendPendente && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Card 1: Total */}
           <div className="rounded-lg border bg-card p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total de insumos</p>
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <Package className="h-3 w-3" /> Total de insumos
+            </p>
             <p className="text-2xl font-bold">{insumos.length}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{insumos.filter((i: any) => i.status_estoque === "ok").length} em estoque OK</p>
           </div>
-          <div className={`rounded-lg border p-3 ${alertasCriticos > 0 ? "bg-red-50 border-red-200" : "bg-card"}`}>
-            <p className="text-xs text-muted-foreground mb-1">Críticos</p>
-            <p className={`text-2xl font-bold ${alertasCriticos > 0 ? "text-red-600" : ""}`}>{alertasCriticos}</p>
-            {alertasCriticos > 0 && <p className="text-xs text-red-500 mt-0.5">Reposição urgente</p>}
+
+          {/* Card 2: Abaixo do mínimo */}
+          <div className={`rounded-lg border p-3 cursor-pointer transition-colors ${abaixoMinimo > 0 ? "bg-red-50 border-red-200 hover:bg-red-100" : "bg-card"}`}
+            onClick={() => { if (abaixoMinimo > 0) setFiltroStatus("critico"); }}
+          >
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Abaixo do mínimo
+            </p>
+            <p className={`text-2xl font-bold ${abaixoMinimo > 0 ? "text-red-600" : ""}`}>{abaixoMinimo}</p>
+            {abaixoMinimo > 0
+              ? <p className="text-xs text-red-500 mt-0.5">Clique para filtrar</p>
+              : <p className="text-xs text-green-600 mt-0.5">Tudo em dia ✓</p>
+            }
           </div>
-          <div className={`rounded-lg border p-3 ${alertasBaixos > 0 ? "bg-orange-50 border-orange-200" : "bg-card"}`}>
-            <p className="text-xs text-muted-foreground mb-1">Estoque baixo</p>
-            <p className={`text-2xl font-bold ${alertasBaixos > 0 ? "text-orange-600" : ""}`}>{alertasBaixos}</p>
-            {alertasAtencao > 0 && <p className="text-xs text-orange-500 mt-0.5">{alertasAtencao} em atenção</p>}
+
+          {/* Card 3: Dias de cobertura ou sem fornecedor */}
+          <div className={`rounded-lg border p-3 cursor-pointer transition-colors ${semFornecedor > 0 ? "bg-amber-50 border-amber-200 hover:bg-amber-100" : "bg-card"}`}
+            onClick={() => { if (semFornecedor > 0) setFiltroSemFornecedor(v => !v); }}
+          >
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <UserX className="h-3 w-3" /> Sem fornecedor
+            </p>
+            <p className={`text-2xl font-bold ${semFornecedor > 0 ? "text-amber-600" : ""}`}>{semFornecedor}</p>
+            {semFornecedor > 0
+              ? <p className="text-xs text-amber-600 mt-0.5">Clique para filtrar</p>
+              : <p className="text-xs text-muted-foreground mt-0.5">Todos cadastrados</p>
+            }
           </div>
+
+          {/* Card 4: Pedidos pendentes ou dias cobertura */}
           <div className={`rounded-lg border p-3 ${pedidosPendentes > 0 ? "bg-blue-50 border-blue-200" : "bg-card"}`}>
-            <p className="text-xs text-muted-foreground mb-1">Pedidos pendentes</p>
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <ShoppingCart className="h-3 w-3" /> Pedidos pendentes
+            </p>
             <p className={`text-2xl font-bold ${pedidosPendentes > 0 ? "text-blue-600" : ""}`}>{pedidosPendentes}</p>
+            {diasCobertura !== null
+              ? <p className="text-xs text-muted-foreground mt-0.5">~{diasCobertura} dias cobertura</p>
+              : <p className="text-xs text-muted-foreground mt-0.5">Sem consumo registrado</p>
+            }
           </div>
         </div>
       )}
@@ -859,6 +919,14 @@ export default function Insumos() {
                   onChange={e => setBuscaTexto(e.target.value)}
                 />
               </div>
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                onClick={() => setOpenNovoPedido(true)}
+              >
+                <ShoppingBag className="h-4 w-4" />
+                <span className="hidden sm:inline">Novo Pedido</span>
+              </Button>
               <Button
                 variant="outline" size="sm"
                 className="text-amber-700 border-amber-300 hover:bg-amber-50"
@@ -1119,13 +1187,27 @@ export default function Insumos() {
                 <BarChart2 className="h-3 w-3" /> Agrupar
               </button>
 
+              {/* Pill: Sem fornecedor */}
+              {semFornecedor > 0 && (
+                <button
+                  onClick={() => setFiltroSemFornecedor(v => !v)}
+                  className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-all flex items-center gap-1 ${
+                    filtroSemFornecedor
+                      ? "bg-amber-500 text-white border-amber-500"
+                      : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                  }`}
+                >
+                  <UserX className="h-3 w-3" /> Sem fornecedor ({semFornecedor})
+                </button>
+              )}
+
               {/* Contador de resultados */}
-              {(buscaTexto || filtroStatus !== "todos" || filtroCategoria !== "todas") && (
+              {(buscaTexto || filtroStatus !== "todos" || filtroCategoria !== "todas" || filtroSemFornecedor) && (
                 <span className="text-xs text-muted-foreground ml-auto">
                   {insumosFiltrados.length} de {insumos.length} insumos
                   <button
                     className="ml-2 underline hover:text-foreground"
-                    onClick={() => { setBuscaTexto(""); setFiltroStatus("todos"); setFiltroCategoria("todas"); }}
+                    onClick={() => { setBuscaTexto(""); setFiltroStatus("todos"); setFiltroCategoria("todas"); setFiltroSemFornecedor(false); }}
                   >
                     Limpar filtros
                   </button>
@@ -1202,7 +1284,12 @@ export default function Insumos() {
                                     <TableCell>
                                       {catalogEntry && <span className="font-mono text-xs bg-muted px-1 py-0.5 rounded text-muted-foreground">{catalogEntry.codigo}</span>}
                                     </TableCell>
-                                    <TableCell className="font-medium">{ins.nome}</TableCell>
+                                    <TableCell className="font-medium">
+                                      <span className="flex items-center gap-1.5">
+                                        <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
+                                        {ins.nome}
+                                      </span>
+                                    </TableCell>
                                     <TableCell className="hidden sm:table-cell capitalize text-sm text-muted-foreground">{ins.categoria}</TableCell>
                                     <TableCell className={ins.status_estoque === "critico" ? "text-red-600 font-semibold" : ins.status_estoque === "baixo" ? "text-orange-600 font-medium" : ""}>
                                       {fmtEstoque(ins.estoque_atual, ins.unidade)}
@@ -1217,7 +1304,18 @@ export default function Insumos() {
                                         {STATUS_LABELS[ins.status_estoque ?? "ok"]}
                                       </span>
                                     </TableCell>
-                                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{ins.fornecedor_nome ?? "—"}</TableCell>
+                                          <TableCell className="hidden lg:table-cell text-sm">
+                                      {ins.fornecedor_nome ? (
+                                        <span className="text-muted-foreground">{ins.fornecedor_nome}</span>
+                                      ) : (
+                                        <button
+                                          className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
+                                          onClick={(e) => { e.stopPropagation(); setOpenNovoFornecedor(true); }}
+                                        >
+                                          <AlertTriangle className="h-3 w-3" /> Cadastrar
+                                        </button>
+                                      )}
+                                    </TableCell>
                                     <TableCell className="hidden md:table-cell">
                                       {ins.reposicao_modo === "automatico" ? (
                                         <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium"><Zap className="h-3 w-3" /> Auto</span>
@@ -1233,6 +1331,20 @@ export default function Insumos() {
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
+                                          {(ins.status_estoque === "critico" || ins.status_estoque === "baixo") && (
+                                            <>
+                                              <DropdownMenuItem
+                                                className="text-emerald-700 font-medium"
+                                                onClick={() => {
+                                                  setNovoPedido(p => ({ ...p, insumo_id: ins.id }));
+                                                  setOpenNovoPedido(true);
+                                                }}
+                                              >
+                                                <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
+                                              </DropdownMenuItem>
+                                              <DropdownMenuSeparator />
+                                            </>
+                                          )}
                                           <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
                                             <History className="h-4 w-4 mr-2" /> Histórico
                                           </DropdownMenuItem>
@@ -1260,7 +1372,12 @@ export default function Insumos() {
                               <TableCell>
                                 {catalogEntry && <span className="font-mono text-xs bg-muted px-1 py-0.5 rounded text-muted-foreground">{catalogEntry.codigo}</span>}
                               </TableCell>
-                              <TableCell className="font-medium">{ins.nome}</TableCell>
+                              <TableCell className="font-medium">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
+                                  {ins.nome}
+                                </span>
+                              </TableCell>
                               <TableCell className="hidden sm:table-cell capitalize text-sm text-muted-foreground">{ins.categoria}</TableCell>
                               <TableCell className={ins.status_estoque === "critico" ? "text-red-600 font-semibold" : ins.status_estoque === "baixo" ? "text-orange-600 font-medium" : ""}>
                                 {fmtEstoque(ins.estoque_atual, ins.unidade)}
@@ -1275,7 +1392,18 @@ export default function Insumos() {
                                   {STATUS_LABELS[ins.status_estoque ?? "ok"]}
                                 </span>
                               </TableCell>
-                              <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{ins.fornecedor_nome ?? "—"}</TableCell>
+                              <TableCell className="hidden lg:table-cell text-sm">
+                                {ins.fornecedor_nome ? (
+                                  <span className="text-muted-foreground">{ins.fornecedor_nome}</span>
+                                ) : (
+                                  <button
+                                    className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
+                                    onClick={(e) => { e.stopPropagation(); setOpenNovoFornecedor(true); }}
+                                  >
+                                    <AlertTriangle className="h-3 w-3" /> Cadastrar
+                                  </button>
+                                )}
+                              </TableCell>
                               <TableCell className="hidden md:table-cell">
                                 {ins.reposicao_modo === "automatico" ? (
                                   <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium"><Zap className="h-3 w-3" /> Auto</span>
@@ -1291,6 +1419,20 @@ export default function Insumos() {
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
+                                    {(ins.status_estoque === "critico" || ins.status_estoque === "baixo") && (
+                                      <>
+                                        <DropdownMenuItem
+                                          className="text-emerald-700 font-medium"
+                                          onClick={() => {
+                                            setNovoPedido(p => ({ ...p, insumo_id: ins.id }));
+                                            setOpenNovoPedido(true);
+                                          }}
+                                        >
+                                          <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                      </>
+                                    )}
                                     <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
                                       <History className="h-4 w-4 mr-2" /> Histórico
                                     </DropdownMenuItem>
