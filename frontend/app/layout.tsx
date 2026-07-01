@@ -2,6 +2,7 @@
 import { Geist } from "next/font/google";
 import "./globals.css";
 import GlobalErrorHandler from "@/components/GlobalErrorHandler";
+import DashboardLayout from "@/components/DashboardLayout";
 
 // Apply safety patches IMMEDIATELY before any other code runs
 if (typeof window !== 'undefined') {
@@ -73,7 +74,7 @@ export default function RootLayout({
         <meta name="author" content="GestaoAgro Tech" />
         <meta property="og:site_name" content="GestaoAgro Tech" />
       </head>
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full">
         <GlobalErrorHandler />
         {/* Service Worker completely disabled - unregister all SWs and clear caches */}
         <script dangerouslySetInnerHTML={{ __html: `
@@ -96,19 +97,9 @@ export default function RootLayout({
             }).catch(function(e) { console.log('Caches.keys error:', e); });
           }
         ` }} />
-        {children}
-        {/* Rodape â€” visivel para validacao Meta WhatsApp Business */}
-        <footer className="bg-green-900 text-white text-center py-3 text-xs opacity-70 mt-auto">
-          <p>
-            <strong>GestaoAgro Tech</strong> â€” Solucoes tecnologicas para gestao rural
-          </p>
-          <p className="mt-0.5">
-            LCDPR Â· NF-e Produtor Rural Â· DRE Gerencial Â· WhatsApp Bot
-          </p>
-          <p className="mt-0.5">
-            contato: civiana.cv@gmail.com Â· ruralcaixa-mvp.vercel.app
-          </p>
-        </footer>
+        <DashboardLayout>
+          {children}
+        </DashboardLayout>
       </body>
     </html>
   );
