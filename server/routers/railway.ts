@@ -1320,6 +1320,11 @@ export const railwayRouter = router({
 
       // Decisões do usuário: { nomePlanilha: "adicionar" | "ignorar" }
       const decisoes = input.conflitos_decisoes ?? {};
+      // Mapa normalizado de decisões para busca robusta (ignora acentos e capitalização)
+      const decisoesNorm = new Map<string, "adicionar" | "ignorar">();
+      for (const [k, v] of Object.entries(decisoes)) {
+        decisoesNorm.set(normalizeNomeConf(k), v);
+      }
 
       for (const row of rowsUnicas) {
         if (!row.nome) { results.push({ nome: "(sem nome)", ok: false, error: "Nome obrigatório" }); continue; }
@@ -1345,7 +1350,13 @@ export const railwayRouter = router({
           if (jaExisteNoRailway && insumoExistente) {
             // ── DECISÃO DO USUÁRIO: adicionar ao estoque ou ignorar ──────────────────
             // Verificar a decisão usando o nome original da planilha (antes do de-para)
-            const decisao = decisoes[row.nome] ?? decisoes[nomeDestino] ?? "ignorar";
+            // Usa busca normalizada para evitar falhas por acentuação ou capitalização
+            const decisao = decisoes[row.nome]
+              ?? decisoes[nomeDestino]
+              ?? decisoesNorm.get(normalizeNomeConf(row.nome))
+              ?? decisoesNorm.get(normalizeNomeConf(nomeDestino))
+              // Se não há decisão explícita mas o insumo tem estoque > 0, aceitar automaticamente
+              ?? (row.estoque_atual > 0 ? "adicionar" : "ignorar");
 
             if (decisao === "adicionar" && row.estoque_atual > 0) {
               // Somar o estoque da planilha ao estoque existente via movimentação
