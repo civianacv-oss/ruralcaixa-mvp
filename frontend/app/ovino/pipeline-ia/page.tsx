@@ -265,7 +265,7 @@ export default function PipelineIA() {
     { id: "glossario",    label: "09 / Glossário",     emoji: "📖" },
   ];
 
-  const secoesFiltradas = secoes.filter(s =>
+  const secoesFiltradas = (Array.isArray(secoes) ? secoes : []).filter(s =>
     s.label.toLowerCase().includes(buscaSec.toLowerCase())
   );
 

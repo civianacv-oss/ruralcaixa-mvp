@@ -57,7 +57,7 @@ export default function AcertosListaPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const acertosFiltrados = acertos.filter(a =>
+  const acertosFiltrados = (Array.isArray(acertos) ? acertos : []).filter(a =>
     !filtroProduto || a.produto === filtroProduto
   );
 

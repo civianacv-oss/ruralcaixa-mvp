@@ -259,7 +259,7 @@ function TabColheita({ safraId, safraStatus, onRegistrar }: {
   }, [safraId]);
 
   const totalKg = producoes.reduce((s, p) => s + Number(p.quantidade_kg || 0), 0);
-  const totalReceita = producoes
+  const totalReceita = (Array.isArray(producoes) ? producoes : [])
     .filter(p => p.destino === 'venda')
     .reduce((s, p) => s + Number(p.quantidade_kg || 0) * Number(p.preco_venda_kg || 0), 0);
 

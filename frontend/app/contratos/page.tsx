@@ -446,7 +446,7 @@ export default function ContratosPage() {
                             </button>
                           ))}
                           {condominos.length > 2 && (
-                            <button onClick={() => setCondominos(cs => cs.filter((_, idx) => idx !== i))} style={{ background: "#fce8e8", color: "#8a2a2a", border: "none", padding: "3px 8px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>✕</button>
+                            <button onClick={() => setCondominos(cs => (Array.isArray(cs) ? cs : []).filter((_, idx) => idx !== i))} style={{ background: "#fce8e8", color: "#8a2a2a", border: "none", padding: "3px 8px", borderRadius: 6, fontSize: 12, cursor: "pointer" }}>✕</button>
                           )}
                         </div>
                       </div>

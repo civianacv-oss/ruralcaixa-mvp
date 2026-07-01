@@ -92,8 +92,8 @@ export default function LivroCaixaPage() {
     loadLancamentos();
   };
 
-  const totalReceitas = lancamentos.filter(l=>l.tipo==="receita").reduce((s,l)=>s+l.valor,0);
-  const totalDespesas = lancamentos.filter(l=>l.tipo==="despesa").reduce((s,l)=>s+l.valor,0);
+  const totalReceitas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l=>l.tipo==="receita").reduce((s,l)=>s+l.valor,0);
+  const totalDespesas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l=>l.tipo==="despesa").reduce((s,l)=>s+l.valor,0);
   const saldo = totalReceitas - totalDespesas;
 
   const s: Record<string,React.CSSProperties> = {

@@ -44,9 +44,9 @@ function RelatorioContent() {
     }).catch(() => setLoading(false));
   }, [produtorId]);
 
-  const receitas = lancamentos.filter(l => l.tipo === "receita");
-  const despesas = lancamentos.filter(l => l.tipo === "despesa");
-  const investimentos = lancamentos.filter(l => l.tipo === "investimento");
+  const receitas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l => l.tipo === "receita");
+  const despesas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l => l.tipo === "despesa");
+  const investimentos = (Array.isArray(lancamentos) ? lancamentos : []).filter(l => l.tipo === "investimento");
 
   // Agrupar por conta
   const agrupar = (items: any[]) => {

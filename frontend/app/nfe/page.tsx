@@ -145,7 +145,7 @@ function NFeContent() {
   }
 
   function removerItem(i: number) {
-    setItens(itens.filter((_, idx) => idx !== i));
+    setItens((Array.isArray(itens) ? itens : []).filter((_, idx) => idx !== i));
   }
 
   function atualizarItem(i: number, campo: string, valor: any) {

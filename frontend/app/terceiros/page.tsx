@@ -301,7 +301,7 @@ function TerceirosContent() {
       perc: parseFloat(previewPendente?.[t.id] != null ? previewPendente[t.id].toString() : t.perc_contraparte || 0),
       cor: CORES[(i + 1) % CORES.length],
     })),
-  ].filter((f: any) => f && f.perc > 0);
+  ].filter((f: any) => f && f.perc > 0); // Array literal, always safe
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">

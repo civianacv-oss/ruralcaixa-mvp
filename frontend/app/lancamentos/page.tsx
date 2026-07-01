@@ -263,9 +263,9 @@ export default function LancamentosPage() {
 
   useEffect(() => { carregarLancamentos(filtroMes || undefined); }, [filtroMes]);
 
-  const filtrados = lancamentos.filter(l => filtroTipo === "todos" || l.tipo === filtroTipo);
-  const totalReceitas = lancamentos.filter(l => l.tipo === "receita").reduce((s, l) => s + l.valor, 0);
-  const totalDespesas = lancamentos.filter(l => l.tipo === "despesa").reduce((s, l) => s + l.valor, 0);
+  const filtrados = (Array.isArray(lancamentos) ? lancamentos : []).filter(l => filtroTipo === "todos" || l.tipo === filtroTipo);
+  const totalReceitas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l => l.tipo === "receita").reduce((s, l) => s + l.valor, 0);
+  const totalDespesas = (Array.isArray(lancamentos) ? lancamentos : []).filter(l => l.tipo === "despesa").reduce((s, l) => s + l.valor, 0);
   const saldo = totalReceitas - totalDespesas;
 
   // â”€â”€ Criar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

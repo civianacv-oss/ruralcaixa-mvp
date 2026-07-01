@@ -178,7 +178,7 @@ export default function SimuladorRegimePage() {
   const ultimo = lancamentos[0];
 
   // ── Alertas ativos ──────────────────────────────────────────────────────
-  const todosAlertas = lancamentos
+  const todosAlertas = (Array.isArray(lancamentos) ? lancamentos : [])
     .filter(l => l.alertas && l.alertas.length > 0)
     .flatMap(l => (l.alertas || []).map(a => ({ ...a, competencia: l.competencia })));
 

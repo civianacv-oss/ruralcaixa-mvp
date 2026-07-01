@@ -432,7 +432,7 @@ export default function OvinoDashboard() {
               </span>
             )}
           </div>
-          {resultadoReclass && Array.isArray(resultadoReclass.detalhes) && resultadoReclass.detalhes.filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
+          {resultadoReclass && Array.isArray(resultadoReclass.detalhes) && resultadoReclass.(Array.isArray(detalhes) ? detalhes : []).filter((d:any) => d.acao !== "sem_alteracao").length > 0 && (
             <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
               <strong style={{ display: "block", marginBottom: 6, color: "#15803d" }}>
                 {resultadoReclass.dry_run ? "Seria movido:" : "Movido:"}
