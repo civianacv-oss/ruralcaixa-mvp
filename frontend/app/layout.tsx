@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
+import GlobalErrorHandler from "@/components/GlobalErrorHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,6 +51,7 @@ export default function RootLayout({
         <meta property="og:site_name" content="GestaoAgro Tech" />
       </head>
       <body className="min-h-full flex flex-col">
+        <GlobalErrorHandler />
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
