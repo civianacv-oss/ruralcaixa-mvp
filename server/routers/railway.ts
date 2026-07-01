@@ -446,9 +446,13 @@ export const railwayRouter = router({
       const COL_CAT    = ["categoria", "category"];
       const COL_APT    = ["aptidao_manejo", "aptidao", "aptid\u00e3o", "manejo"];
 
+      // Normaliza chave de coluna: remove acentos (NFD) e caracteres não alfanuméricos
+      // Garante que colunas com acentos (ex: Raça, Gênero, Aptidão) sejam encontradas
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
       const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
         for (const k of keys) {
-          const found = Object.keys(row).find((c) => c.toLowerCase().trim() === k);
+          const found = Object.keys(row).find((c) => normColKey(c) === normColKey(k));
           if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
         }
         return undefined;
