@@ -1650,12 +1650,13 @@ export default function Insumos() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                     <TableRow>
-                      <TableHead className="w-[260px] max-w-[260px]">Nome</TableHead>
-                      <TableHead className="w-[110px] text-right">Estoque Atual</TableHead>
-                      <TableHead className="w-[90px] text-right hidden sm:table-cell">Mínimo</TableHead>
-                      <TableHead className="w-[100px]">Status</TableHead>
-                      <TableHead className="w-[160px] hidden md:table-cell">Fornecedor</TableHead>
-                      <TableHead className="w-[140px] text-right">Ação</TableHead>
+                      <TableHead className="w-[220px] max-w-[220px]">Nome</TableHead>
+                      <TableHead className="w-[100px] text-right">Estoque</TableHead>
+                      <TableHead className="w-[80px] text-right hidden sm:table-cell">Mínimo</TableHead>
+                      <TableHead className="w-[90px]">Status</TableHead>
+                      <TableHead className="w-[140px] hidden md:table-cell">Fornecedor</TableHead>
+                      <TableHead className="w-[120px] text-right">Ação</TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1675,7 +1676,7 @@ export default function Insumos() {
                                   return next;
                                 })}
                               >
-                                <TableCell colSpan={6}>
+                                <TableCell colSpan={7}>
                                   <div className="flex items-center gap-2">
                                     {expandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                     <span className="font-semibold capitalize">{cat}</span>
@@ -1803,7 +1804,7 @@ export default function Insumos() {
                           return (
                             <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
                               {/* Coluna 1: Código + Nome */}
-                              <TableCell className="max-w-[260px]">
+                              <TableCell className="max-w-[220px]">
                                 <div className="flex flex-col gap-0.5">
                                   {catalogEntry && (
                                     <span className="font-mono text-[10px] text-muted-foreground">{catalogEntry.codigo}</span>
@@ -1848,61 +1849,68 @@ export default function Insumos() {
                                   </button>
                                 )}
                               </TableCell>
-                              {/* Coluna 6: Ação direta */}
-                              <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1">
-                                  {isCritico && (
-                                    <button
-                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
-                                      onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
-                                    >
-                                      Fazer Pedido
-                                    </button>
-                                  )}
-                                  {isBaixo && !isCritico && (
-                                    <button
-                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-                                      onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}
-                                    >
-                                      Reabastecer
-                                    </button>
-                                  )}
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
-                                        <History className="h-4 w-4 mr-2" /> Histórico
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
-                                        <Plus className="h-4 w-4 mr-2" /> Movimentar
-                                      </DropdownMenuItem>
-                                      {(isCritico || isBaixo) && (
-                                        <>
-                                          <DropdownMenuSeparator />
-                                          <DropdownMenuItem
-                                            className="text-emerald-700 font-medium"
+                                    {/* Coluna 6: Ação direta */}
+                                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                      <div className="flex items-center justify-end gap-1">
+                                        {isCritico && (
+                                          <button
+                                            className="px-2 py-1 rounded-md text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors whitespace-nowrap"
                                             onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
                                           >
-                                            <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
-                                          </DropdownMenuItem>
-                                        </>
-                                      )}
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem className="text-red-600" onClick={() => setConfirmDeleteId(ins.id)}>
-                                        <Trash2 className="h-4 w-4 mr-2" /> Excluir
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                    }
+                                            Pedir
+                                          </button>
+                                        )}
+                                        {isBaixo && !isCritico && (
+                                          <button
+                                            className="px-2 py-1 rounded-md text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600 transition-colors whitespace-nowrap"
+                                            onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}
+                                          >
+                                            Repor
+                                          </button>
+                                        )}
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                                              <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
+                                              <History className="h-4 w-4 mr-2" /> Histórico
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
+                                              <Plus className="h-4 w-4 mr-2" /> Movimentar
+                                            </DropdownMenuItem>
+                                            {(isCritico || isBaixo) && (
+                                              <>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem
+                                                  className="text-emerald-700 font-medium"
+                                                  onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
+                                                >
+                                                  <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
+                                                </DropdownMenuItem>
+                                              </>
+                                            )}
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </TableCell>
+                                    {/* Coluna 7: Excluir */}
+                                    <TableCell className="px-1" onClick={e => e.stopPropagation()}>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                        onClick={() => setConfirmDeleteId(ins.id)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
+                          }
                   </TableBody>
                 </Table>
               </div>
