@@ -33,6 +33,10 @@ import Insumos from "./pages/Insumos";
 import SimuladorTributacao from "./pages/SimuladorTributacao";
 import ProcuracaoGate from "./pages/ProcuracaoGate";
 import MeusContadores from "./pages/MeusContadores";
+import Bovinos from "./pages/rebanhos/Bovinos";
+import Ovinos from "./pages/rebanhos/Ovinos";
+import Caprinos from "./pages/rebanhos/Caprinos";
+import Suinos from "./pages/rebanhos/Suinos";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { isAuthenticated, getRole } from "./lib/api";
@@ -89,6 +93,10 @@ function Router() {
 
       {/* Rebanho */}
       <Route path="/rebanhos">{() => <ProtectedRoute component={Rebanhos} />}</Route>
+      <Route path="/rebanhos/bovinos">{() => <ProtectedRoute component={Bovinos} />}</Route>
+      <Route path="/rebanhos/ovinos">{() => <ProtectedRoute component={Ovinos} />}</Route>
+      <Route path="/rebanhos/caprinos">{() => <ProtectedRoute component={Caprinos} />}</Route>
+      <Route path="/rebanhos/suinos">{() => <ProtectedRoute component={Suinos} />}</Route>
       <Route path="/animais">{() => <ProtectedRoute component={Animais} />}</Route>
       <Route path="/saude">{() => <ProtectedRoute component={Saude} />}</Route>
       <Route path="/reproducao">{() => <ProtectedRoute component={Reproducao} />}</Route>

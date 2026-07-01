@@ -25,11 +25,16 @@ import {
   LogOut,
   Leaf,
   ChevronRight,
+  ChevronDown,
   Menu,
   Home,
   Settings,
   HelpCircle,
   Bell,
+  Beef,
+  Rabbit,
+  Cat,
+  Ham,
 } from "lucide-react";
 import { getImovelId } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -40,7 +45,7 @@ function useInsumosAlertaCount() {
     { imovelId: imovelId! },
     {
       enabled: !!imovelId,
-      retry: false, // backend de insumos ainda não deployado — suprimir erros 404
+      retry: false,
       refetchInterval: 5 * 60 * 1000,
       staleTime: 4 * 60 * 1000,
     }
@@ -48,7 +53,23 @@ function useInsumosAlertaCount() {
   return Array.isArray(data) ? data.length : 0;
 }
 
-const NAV_SECTIONS = [
+// ─── Estrutura de navegação ───────────────────────────────────────────────────
+
+type NavItem = {
+  icon: React.ElementType;
+  label: string;
+  path: string;
+  placeholder?: boolean;
+  badge?: number;
+  subItems?: NavItem[];
+};
+
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_SECTIONS: NavSection[] = [
   {
     label: "Rural",
     items: [
@@ -62,39 +83,51 @@ const NAV_SECTIONS = [
   {
     label: "Rebanho",
     items: [
-      { icon: PawPrint, label: "Rebanhos", path: "/rebanhos" },
-      { icon: Sprout, label: "Agricultura", path: "/agricultura" },
+      {
+        icon: PawPrint,
+        label: "Rebanhos",
+        path: "/rebanhos",
+        subItems: [
+          { icon: Beef,   label: "Bovinos",  path: "/rebanhos/bovinos" },
+          { icon: Rabbit, label: "Ovinos",   path: "/rebanhos/ovinos" },
+          { icon: Cat,    label: "Caprinos", path: "/rebanhos/caprinos" },
+          { icon: Ham,    label: "Suínos",   path: "/rebanhos/suinos" },
+        ],
+      },
+      { icon: Sprout,    label: "Agricultura",  path: "/agricultura" },
       { icon: HeartPulse, label: "Saúde Animal", path: "/saude" },
-      { icon: Baby, label: "Reprodução", path: "/reproducao" },
+      { icon: Baby,       label: "Reprodução",   path: "/reproducao" },
     ],
   },
   {
     label: "Gestão",
     items: [
-      { icon: DollarSign, label: "Financeiro", path: "/financeiro" },
-      { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
-      { icon: Package, label: "Insumos", path: "/insumos" },
-      { icon: ShoppingCart, label: "Compra e Venda", path: "/compra-venda" },
-      { icon: Palmtree, label: "Cultivo de Açaí", path: "/cultivo-acai" },
+      { icon: DollarSign,  label: "Financeiro",          path: "/financeiro" },
+      { icon: BarChart3,   label: "Relatórios",           path: "/relatorios" },
+      { icon: Package,     label: "Insumos",              path: "/insumos" },
+      { icon: ShoppingCart, label: "Compra e Venda",      path: "/compra-venda" },
+      { icon: Palmtree,    label: "Cultivo de Açaí",      path: "/cultivo-acai" },
     ],
   },
   {
     label: "Fiscal",
     items: [
-      { icon: FileText, label: "NF-e Produtor", path: "/nfe-produtor" },
-      { icon: Users, label: "eSocial Rural", path: "/esocial-rural" },
-      { icon: ClipboardList, label: "EFD-Reinf / DARF", path: "/efd-reinf" },
-      { icon: Globe, label: "DCTFWeb", path: "/dctfweb" },
-      { icon: TrendingDown, label: "Simulador Tributário", path: "/simulador-tributario" },
+      { icon: FileText,     label: "NF-e Produtor",         path: "/nfe-produtor" },
+      { icon: Users,        label: "eSocial Rural",          path: "/esocial-rural" },
+      { icon: ClipboardList, label: "EFD-Reinf / DARF",     path: "/efd-reinf" },
+      { icon: Globe,        label: "DCTFWeb",                path: "/dctfweb" },
+      { icon: TrendingDown, label: "Simulador Tributário",   path: "/simulador-tributario" },
     ],
   },
 ];
 
 const BOTTOM_ITEMS = [
-  { icon: Bell, label: "Notificações", path: "/notificacoes", placeholder: true },
-  { icon: Settings, label: "Perfil & Notificações", path: "/perfil" },
-  { icon: HelpCircle, label: "Ajuda", path: "/ajuda", placeholder: true },
+  { icon: Bell,       label: "Notificações",        path: "/notificacoes",  placeholder: true },
+  { icon: Settings,   label: "Perfil & Notificações", path: "/perfil" },
+  { icon: HelpCircle, label: "Ajuda",               path: "/ajuda",         placeholder: true },
 ];
+
+// ─── NavButton ────────────────────────────────────────────────────────────────
 
 function NavButton({
   icon: Icon,
@@ -104,6 +137,7 @@ function NavButton({
   onClick,
   placeholder,
   badge,
+  indent = false,
 }: {
   icon: React.ElementType;
   label: string;
@@ -112,13 +146,15 @@ function NavButton({
   onClick: () => void;
   placeholder?: boolean;
   badge?: number;
+  indent?: boolean;
 }) {
   const btn = (
     <button
       onClick={onClick}
       className={`
-        w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+        w-full flex items-center gap-3 rounded-xl text-sm font-medium
         transition-all duration-150 group relative
+        ${indent ? "px-3 py-2" : "px-3 py-2.5"}
         ${isActive
           ? "text-white"
           : placeholder
@@ -132,8 +168,13 @@ function NavButton({
           : undefined
       }
     >
+      {indent && !collapsed && (
+        <span className="w-3 shrink-0 flex justify-center">
+          <span className="w-1 h-1 rounded-full" style={{ background: isActive ? "oklch(0.65 0.18 145)" : "oklch(0.35 0.05 145)" }} />
+        </span>
+      )}
       <Icon
-        className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+        className={`shrink-0 transition-colors ${indent ? "w-[15px] h-[15px]" : "w-[18px] h-[18px]"} ${
           isActive ? "text-emerald-400" : placeholder ? "text-white/25" : "text-white/45 group-hover:text-white/75"
         }`}
       />
@@ -174,6 +215,145 @@ function NavButton({
   }
   return btn;
 }
+
+// ─── NavItemWithSub — item com submenu expansível ─────────────────────────────
+
+function NavItemWithSub({
+  item,
+  location,
+  collapsed,
+  navigate,
+  setMobileOpen,
+  badge,
+}: {
+  item: NavItem;
+  location: string;
+  collapsed: boolean;
+  navigate: (path: string) => void;
+  setMobileOpen: (v: boolean) => void;
+  badge?: number;
+}) {
+  const subItems = item.subItems ?? [];
+  const isParentActive = location.startsWith(item.path);
+  const isAnySubActive = subItems.some((s) => location.startsWith(s.path));
+
+  // Abre automaticamente quando uma subpágina está ativa
+  const [open, setOpen] = useState(isAnySubActive);
+
+  // Sincroniza quando a rota muda externamente
+  useEffect(() => {
+    if (isAnySubActive) setOpen(true);
+  }, [isAnySubActive]);
+
+  const Icon = item.icon;
+
+  if (collapsed) {
+    // No modo colapsado: clique no ícone vai direto para /rebanhos
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => { navigate(item.path); setMobileOpen(false); }}
+            className={`
+              w-full flex items-center justify-center px-3 py-2.5 rounded-xl text-sm font-medium
+              transition-all duration-150 relative
+              ${isParentActive || isAnySubActive ? "text-white" : "text-white/60 hover:text-white/90"}
+            `}
+            style={
+              isParentActive || isAnySubActive
+                ? { background: "oklch(0.30 0.08 145)", boxShadow: "inset 0 1px 0 oklch(1 0 0 / 0.08)" }
+                : undefined
+            }
+          >
+            <Icon
+              className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+                isParentActive || isAnySubActive ? "text-emerald-400" : "text-white/45 hover:text-white/75"
+              }`}
+            />
+            {badge != null && badge > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1">
+                {badge > 99 ? "99+" : badge}
+              </span>
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-xs">
+          <div className="font-semibold mb-1">{item.label}</div>
+          {subItems.map((s) => (
+            <div
+              key={s.path}
+              className="cursor-pointer py-0.5 hover:text-emerald-300"
+              onClick={() => { navigate(s.path); setMobileOpen(false); }}
+            >
+              {s.label}
+            </div>
+          ))}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <div>
+      {/* Linha principal — clique no texto navega, clique na seta expande */}
+      <div
+        className={`
+          w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+          transition-all duration-150 group relative cursor-pointer
+          ${isParentActive || isAnySubActive ? "text-white" : "text-white/60 hover:text-white/90"}
+        `}
+        style={
+          isParentActive && !isAnySubActive
+            ? { background: "oklch(0.30 0.08 145)", boxShadow: "inset 0 1px 0 oklch(1 0 0 / 0.08)" }
+            : undefined
+        }
+        onClick={() => { navigate(item.path); setMobileOpen(false); }}
+      >
+        <Icon
+          className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+            isParentActive || isAnySubActive ? "text-emerald-400" : "text-white/45 group-hover:text-white/75"
+          }`}
+        />
+        <span className="truncate flex-1">{item.label}</span>
+        {badge != null && badge > 0 && (
+          <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 shrink-0">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
+        {/* Botão de expandir/colapsar */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+          className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/10 shrink-0 transition-colors"
+        >
+          <ChevronDown
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${
+              isParentActive || isAnySubActive ? "text-emerald-300" : "text-white/40"
+            } ${open ? "rotate-0" : "-rotate-90"}`}
+          />
+        </button>
+      </div>
+
+      {/* Subitens */}
+      {open && (
+        <div className="mt-0.5 ml-2 pl-2 space-y-0.5" style={{ borderLeft: "1px solid oklch(0.28 0.05 145)" }}>
+          {subItems.map((sub) => (
+            <NavButton
+              key={sub.path}
+              icon={sub.icon}
+              label={sub.label}
+              isActive={location.startsWith(sub.path)}
+              collapsed={false}
+              indent
+              onClick={() => { navigate(sub.path); setMobileOpen(false); }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Layout principal ─────────────────────────────────────────────────────────
 
 export default function RuralLayout({ children }: { children: React.ReactNode }) {
   const { authenticated, produtorNome, imovelNome, logout, isAdmin, role } = useRuralAuth();
@@ -258,17 +438,31 @@ export default function RuralLayout({ children }: { children: React.ReactNode })
                   {section.label}
                 </p>
               )}
-              {section.items.map((item) => (
-                <NavButton
-                  key={item.path}
-                  icon={item.icon}
-                  label={item.label}
-                  isActive={location.startsWith(item.path)}
-                  collapsed={!sidebarOpen}
-                  onClick={() => { navigate(item.path); setMobileOpen(false); }}
-                  badge={item.path === "/insumos" && insumosAlertaCount > 0 ? insumosAlertaCount : undefined}
-                />
-              ))}
+              {section.items.map((item) => {
+                if (item.subItems && item.subItems.length > 0) {
+                  return (
+                    <NavItemWithSub
+                      key={item.path}
+                      item={item}
+                      location={location}
+                      collapsed={!sidebarOpen}
+                      navigate={navigate}
+                      setMobileOpen={setMobileOpen}
+                    />
+                  );
+                }
+                return (
+                  <NavButton
+                    key={item.path}
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={location.startsWith(item.path)}
+                    collapsed={!sidebarOpen}
+                    onClick={() => { navigate(item.path); setMobileOpen(false); }}
+                    badge={item.path === "/insumos" && insumosAlertaCount > 0 ? insumosAlertaCount : undefined}
+                  />
+                );
+              })}
             </div>
           ))}
         </nav>

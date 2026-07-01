@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, PawPrint, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,20 @@ export default function Rebanhos() {
   const { imovelId } = useRuralAuth();
   const utils = trpc.useUtils();
 
-  const [especie, setEspecie] = useState<Especie>("ovino");
+  // Lê espécie inicial da URL (?especie=bovino, etc.)
+  const initialEspecie = (): Especie => {
+    const params = new URLSearchParams(window.location.search);
+    const e = params.get("especie") as Especie | null;
+    return ESPECIES.find((x) => x.key === e) ? e! : "ovino";
+  };
+  const [especie, setEspecie] = useState<Especie>(initialEspecie);
+
+  // Sincroniza quando a URL muda (navegação pelo menu lateral)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const e = params.get("especie") as Especie | null;
+    if (e && ESPECIES.find((x) => x.key === e)) setEspecie(e);
+  }, [window.location.search]);
   const [search, setSearch]   = useState("");
   const [showNew, setShowNew] = useState(false);
   const [form, setForm]       = useState({
