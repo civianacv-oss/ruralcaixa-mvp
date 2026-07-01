@@ -32,6 +32,7 @@ import DCTFWeb from "./pages/DCTFWeb";
 import Insumos from "./pages/Insumos";
 import AnaliseCustos from "./pages/AnaliseCustos";
 import RecomendacoesInsumos from "./pages/RecomendacoesInsumos";
+import RentabilidadeInsumos from "./pages/RentabilidadeInsumos";
 import SimuladorTributacao from "./pages/SimuladorTributacao";
 import ProcuracaoGate from "./pages/ProcuracaoGate";
 import MeusContadores from "./pages/MeusContadores";
@@ -123,6 +124,7 @@ function Router() {
       <Route path="/insumos">{() => <ProtectedRoute component={Insumos} />}</Route>
       <Route path="/insumos/analise-custos">{() => <ProtectedRoute component={AnaliseCustos} />}</Route>
       <Route path="/insumos/recomendacoes">{() => <ProtectedRoute component={RecomendacoesInsumos} />}</Route>
+      <Route path="/insumos/rentabilidade">{() => <ProtectedRoute component={RentabilidadeInsumos} />}</Route>
 
       {/* Relatórios */}
       <Route path="/relatorios">{() => <ProtectedRoute component={Relatorios} />}</Route>

@@ -624,6 +624,11 @@ export default function Insumos() {
               <Calculator className="h-4 w-4" /> Recomendações
             </Button>
           </Link>
+          <Link href="/insumos/rentabilidade">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <TrendingUp className="h-4 w-4" /> Rentabilidade
+            </Button>
+          </Link>
           <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm">
