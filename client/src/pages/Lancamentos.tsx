@@ -323,11 +323,34 @@ export default function Lancamentos() {
             </div>
             <div className="space-y-1.5">
               <Label>Atividade</Label>
-              <Input
-                placeholder="Ex: Pecuaria, Agricultura..."
-                value={form.atividade}
-                onChange={(e) => setForm((f) => ({ ...f, atividade: e.target.value }))}
-              />
+              <Select
+                value={form.atividade || "_nenhuma"}
+                onValueChange={(v) => setForm((f) => ({ ...f, atividade: v === "_nenhuma" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a atividade…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_nenhuma">Nenhuma / Geral</SelectItem>
+                  <SelectItem value="pecuaria_corte">Pecuária de Corte</SelectItem>
+                  <SelectItem value="pecuaria_leite">Pecuária Leiteira</SelectItem>
+                  <SelectItem value="suinocultura">Suinocultura</SelectItem>
+                  <SelectItem value="avicultura">Avicultura</SelectItem>
+                  <SelectItem value="agricultura">Agricultura</SelectItem>
+                  <SelectItem value="venda_animais">Venda de Animais</SelectItem>
+                  <SelectItem value="venda_leite">Venda de Leite</SelectItem>
+                  <SelectItem value="venda_graos">Venda de Grãos</SelectItem>
+                  <SelectItem value="mao_de_obra">Mão de Obra</SelectItem>
+                  <SelectItem value="manutencao">Manutenção</SelectItem>
+                  <SelectItem value="combustivel">Combustível</SelectItem>
+                  <SelectItem value="sanidade">Sanidade Animal</SelectItem>
+                  <SelectItem value="nutricao">Nutrição Animal</SelectItem>
+                  <SelectItem value="reproducao">Reprodução</SelectItem>
+                  <SelectItem value="impostos">Impostos / Taxas</SelectItem>
+                  <SelectItem value="financiamento">Financiamento</SelectItem>
+                  <SelectItem value="outros">Outros</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

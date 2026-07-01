@@ -335,7 +335,7 @@ function SimuladorCenarios({
 
 // ── Página principal ───────────────────────────────────────────────────────────
 export default function DashboardRentabilidade() {
-  const { imovelId } = useRuralAuth();
+  const { imovelId, produtorId } = useRuralAuth();
   const [sistema, setSistema] = useState<"corte" | "leite">("corte");
   const [resultado, setResultado] = useState<ResultadoCorte | ResultadoLeite | null>(null);
   const [historico, setHistorico] = useState<PontoPeriodo[]>([]);
@@ -438,6 +438,61 @@ export default function DashboardRentabilidade() {
     { enabled: !!imovelId }
   );
   const insumosEstoque = (insumosData as any[]) ?? [];
+
+  // Buscar lançamentos para pré-preencher preço de venda
+  const { data: lancamentosData } = trpc.railway.lancamentos.useQuery(
+    { produtorId: produtorId ?? 0 },
+    { enabled: !!produtorId }
+  );
+
+  // Extrair preço de venda do último lançamento de receita de venda de animais
+  const precoVendaIntegrado = useMemo(() => {
+    const lancamentos = (lancamentosData as any[]) ?? [];
+    const vendasAnimais = lancamentos
+      .filter((l: any) =>
+        l.tipo === "receita" &&
+        (l.atividade === "venda_animais" ||
+          (l.descricao ?? "").toLowerCase().includes("venda") &&
+          ((l.descricao ?? "").toLowerCase().includes("animal") ||
+           (l.descricao ?? "").toLowerCase().includes("boi") ||
+           (l.descricao ?? "").toLowerCase().includes("ovino") ||
+           (l.descricao ?? "").toLowerCase().includes("arroba")))
+      )
+      .sort((a: any, b: any) =>
+        new Date(b.data_lancamento).getTime() - new Date(a.data_lancamento).getTime()
+      );
+    if (vendasAnimais.length === 0) return null;
+    // Tenta extrair preco_venda do campo motivo (formato: preco_venda:340.27)
+    const ultimo = vendasAnimais[0];
+    const match = (ultimo.descricao ?? "").match(/preco_venda:(\d+[.,]?\d*)/);
+    if (match) return Number(match[1].replace(",", "."));
+    return null;
+  }, [lancamentosData]);
+
+  // Extrair quantidade consumida por insumo das movimentações com motivo consumo_rebanho
+  const consumosPorInsumo = useMemo(() => {
+    // Parseia observações das movimentações do estoque para extrair consumos
+    // Formato: "motivo:consumo_rebanho | atividade:pecuaria_corte"
+    const mapa: Record<number, number> = {};
+    insumosEstoque.forEach((ins: any) => {
+      if (!ins.movimentacoes) return;
+      const consumoTotal = (ins.movimentacoes as any[])
+        .filter((m: any) =>
+          (m.observacao ?? "").includes("motivo:consumo_rebanho") &&
+          ["uso", "perda", "ajuste_negativo"].includes(m.tipo)
+        )
+        .reduce((s: number, m: any) => s + (m.quantidade ?? 0), 0);
+      if (consumoTotal > 0) mapa[ins.id] = consumoTotal;
+    });
+    return mapa;
+  }, [insumosEstoque]);
+
+  // Pré-preencher preço de venda quando lançamentos carregarem
+  useEffect(() => {
+    if (precoVendaIntegrado && precoVendaIntegrado > 0) {
+      setFormCorte((p) => ({ ...p, precoArroba: precoVendaIntegrado }));
+    }
+  }, [precoVendaIntegrado]);
 
   // Adicionar todos os insumos com custo médio de uma vez
   const adicionarTodosInsumos = useCallback(() => {
@@ -692,8 +747,11 @@ export default function DashboardRentabilidade() {
                       {rebanhoIntegrado.pesoMedioCorte > 0 && (
                         <span> · Peso médio: {rebanhoIntegrado.pesoMedioCorte} kg</span>
                       )}
+                      {precoVendaIntegrado && precoVendaIntegrado > 0 && (
+                        <span> · Preço venda: R$ {precoVendaIntegrado.toFixed(2)}/@</span>
+                      )}
                       <span className="block mt-0.5 text-primary/70">
-                        Campos pré-preenchidos. Ajuste se necessário.
+                        Campos pré-preenchidos com dados reais do sistema. Ajuste se necessário.
                       </span>
                     </div>
                   </div>

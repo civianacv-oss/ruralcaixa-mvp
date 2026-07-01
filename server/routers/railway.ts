@@ -855,12 +855,30 @@ export const railwayRouter = router({
       custo_unitario: z.number().optional(),
       observacao: z.string().optional(),
       data_movim: z.string().optional(),
+      // Rastreabilidade de saída
+      motivo_saida: z.enum(["consumo_rebanho", "perda", "vencimento", "transferencia", "venda", "ajuste", "outro"]).optional(),
+      lote_destino: z.string().optional(),
+      atividade: z.enum(["pecuaria_corte", "pecuaria_leite", "suinocultura", "avicultura", "agricultura", "geral"]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const { imovelId, insumoId, ...fields } = input;
-      const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", fields, claims.produtorId);
+      // Enriquecer observação com motivo_saida e atividade para rastreabilidade
+      const observacaoEnriquecida = [
+        fields.observacao,
+        fields.motivo_saida ? `motivo:${fields.motivo_saida}` : undefined,
+        fields.atividade ? `atividade:${fields.atividade}` : undefined,
+        fields.lote_destino ? `lote:${fields.lote_destino}` : undefined,
+      ].filter(Boolean).join(" | ") || undefined;
+      const payload = {
+        tipo: fields.tipo,
+        quantidade: fields.quantidade,
+        custo_unitario: fields.custo_unitario,
+        data_movim: fields.data_movim,
+        observacao: observacaoEnriquecida,
+      };
+      const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", payload, claims.produtorId);
       return (data as { data: MovimentacaoInsumo }).data ?? data;
     }),
 

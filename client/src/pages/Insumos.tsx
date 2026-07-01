@@ -448,6 +448,9 @@ export default function Insumos() {
   const [movimForm, setMovimForm] = useState({
     tipo: "uso" as "compra" | "producao_propria" | "doacao" | "ajuste_positivo" | "uso" | "venda" | "perda" | "ajuste_negativo",
     quantidade: 0, custo_unitario: "", observacao: "",
+    motivo_saida: "" as "" | "consumo_rebanho" | "perda" | "vencimento" | "transferencia" | "venda" | "ajuste" | "outro",
+    atividade: "" as "" | "pecuaria_corte" | "pecuaria_leite" | "suinocultura" | "avicultura" | "agricultura" | "geral",
+    lote_destino: "",
   });
 
   const [novoFornecedor, setNovoFornecedor] = useState({
@@ -2012,6 +2015,48 @@ export default function Insumos() {
                   <Label>Custo unitário (R$)</Label>
                   <Input type="number" min="0" step="0.01" value={movimForm.custo_unitario} onChange={e => setMovimForm(p => ({ ...p, custo_unitario: e.target.value }))} placeholder="Opcional" />
                 </div>
+                {/* Motivo de saída — visível apenas para tipos de saída */}
+                {["uso", "perda", "venda", "ajuste_negativo"].includes(movimForm.tipo) && (
+                  <>
+                    <div>
+                      <Label>Motivo da saída</Label>
+                      <Select value={movimForm.motivo_saida} onValueChange={v => setMovimForm(p => ({ ...p, motivo_saida: v as any }))}>
+                        <SelectTrigger><SelectValue placeholder="Selecione o motivo…" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="consumo_rebanho">🐄 Consumo do rebanho</SelectItem>
+                          <SelectItem value="perda">⚠️ Perda / deterioração</SelectItem>
+                          <SelectItem value="vencimento">📅 Vencimento</SelectItem>
+                          <SelectItem value="transferencia">🔄 Transferência entre lotes</SelectItem>
+                          <SelectItem value="venda">💰 Venda</SelectItem>
+                          <SelectItem value="ajuste">⚙️ Ajuste de inventário</SelectItem>
+                          <SelectItem value="outro">• Outro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {movimForm.motivo_saida === "consumo_rebanho" && (
+                      <div>
+                        <Label>Atividade pecuária</Label>
+                        <Select value={movimForm.atividade} onValueChange={v => setMovimForm(p => ({ ...p, atividade: v as any }))}>
+                          <SelectTrigger><SelectValue placeholder="Qual atividade consumiu?" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pecuaria_corte">Pecuária de Corte</SelectItem>
+                            <SelectItem value="pecuaria_leite">Pecuária Leiteira</SelectItem>
+                            <SelectItem value="suinocultura">Suinocultura</SelectItem>
+                            <SelectItem value="avicultura">Avicultura</SelectItem>
+                            <SelectItem value="agricultura">Agricultura</SelectItem>
+                            <SelectItem value="geral">Geral / Múltiplas</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {movimForm.motivo_saida === "transferencia" && (
+                      <div>
+                        <Label>Lote de destino</Label>
+                        <Input value={movimForm.lote_destino} onChange={e => setMovimForm(p => ({ ...p, lote_destino: e.target.value }))} placeholder="Ex: Lote B, Confinamento 2…" />
+                      </div>
+                    )}
+                  </>
+                )}
                 <div>
                   <Label>Observação</Label>
                   <Input value={movimForm.observacao} onChange={e => setMovimForm(p => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" />
@@ -2063,6 +2108,9 @@ export default function Insumos() {
                     quantidade: movimForm.quantidade,
                     custo_unitario: movimForm.custo_unitario ? Number(movimForm.custo_unitario) : undefined,
                     observacao: movimForm.observacao || undefined,
+                    motivo_saida: movimForm.motivo_saida || undefined,
+                    atividade: movimForm.atividade || undefined,
+                    lote_destino: movimForm.lote_destino || undefined,
                   })}
                 >
                   {movimentar.isPending ? "Salvando..." : "Registrar"}

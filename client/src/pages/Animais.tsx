@@ -200,6 +200,9 @@ function StatusModal({
 }) {
   const [status, setStatus] = useState(animal.status);
   const [motivo, setMotivo] = useState("");
+  const [pesoSaida, setPesoSaida] = useState("");
+  const [rendimentoCarcaca, setRendimentoCarcaca] = useState("52");
+  const [precoVenda, setPrecoVenda] = useState("");
   const utils = trpc.useUtils();
 
   const mutation = trpc.railway.updateAnimalStatus.useMutation({
@@ -211,6 +214,17 @@ function StatusModal({
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const isVendidoOuAbatido = status === "vendido" || status === "abatido";
+
+  const buildMotivo = () => {
+    const partes: string[] = [];
+    if (motivo) partes.push(motivo);
+    if (pesoSaida) partes.push(`peso_saida:${pesoSaida}kg`);
+    if (isVendidoOuAbatido && rendimentoCarcaca) partes.push(`rendimento:${rendimentoCarcaca}%`);
+    if (precoVenda) partes.push(`preco_venda:${precoVenda}`);
+    return partes.join(" | ") || undefined;
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -229,11 +243,59 @@ function StatusModal({
               <SelectContent>
                 <SelectItem value="ativo">Ativo</SelectItem>
                 <SelectItem value="vendido">Vendido</SelectItem>
+                <SelectItem value="abatido">Abatido</SelectItem>
                 <SelectItem value="morto">Morto</SelectItem>
                 <SelectItem value="transferido">Transferido</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {isVendidoOuAbatido && (
+            <>
+              <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                Preencha os dados de saída para integração automática com o Painel de Rentabilidade.
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Peso de saída (kg)</Label>
+                  <Input
+                    type="number" min="0" step="0.1"
+                    value={pesoSaida}
+                    onChange={e => setPesoSaida(e.target.value)}
+                    placeholder="Ex: 480"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Rendimento carcaça (%)</Label>
+                  <Input
+                    type="number" min="0" max="100" step="0.1"
+                    value={rendimentoCarcaca}
+                    onChange={e => setRendimentoCarcaca(e.target.value)}
+                    placeholder="52"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Preço de venda (R$/@)</Label>
+                <Input
+                  type="number" min="0" step="0.01"
+                  value={precoVenda}
+                  onChange={e => setPrecoVenda(e.target.value)}
+                  placeholder="Ex: 340,27"
+                />
+              </div>
+              {pesoSaida && animal.ultimo_peso && (
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 space-y-0.5">
+                  <p className="font-semibold">Resumo de saída</p>
+                  <p>Ganho: <strong>{(Number(pesoSaida) - Number(animal.ultimo_peso)).toFixed(1)} kg</strong></p>
+                  {rendimentoCarcaca && (
+                    <p>Arrobas: <strong>{((Number(pesoSaida) * (Number(rendimentoCarcaca) / 100)) / 15).toFixed(2)} @</strong></p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="motivo">Motivo / Observação</Label>
             <Input id="motivo" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Opcional" />
@@ -243,7 +305,7 @@ function StatusModal({
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button
             disabled={mutation.isPending}
-            onClick={() => mutation.mutate({ animalId: animal.id, imovelId, especie, status, motivo: motivo || undefined })}
+            onClick={() => mutation.mutate({ animalId: animal.id, imovelId, especie, status, motivo: buildMotivo() })}
             className="text-white"
             style={{ background: "oklch(0.45 0.14 145)" }}
           >
