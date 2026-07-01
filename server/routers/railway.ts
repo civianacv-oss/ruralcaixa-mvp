@@ -1004,9 +1004,11 @@ export const railwayRouter = router({
       const normalize = (v: unknown) => String(v ?? "").trim();
       const toNum = (v: unknown) => { const n = parseFloat(String(v ?? "0").replace(",", ".")); return isNaN(n) ? 0 : n; };
 
+      // Normaliza chave de coluna: remove acentos (NFD) e caracteres não alfanuméricos
+      const normKey = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
       const col = (row: Record<string, unknown>, ...keys: string[]) => {
         for (const k of keys) {
-          const found = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, "") === k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+          const found = Object.keys(row).find(rk => normKey(rk) === normKey(k));
           if (found && row[found] !== "") return row[found];
         }
         return "";
@@ -1141,9 +1143,11 @@ export const railwayRouter = router({
 
       const normalize = (v: unknown) => String(v ?? "").trim();
       const toNum = (v: unknown) => { const n = parseFloat(String(v ?? "0").replace(",", ".")); return isNaN(n) ? 0 : n; };
+      // Normaliza chave de coluna: remove acentos (NFD) e caracteres não alfanuméricos
+      const normKey = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
       const col = (row: Record<string, unknown>, ...keys: string[]) => {
         for (const k of keys) {
-          const found = Object.keys(row).find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, "") === k.toLowerCase().replace(/[^a-z0-9]/g, ""));
+          const found = Object.keys(row).find(rk => normKey(rk) === normKey(k));
           if (found && row[found] !== "") return row[found];
         }
         return "";
