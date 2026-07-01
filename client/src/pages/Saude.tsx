@@ -1,283 +1,584 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { HeartPulse, AlertTriangle, Calendar, Plus, Loader2 } from "lucide-react";
+import {
+  HeartPulse, AlertTriangle, Calendar, Plus, Trash2,
+  Clock, CheckCircle2, Search, Upload, FileSpreadsheet, AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-type EspecieSaude = "ovinos" | "caprinos" | "bovinos";
+type EspecieSaude = "ovinos" | "caprinos" | "suinos" | "bovinos";
 
-const TYPE_LABELS: Record<string, string> = {
-  vacina: "Vacina", medicamento: "Medicamento", exame: "Exame", tratamento: "Tratamento",
+const ESPECIES: { value: EspecieSaude; label: string; emoji: string }[] = [
+  { value: "ovinos", label: "Ovinos", emoji: "\u{1F411}" },
+  { value: "caprinos", label: "Caprinos", emoji: "\u{1F410}" },
+  { value: "suinos", label: "Su\u00ednos", emoji: "\u{1F437}" },
+  { value: "bovinos", label: "Bovinos", emoji: "\u{1F404}" },
+];
+
+const CATEGORIA_COLORS: Record<string, string> = {
+  vacina: "text-emerald-700 bg-emerald-50",
+  vermifugo: "text-purple-700 bg-purple-50",
+  vermifugacao: "text-purple-700 bg-purple-50",
+  medicamento: "text-blue-700 bg-blue-50",
+  exame: "text-amber-700 bg-amber-50",
+  tratamento: "text-red-700 bg-red-50",
 };
-const TYPE_COLORS: Record<string, string> = {
-  vacina: "oklch(0.42 0.14 145)", medicamento: "oklch(0.50 0.14 220)", exame: "oklch(0.55 0.14 60)", tratamento: "oklch(0.55 0.14 340)",
-};
-
-// ─── Sanitário Form Modal ─────────────────────────────────────────────────────
-
-function SanitarioModal({
-  open, onClose, imovelId, onSuccess
-}: {
-  open: boolean; onClose: () => void; imovelId: number; onSuccess: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const [especie, setEspecie] = useState<EspecieSaude>("ovinos");
-  const [tipo, setTipo] = useState("vacina");
-  const [descricao, setDescricao] = useState("");
-  const [dataAplicacao, setDataAplicacao] = useState(new Date().toISOString().slice(0, 10));
-  const [responsavel, setResponsavel] = useState("");
-  const [doseMl, setDoseMl] = useState("");
-  const [obs, setObs] = useState("");
-
-  const mutation = trpc.railway.createSanitario.useMutation({
-    onSuccess: () => {
-      toast.success("Registro sanitário criado!");
-      utils.railway.sanitario.invalidate();
-      onSuccess();
-      onClose();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!descricao.trim()) { toast.error("Descrição é obrigatória."); return; }
-    mutation.mutate({
-      imovelId, especie, tipo, descricao,
-      data_aplicacao: dataAplicacao,
-      responsavel_nome: responsavel || undefined,
-      dose_ml: doseMl ? Number(doseMl) : undefined,
-      observacoes: obs || undefined,
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Novo Registro Sanitário</DialogTitle>
-          <DialogDescription>Registre vacina, medicamento, exame ou tratamento.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Espécie *</Label>
-              <Select value={especie} onValueChange={(v) => setEspecie(v as EspecieSaude)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ovinos">Ovinos</SelectItem>
-                  <SelectItem value="caprinos">Caprinos</SelectItem>
-                  <SelectItem value="bovinos">Bovinos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tipo *</Label>
-              <Select value={tipo} onValueChange={setTipo}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="vacina">Vacina</SelectItem>
-                  <SelectItem value="medicamento">Medicamento</SelectItem>
-                  <SelectItem value="exame">Exame</SelectItem>
-                  <SelectItem value="tratamento">Tratamento</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="descricao">Descrição *</Label>
-            <Input id="descricao" value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex: Vacinação contra febre aftosa" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="dataAplicacao">Data de Aplicação *</Label>
-              <Input id="dataAplicacao" type="date" value={dataAplicacao} onChange={e => setDataAplicacao(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="doseMl">Dose (ml)</Label>
-              <Input id="doseMl" type="number" step="0.1" min="0" value={doseMl} onChange={e => setDoseMl(e.target.value)} placeholder="0.0" />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="responsavel">Responsável / Veterinário</Label>
-            <Input id="responsavel" value={responsavel} onChange={e => setResponsavel(e.target.value)} placeholder="Opcional" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="obs">Observações</Label>
-            <Input id="obs" value={obs} onChange={e => setObs(e.target.value)} placeholder="Opcional" />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>Cancelar</Button>
-            <Button type="submit" disabled={mutation.isPending} className="text-white" style={{ background: "oklch(0.45 0.14 145)" }}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Registrar
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Saude() {
   const { imovelId } = useRuralAuth();
-  const [showCreate, setShowCreate] = useState(false);
-  const enabled = Boolean(imovelId);
   const imovelIdSafe = imovelId ?? 0;
+  const enabled = !!imovelId;
 
-  const ovinosQ = trpc.railway.sanitario.useQuery({ imovelId: imovelIdSafe, especie: "ovinos" }, { enabled });
-  const caprinosQ = trpc.railway.sanitario.useQuery({ imovelId: imovelIdSafe, especie: "caprinos" }, { enabled });
-  const bovinosQ = trpc.railway.sanitario.useQuery({ imovelId: imovelIdSafe, especie: "bovinos" }, { enabled });
+  const [especie, setEspecie] = useState<EspecieSaude>("ovinos");
+  const [aba, setAba] = useState<"historico" | "calendario">("historico");
+  const [search, setSearch] = useState("");
 
-  const loading = ovinosQ.isLoading || caprinosQ.isLoading || bovinosQ.isLoading;
+  // Novo registro
+  const [showNew, setShowNew] = useState(false);
+  const [formInsumoId, setFormInsumoId] = useState("");
+  const [formAnimalId, setFormAnimalId] = useState("");
+  const [formData, setFormData] = useState(new Date().toISOString().slice(0, 10));
+  const [formDose, setFormDose] = useState("");
+  const [formVia, setFormVia] = useState("");
+  const [formResponsavel, setFormResponsavel] = useState("");
+  const [formObs, setFormObs] = useState("");
 
-  const records = useMemo(() => [
-    ...(ovinosQ.data ?? []).map((r) => ({ ...r, _species: "ovinos" })),
-    ...(caprinosQ.data ?? []).map((r) => ({ ...r, _species: "caprinos" })),
-    ...(bovinosQ.data ?? []).map((r) => ({ ...r, _species: "bovinos" })),
-  ], [ovinosQ.data, caprinosQ.data, bovinosQ.data]);
+  // Importa\u00e7\u00e3o
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
-  const speciesLabel: Record<string, string> = { ovinos: "Ovinos", caprinos: "Caprinos", suinos: "Suínos", bovinos: "Bovinos" };
+  // Confirma\u00e7\u00e3o de exclus\u00e3o
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
-  function isOverdue(date?: string) {
-    if (!date) return false;
-    return new Date(date) < new Date();
-  }
+  const utils = trpc.useUtils();
 
-  if (!imovelId) {
+  const historicoQ = trpc.railway.sanitario.useQuery(
+    { imovelId: imovelIdSafe, especie },
+    { enabled, refetchOnWindowFocus: false },
+  );
+
+  const calendarioQ = trpc.railway.sanitarioCalendario.useQuery(
+    { imovelId: imovelIdSafe, especie },
+    { enabled, refetchOnWindowFocus: false },
+  );
+
+  const insumosQ = trpc.railway.sanitarioInsumos.useQuery(
+    { imovelId: imovelIdSafe, especie },
+    { enabled: enabled && showNew, refetchOnWindowFocus: false },
+  );
+
+  const createMut = trpc.railway.createSanitario.useMutation({
+    onSuccess: () => {
+      toast.success("Registro sanit\u00e1rio criado!");
+      utils.railway.sanitario.invalidate();
+      utils.railway.sanitarioCalendario.invalidate();
+      resetForm();
+      setShowNew(false);
+    },
+    onError: (e) => toast.error(e.message || "Erro ao criar registro"),
+  });
+
+  const deleteMut = trpc.railway.deleteSanitario.useMutation({
+    onSuccess: () => {
+      toast.success("Registro exclu\u00eddo");
+      utils.railway.sanitario.invalidate();
+      setConfirmDeleteId(null);
+    },
+    onError: (e) => toast.error(e.message || "Erro ao excluir"),
+  });
+
+  const historico = (historicoQ.data ?? []) as any[];
+  const calendario = calendarioQ.data as any;
+  const insumos = (insumosQ.data ?? []) as any[];
+
+  const filteredHistorico = historico.filter((r) => {
+    const q = search.toLowerCase();
     return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-        Selecione uma propriedade para visualizar os registros sanitários.
-      </div>
+      (r.nome_comercial ?? "").toLowerCase().includes(q) ||
+      (r.animal_brinco ?? "").toLowerCase().includes(q) ||
+      (r.categoria ?? "").toLowerCase().includes(q) ||
+      (r.responsavel_nome ?? "").toLowerCase().includes(q)
     );
+  });
+
+  const vencidos = historico.filter((r) => {
+    if (!r.reforco_previsto) return false;
+    return new Date(r.reforco_previsto) < new Date();
+  }).length;
+
+  const proximos7 = (() => {
+    if (!calendario) return 0;
+    const now = new Date();
+    const in7 = new Date(); in7.setDate(now.getDate() + 7);
+    const items = [
+      ...(calendario.reforcos_pendentes ?? []),
+      ...(calendario.tarefas_sanitarias ?? []),
+    ];
+    return items.filter((r: any) => {
+      if (!r.data_prevista) return false;
+      const d = new Date(r.data_prevista);
+      return d >= now && d <= in7;
+    }).length;
+  })();
+
+  function resetForm() {
+    setFormInsumoId(""); setFormAnimalId("");
+    setFormData(new Date().toISOString().slice(0, 10));
+    setFormDose(""); setFormVia(""); setFormResponsavel(""); setFormObs("");
   }
+
+  function handleCreate() {
+    if (!imovelId) { toast.error("Sess\u00e3o inv\u00e1lida"); return; }
+    if (!formInsumoId) { toast.error("Selecione o produto/insumo"); return; }
+    createMut.mutate({
+      imovelId,
+      especie,
+      insumo_id: Number(formInsumoId),
+      animal_id: formAnimalId ? Number(formAnimalId) : undefined,
+      data_aplicacao: formData,
+      dose_ml: formDose ? Number(formDose) : undefined,
+      via: formVia || undefined,
+      responsavel_nome: formResponsavel || undefined,
+      observacoes: formObs || undefined,
+    });
+  }
+
+  const especieAtual = ESPECIES.find((e) => e.value === especie)!;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-5">
+    <div className="space-y-4 pb-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "oklch(0.18 0.04 145)" }}>
-            Saúde do Rebanho
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <HeartPulse className="w-6 h-6 text-red-500" />
+            Sa\u00fade Animal
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Próximos eventos sanitários e alertas</p>
+          <p className="text-sm text-muted-foreground">Controle sanit\u00e1rio por esp\u00e9cie</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-2 text-white" style={{ background: "oklch(0.45 0.14 145)" }}>
-          <Plus className="w-4 h-4" /> Novo registro
-        </Button>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <HeartPulse className="w-4 h-4 text-emerald-600" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total de Alertas</span>
-          </div>
-          <p className="text-4xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>{loading ? "—" : records.length}</p>
-        </div>
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vencidos</span>
-          </div>
-          <p className="text-4xl font-bold text-amber-600">{loading ? "—" : records.filter((r) => isOverdue(r.proxima_data)).length}</p>
-        </div>
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="w-4 h-4 text-blue-500" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próximos 7 dias</span>
-          </div>
-          <p className="text-4xl font-bold text-blue-600">
-            {loading ? "—" : records.filter((r) => {
-              if (!r.proxima_data) return false;
-              const d = new Date(r.proxima_data);
-              const now = new Date();
-              const in7 = new Date(); in7.setDate(now.getDate() + 7);
-              return d >= now && d <= in7;
-            }).length}
-          </p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowImport(true)} className="gap-1.5">
+            <Upload className="w-4 h-4" />
+            <span className="hidden sm:inline">Importar</span>
+          </Button>
+          <Button size="sm" onClick={() => setShowNew(true)} style={{ background: "oklch(0.42 0.14 145)" }} className="gap-1.5 text-white">
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Novo Registro</span>
+          </Button>
         </div>
       </div>
 
-      {/* Records table */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b" style={{ borderColor: "oklch(0.92 0.01 130)" }}>
-          <h3 className="font-semibold text-sm" style={{ color: "oklch(0.22 0.06 145)" }}>Próximos Eventos Sanitários</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ borderBottom: "1px solid oklch(0.92 0.01 130)" }}>
-                {["Espécie", "Tipo", "Descrição", "Produto / Dose", "Próxima Data", "Veterinário"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid oklch(0.95 0.005 130)" }}>
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 rounded bg-muted animate-pulse" style={{ width: "70%" }} /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : records.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                    <HeartPulse className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="font-medium">Nenhum evento sanitário encontrado</p>
-                    <p className="text-sm mt-1">Clique em "Novo registro" para adicionar o primeiro.</p>
-                  </td>
-                </tr>
-              ) : (
-                records.map((r, i) => (
-                  <tr key={i} className="hover:bg-muted/30 transition-colors" style={{ borderBottom: "1px solid oklch(0.95 0.005 130)" }}>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "oklch(0.94 0.02 145)", color: "oklch(0.38 0.10 145)" }}>
-                        {speciesLabel[r._species] ?? r._species}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ color: TYPE_COLORS[r.tipo] ?? "oklch(0.50 0.04 140)", background: `${TYPE_COLORS[r.tipo] ?? "oklch(0.50 0.04 140)"}18` }}>
-                        {TYPE_LABELS[r.tipo] ?? r.tipo}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium">{r.descricao}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{r.produto ?? "—"}{r.dose ? ` · ${r.dose}` : ""}</td>
-                    <td className="px-4 py-3">
-                      {r.proxima_data ? (
-                        <span className={`text-xs font-semibold ${isOverdue(r.proxima_data) ? "text-red-600" : "text-foreground"}`}>
-                          {isOverdue(r.proxima_data) && "⚠ "}
-                          {new Date(r.proxima_data).toLocaleDateString("pt-BR")}
-                        </span>
-                      ) : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{r.veterinario ?? "—"}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Seletor de esp\u00e9cie */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {ESPECIES.map((e) => (
+          <button
+            key={e.value}
+            onClick={() => setEspecie(e.value)}
+            className={"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors " +
+              (especie === e.value ? "text-white" : "bg-muted text-muted-foreground hover:bg-muted/80")}
+            style={especie === e.value ? { background: "oklch(0.42 0.14 145)" } : {}}
+          >
+            <span>{e.emoji}</span>
+            {e.label}
+          </button>
+        ))}
       </div>
 
-      {/* Modal */}
-      {showCreate && imovelId && (
-        <SanitarioModal open onClose={() => setShowCreate(false)} imovelId={imovelId} onSuccess={() => {}} />
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold">{historicoQ.isLoading ? "\u2014" : historico.length}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Total</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold text-amber-600">{historicoQ.isLoading ? "\u2014" : vencidos}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> Refor\u00e7os
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold text-blue-600">{calendarioQ.isLoading ? "\u2014" : proximos7}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1">
+              <Clock className="w-3 h-3" /> 7 dias
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Abas */}
+      <div className="flex gap-1 bg-muted rounded-lg p-1">
+        <button
+          onClick={() => setAba("historico")}
+          className={"flex-1 py-1.5 rounded-md text-sm font-medium transition-colors " +
+            (aba === "historico" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground")}
+        >
+          Hist\u00f3rico
+        </button>
+        <button
+          onClick={() => setAba("calendario")}
+          className={"flex-1 py-1.5 rounded-md text-sm font-medium transition-colors " +
+            (aba === "calendario" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground")}
+        >
+          Calend\u00e1rio
+        </button>
+      </div>
+
+      {/* Aba Hist\u00f3rico */}
+      {aba === "historico" && (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar produto, animal, respons\u00e1vel..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {historicoQ.isError && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              Erro ao carregar hist\u00f3rico.
+              <Button variant="ghost" size="sm" onClick={() => historicoQ.refetch()} className="ml-auto">
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+
+          {historicoQ.isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+            </div>
+          ) : filteredHistorico.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <HeartPulse className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p className="font-medium">Nenhum registro sanit\u00e1rio</p>
+              <p className="text-sm mt-1">Clique em "Novo Registro" para adicionar</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredHistorico.map((r) => (
+                <Card key={r.id} className="hover:shadow-sm transition-shadow">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={"text-[10px] font-bold uppercase px-2 py-0.5 rounded-full " + (CATEGORIA_COLORS[r.categoria] ?? "bg-gray-100 text-gray-600")}>
+                            {r.categoria}
+                          </span>
+                          {r.animal_brinco && (
+                            <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
+                              #{r.animal_brinco}
+                            </span>
+                          )}
+                          {r.carencia_ativa && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                              Car\u00eancia ativa
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium mt-1">{r.nome_comercial}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(r.data_aplicacao).toLocaleDateString("pt-BR")}
+                          {r.dose_ml ? ` \u00b7 ${r.dose_ml} mL` : ""}
+                          {r.via ? ` \u00b7 ${r.via}` : ""}
+                          {r.responsavel_nome ? ` \u00b7 ${r.responsavel_nome}` : ""}
+                        </p>
+                        {r.reforco_previsto && (
+                          <p className={"text-xs mt-0.5 " + (new Date(r.reforco_previsto) < new Date() ? "text-amber-600 font-medium" : "text-muted-foreground")}>
+                            {new Date(r.reforco_previsto) < new Date() ? "\u26a0 " : ""}
+                            Refor\u00e7o: {new Date(r.reforco_previsto).toLocaleDateString("pt-BR")}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDeleteId(r.id)}
+                        className="text-red-400 hover:text-red-600 w-7 h-7 p-0 shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       )}
+
+      {/* Aba Calend\u00e1rio */}
+      {aba === "calendario" && (
+        <div className="space-y-3">
+          {calendarioQ.isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}
+            </div>
+          ) : (
+            <>
+              {(calendario?.reforcos_pendentes ?? []).length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4" /> Refor\u00e7os Pendentes
+                  </h3>
+                  {(calendario.reforcos_pendentes as any[]).map((r: any, i: number) => (
+                    <Card key={i} className="border-amber-200 bg-amber-50/40">
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{r.nome_comercial}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {r.animal_brinco ? `#${r.animal_brinco} \u00b7 ` : ""}{r.responsavel_nome ?? "\u2014"}
+                            </p>
+                          </div>
+                          <span className="text-xs font-semibold text-amber-700">
+                            {new Date(r.data_prevista).toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {(calendario?.tarefas_sanitarias ?? []).length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-blue-700 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4" /> Pr\u00f3ximas Tarefas
+                  </h3>
+                  {(calendario.tarefas_sanitarias as any[]).map((r: any, i: number) => (
+                    <Card key={i} className="border-blue-200 bg-blue-50/40">
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{r.nome_comercial}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {r.animal_brinco ? `#${r.animal_brinco} \u00b7 ` : ""}{r.lote_nome ?? ""}
+                            </p>
+                          </div>
+                          <span className="text-xs font-semibold text-blue-700">
+                            {new Date(r.data_prevista).toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {(calendario?.reforcos_pendentes ?? []).length === 0 && (calendario?.tarefas_sanitarias ?? []).length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-500" />
+                  <p className="font-medium">Nenhum evento pendente</p>
+                  <p className="text-sm mt-1">Todos os registros est\u00e3o em dia para {especieAtual.label}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Dialog: Novo Registro */}
+      <Dialog open={showNew} onOpenChange={(v) => { if (!v) { resetForm(); setShowNew(false); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Registro Sanit\u00e1rio \u2014 {especieAtual.emoji} {especieAtual.label}</DialogTitle>
+            <DialogDescription>Registre vacina, vermifugo, medicamento ou tratamento.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Esp\u00e9cie *</Label>
+              <Select value={especie} onValueChange={(v) => setEspecie(v as EspecieSaude)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ESPECIES.map((e) => (
+                    <SelectItem key={e.value} value={e.value}>{e.emoji} {e.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Produto / Insumo *</Label>
+              {insumosQ.isLoading ? (
+                <Skeleton className="h-9 rounded-md" />
+              ) : insumos.length > 0 ? (
+                <Select value={formInsumoId} onValueChange={setFormInsumoId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o produto..." /></SelectTrigger>
+                  <SelectContent>
+                    {insumos.map((ins: any) => (
+                      <SelectItem key={ins.id} value={String(ins.id)}>
+                        {ins.nome_comercial} ({ins.categoria})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="ID do insumo (ex: 1)"
+                  value={formInsumoId}
+                  onChange={(e) => setFormInsumoId(e.target.value)}
+                />
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>ID do Animal</Label>
+                <Input
+                  placeholder="Ex: 1"
+                  value={formAnimalId}
+                  onChange={(e) => setFormAnimalId(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Data Aplica\u00e7\u00e3o *</Label>
+                <Input
+                  type="date"
+                  value={formData}
+                  onChange={(e) => setFormData(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Dose (mL)</Label>
+                <Input
+                  type="number"
+                  placeholder="Ex: 2.0"
+                  value={formDose}
+                  onChange={(e) => setFormDose(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Via</Label>
+                <Select value={formVia} onValueChange={setFormVia}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SC">SC (Subcut\u00e2nea)</SelectItem>
+                    <SelectItem value="IM">IM (Intramuscular)</SelectItem>
+                    <SelectItem value="IV">IV (Intravenosa)</SelectItem>
+                    <SelectItem value="VO">VO (Via Oral)</SelectItem>
+                    <SelectItem value="Topica">T\u00f3pica</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Respons\u00e1vel</Label>
+              <Input
+                placeholder="Nome do veterin\u00e1rio ou respons\u00e1vel"
+                value={formResponsavel}
+                onChange={(e) => setFormResponsavel(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Observa\u00e7\u00f5es</Label>
+              <Input
+                placeholder="Observa\u00e7\u00f5es adicionais..."
+                value={formObs}
+                onChange={(e) => setFormObs(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { resetForm(); setShowNew(false); }}>Cancelar</Button>
+            <Button onClick={handleCreate} disabled={createMut.isPending} style={{ background: "oklch(0.42 0.14 145)" }} className="text-white">
+              {createMut.isPending ? "Salvando..." : "Criar Registro"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Confirmar exclus\u00e3o */}
+      <Dialog open={confirmDeleteId !== null} onOpenChange={(v) => { if (!v) setConfirmDeleteId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Excluir registro?</DialogTitle>
+            <DialogDescription>Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMut.isPending}
+              onClick={() => {
+                if (confirmDeleteId && imovelId) {
+                  deleteMut.mutate({ imovelId, especie, sanitarioId: confirmDeleteId });
+                }
+              }}
+            >
+              {deleteMut.isPending ? "Excluindo..." : "Excluir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Importar Planilha */}
+      <Dialog open={showImport} onOpenChange={(v) => { if (!v) { setShowImport(false); setImportFile(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+              Importar Registros Sanit\u00e1rios
+            </DialogTitle>
+            <DialogDescription>
+              Selecione um arquivo Excel ou CSV com os registros sanit\u00e1rios.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div
+              className="border-2 border-dashed border-muted rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 transition-colors"
+              onClick={() => document.getElementById("saude-file-input")?.click()}
+            >
+              <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+              {importFile ? (
+                <p className="text-sm font-medium text-emerald-700">{importFile.name}</p>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">Clique para selecionar o arquivo</p>
+                  <p className="text-xs text-muted-foreground mt-1">.xlsx, .xls ou .csv</p>
+                </>
+              )}
+              <input
+                id="saude-file-input"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+              <p className="font-semibold">Colunas esperadas:</p>
+              <p>especie, produto_id, data_aplicacao, dose_ml, animal_id, responsavel</p>
+            </div>
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>A importa\u00e7\u00e3o em lote de registros sanit\u00e1rios estar\u00e1 dispon\u00edvel em breve. Use o cadastro manual por enquanto.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowImport(false); setImportFile(null); }}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

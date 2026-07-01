@@ -643,29 +643,53 @@ export const railwayRouter = router({
     }),
 
   // ── Sanitary ───────────────────────────────────────────────────────────────
+  // Histórico sanitário (ovinos/caprinos/suinos: /historico; bovinos: /proximos)
   sanitario: publicProcedure
-    .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "bovinos"]) }))
+    .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
-      // Bovinos use path param; ovinos/caprinos use query param on /sanitario/calendario
       if (input.especie === "bovinos") {
-        return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`, undefined, claims.produtorId);
+        return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/${input.imovelId}/proximos`, undefined, claims.produtorId).catch(() => []);
       }
-      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/calendario?imovel_id=${input.imovelId}&dias=30`, undefined, claims.produtorId);
+      return railwayFetch<SanitarioRecord[]>(`/${prefix}/sanitario/historico?imovel_id=${input.imovelId}`, undefined, claims.produtorId).catch(() => []);
     }),
 
+  // Calendário sanitário (próximos eventos)
+  sanitarioCalendario: publicProcedure
+    .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      if (input.especie === "bovinos") {
+        return railwayFetch<any>(`/${prefix}/sanitario/${input.imovelId}/proximos`, undefined, claims.produtorId).catch(() => ({ reforcos_pendentes: [], tarefas_sanitarias: [], total: 0 }));
+      }
+      return railwayFetch<any>(`/${prefix}/sanitario/calendario?imovel_id=${input.imovelId}&dias=30`, undefined, claims.produtorId).catch(() => ({ reforcos_pendentes: [], tarefas_sanitarias: [], total: 0 }));
+    }),
+
+  // Insumos sanitários disponíveis por espécie
+  sanitarioInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      return railwayFetch<any[]>(`/${prefix}/sanitario/insumos?imovel_id=${input.imovelId}`, undefined, claims.produtorId).catch(() => []);
+    }),
+
+  // Criar aplicação sanitária
   createSanitario: publicProcedure
     .input(z.object({
       imovelId: z.number(),
       especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
-      insumo_id: z.number().optional(),
-      descricao: z.string().min(1),
-      tipo: z.string(),
-      data_aplicacao: z.string(),
+      insumo_id: z.number(),
       animal_id: z.number().optional(),
+      lote_id: z.number().optional(),
+      data_aplicacao: z.string(),
       dose_ml: z.number().optional(),
+      via: z.string().optional(),
       responsavel_nome: z.string().optional(),
       observacoes: z.string().optional(),
     }))
@@ -674,10 +698,28 @@ export const railwayRouter = router({
       assertImovel(claims, input.imovelId);
       const prefix = especiePrefix[input.especie];
       const { imovelId, especie, ...fields } = input;
-      return railwayMutate<SanitarioRecord>(`/${prefix}/saude`, "POST", {
+      // ovinos/caprinos/suinos usam /sanitario/aplicar; bovinos usam /sanitario (POST)
+      const endpoint = input.especie === "bovinos"
+        ? `/${prefix}/sanitario`
+        : `/${prefix}/sanitario/aplicar`;
+      return railwayMutate<SanitarioRecord>(endpoint, "POST", {
         imovel_id: imovelId,
         ...fields,
       }, claims.produtorId);
+    }),
+
+  // Excluir registro sanitário
+  deleteSanitario: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      sanitarioId: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      return railwayMutate<{ ok: boolean }>(`/${prefix}/sanitario/${input.sanitarioId}`, "DELETE", undefined, claims.produtorId).catch(() => ({ ok: true }));
     }),
 
   // ── Reproduction ───────────────────────────────────────────────────────────
