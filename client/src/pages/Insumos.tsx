@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import {
   Package,
   AlertTriangle,
@@ -102,6 +103,91 @@ const TIPO_MOVIM_ICONS: Record<string, React.ReactNode> = {
   perda: <ArrowUpCircle className="h-4 w-4 text-red-500" />,
   ajuste_negativo: <ArrowUpCircle className="h-4 w-4 text-gray-500" />,
 };
+
+// ── Gerar relatório XLSX dos itens ignorados/falhos na importação ─────────────
+type ImportResultItem = { nome: string; codigo?: string; ok: boolean; action?: string; error?: string };
+
+function gerarRelatorioIgnorados(
+  results: ImportResultItem[],
+  nomeArquivo = "relatorio_importacao"
+) {
+  const wb = XLSX.utils.book_new();
+  const agora = new Date();
+  const dataStr = agora.toLocaleDateString("pt-BR");
+  const horaStr = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  // ── Aba 1: Resumo ──────────────────────────────────────────────────────────
+  const rCriados   = results.filter(r => r.ok && r.action === "criado");
+  const rAtualizados = results.filter(r => r.ok && r.action === "atualizado");
+  const rIgnorados = results.filter(r => r.ok && r.action === "ignorado");
+  const rFalhas    = results.filter(r => !r.ok);
+
+  const resumoData = [
+    ["Relatório de Importação de Insumos"],
+    [`Gerado em: ${dataStr} às ${horaStr}`],
+    [""],
+    ["Categoria", "Quantidade", "Descrição"],
+    ["Total processado", results.length, "Todos os itens da planilha"],
+    ["Importados (Novos)", rCriados.length, "Insumos criados com sucesso"],
+    ["Importados (Estoque+)", rAtualizados.length, "Estoque somado com sucesso"],
+    ["Ignorados", rIgnorados.length, "Valor zero no arquivo — não alterados"],
+    ["Falhas", rFalhas.length, "Erro na API durante a importação"],
+  ];
+  const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+  wsResumo["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 42 }];
+  wsResumo["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+  XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo");
+
+  // ── Aba 2: Ignorados (valor zero) ─────────────────────────────────────────
+  if (rIgnorados.length > 0) {
+    const ignoradosData = [
+      ["Código", "Nome do Insumo", "Motivo"],
+      ...rIgnorados.map(r => [
+        r.codigo ?? "",
+        r.nome,
+        "Valor zero no arquivo — nenhuma alteração realizada",
+      ]),
+    ];
+    const wsIgnorados = XLSX.utils.aoa_to_sheet(ignoradosData);
+    wsIgnorados["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 48 }];
+    XLSX.utils.book_append_sheet(wb, wsIgnorados, "Ignorados");
+  }
+
+  // ── Aba 3: Falhas (erro na API) ───────────────────────────────────────────
+  if (rFalhas.length > 0) {
+    const falhasData = [
+      ["Código", "Nome do Insumo", "Erro Detalhado", "Ação Recomendada"],
+      ...rFalhas.map(r => [
+        r.codigo ?? "",
+        r.nome,
+        r.error ?? "Erro desconhecido",
+        "Verificar manualmente e registrar movimentação no sistema",
+      ]),
+    ];
+    const wsFalhas = XLSX.utils.aoa_to_sheet(falhasData);
+    wsFalhas["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 56 }, { wch: 48 }];
+    XLSX.utils.book_append_sheet(wb, wsFalhas, "Falhas");
+  }
+
+  // ── Aba 4: Importados com sucesso ─────────────────────────────────────────
+  if ((rCriados.length + rAtualizados.length) > 0) {
+    const sucessoData = [
+      ["Código", "Nome do Insumo", "Resultado"],
+      ...[...rCriados, ...rAtualizados].map(r => [
+        r.codigo ?? "",
+        r.nome,
+        r.action === "criado" ? "Novo insumo criado" : "Estoque somado (ajuste positivo)",
+      ]),
+    ];
+    const wsSucesso = XLSX.utils.aoa_to_sheet(sucessoData);
+    wsSucesso["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 34 }];
+    XLSX.utils.book_append_sheet(wb, wsSucesso, "Importados");
+  }
+
+  // ── Download ──────────────────────────────────────────────────────────────
+  const dataFormatada = agora.toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `${nomeArquivo}_${dataFormatada}.xlsx`);
+}
 
 export default function Insumos() {
   const { imovelId } = useRuralAuth();
@@ -866,9 +952,31 @@ export default function Insumos() {
                       </div>
                     )}
 
-                    <Button className="w-full" onClick={() => { setOpenImport(false); resetImport(); }}>
-                      Fechar
-                    </Button>
+                    {/* Botões de ação */}
+                    <div className="flex gap-2">
+                      {(rIgnorados.length > 0 || rFalhas.length > 0) && (
+                        <Button
+                          variant="outline"
+                          className="flex-1 gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                          onClick={() => {
+                            gerarRelatorioIgnorados(
+                              importResult.results,
+                              "relatorio_importacao_insumos"
+                            );
+                            toast.success("Relatório baixado com sucesso!");
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
+                          Baixar Relatório XLSX
+                        </Button>
+                      )}
+                      <Button
+                        className={rIgnorados.length > 0 || rFalhas.length > 0 ? "flex-1" : "w-full"}
+                        onClick={() => { setOpenImport(false); resetImport(); }}
+                      >
+                        Fechar
+                      </Button>
+                    </div>
                   </div>
                 );
             })()}
