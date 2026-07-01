@@ -81,6 +81,18 @@ import { PizzaCustos } from "@/components/rentabilidade/PizzaCustos";
 import { GraficoComparativo, type PontoPeriodo } from "@/components/rentabilidade/GraficoComparativo";
 import { RadarEficiencia, type DadoRadar } from "@/components/rentabilidade/RadarEficiencia";
 
+// ── Presets de período ────────────────────────────────────────────────────────
+const PERIODOS_PRESET = [
+  { label: "Mensal (30 dias)",      dias: 30,  rotulo: () => {
+    const d = new Date(); return `${d.toLocaleString("pt-BR",{month:"short"}).replace(".","")}'${String(d.getFullYear()).slice(2)}`;
+  }},
+  { label: "Bimestral (60 dias)",  dias: 60,  rotulo: () => "Bimestral" },
+  { label: "Trimestral (90 dias)", dias: 90,  rotulo: () => "Trimestral" },
+  { label: "Semestral (180 dias)", dias: 180, rotulo: () => "Semestral" },
+  { label: "Anual (365 dias)",     dias: 365, rotulo: () => "Anual" },
+  { label: "Personalizado",        dias: 0,   rotulo: () => "" },
+] as const;
+
 // ── Constantes de referência Embrapa ──────────────────────────────────────────
 const REF_GMD_CONFINAMENTO = 1.2;      // kg/dia — Embrapa BR-CORTE
 const REF_CA_CONFINAMENTO = 6.5;       // kg ração/kg ganho
@@ -325,6 +337,19 @@ export default function DashboardRentabilidade() {
   const [resultado, setResultado] = useState<ResultadoCorte | ResultadoLeite | null>(null);
   const [historico, setHistorico] = useState<PontoPeriodo[]>([]);
   const [labelPeriodo, setLabelPeriodo] = useState("Jul/26");
+  const [presetPeriodo, setPresetPeriodo] = useState<string>("Mensal (30 dias)");
+
+  // Aplicar preset de período
+  const aplicarPreset = useCallback((label: string) => {
+    setPresetPeriodo(label);
+    const preset = PERIODOS_PRESET.find((p) => p.label === label);
+    if (!preset || preset.dias === 0) return; // Personalizado: não altera
+    const dias = preset.dias;
+    const rotulo = preset.rotulo();
+    setLabelPeriodo(rotulo);
+    setFormCorte((p) => ({ ...p, periodoDias: dias }));
+    setFormLeite((p) => ({ ...p, periodoDias: dias }));
+  }, []);
 
   // Formulário Corte
   const [formCorte, setFormCorte] = useState<FormCorte>({
@@ -579,6 +604,23 @@ export default function DashboardRentabilidade() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {/* Seletor de período predefinido */}
+                <div>
+                  <Label className="text-xs">Período de análise</Label>
+                  <Select value={presetPeriodo} onValueChange={aplicarPreset}>
+                    <SelectTrigger className="h-8 text-sm mt-1">
+                      <SelectValue placeholder="Selecione o período…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PERIODOS_PRESET.map((p) => (
+                        <SelectItem key={p.label} value={p.label}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label className="text-xs">Rótulo do período</Label>
@@ -595,9 +637,10 @@ export default function DashboardRentabilidade() {
                       <Input
                         type="number"
                         value={formCorte.periodoDias}
-                        onChange={(e) =>
-                          setFormCorte((p) => ({ ...p, periodoDias: +e.target.value }))
-                        }
+                        onChange={(e) => {
+                          setPresetPeriodo("Personalizado");
+                          setFormCorte((p) => ({ ...p, periodoDias: +e.target.value }));
+                        }}
                         className="h-8 text-sm mt-1"
                       />
                     </div>
@@ -607,14 +650,42 @@ export default function DashboardRentabilidade() {
                       <Input
                         type="number"
                         value={formLeite.periodoDias}
-                        onChange={(e) =>
-                          setFormLeite((p) => ({ ...p, periodoDias: +e.target.value }))
-                        }
+                        onChange={(e) => {
+                          setPresetPeriodo("Personalizado");
+                          setFormLeite((p) => ({ ...p, periodoDias: +e.target.value }));
+                        }}
                         className="h-8 text-sm mt-1"
                       />
                     </div>
                   )}
                 </div>
+
+                {/* Informativo de produção total para leite */}
+                {sistema === "leite" && (
+                  <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
+                    <strong>Produção total (L):</strong> informe o total de litros produzidos
+                    nos <strong>{formLeite.periodoDias} dias</strong> do período selecionado.
+                    {formLeite.vacasLactacao > 0 && formLeite.periodoDias > 0 && (
+                      <span className="block mt-0.5 text-blue-600">
+                        Equivale a ≈ {(formLeite.producaoTotalLitros / formLeite.vacasLactacao / formLeite.periodoDias).toFixed(1)} L/vaca/dia
+                        com {formLeite.vacasLactacao} vacas.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Informativo de peso para corte */}
+                {sistema === "corte" && (
+                  <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
+                    <strong>Pesos inicial e final:</strong> pesos médios do lote no início
+                    e ao final dos <strong>{formCorte.periodoDias} dias</strong>.
+                    {formCorte.periodoDias > 0 && formCorte.pesoFinal > formCorte.pesoInicial && (
+                      <span className="block mt-0.5 text-green-600">
+                        GMD estimado: {((formCorte.pesoFinal - formCorte.pesoInicial) / formCorte.periodoDias).toFixed(2)} kg/dia
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {sistema === "corte" ? (
                   <div className="space-y-2">
