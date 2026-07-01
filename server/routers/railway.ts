@@ -1385,7 +1385,7 @@ export const railwayRouter = router({
               } catch (movErr: unknown) {
                 // Reportar erro real em vez de silenciosamente ignorar
                 const errMsg = movErr instanceof Error ? movErr.message : String(movErr);
-                results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: false, action: "ignorado", erro: `Falha ao movimentar: ${errMsg}` });
+                results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: false, action: "ignorado", error: `Falha ao movimentar: ${errMsg}` });
               }
             } else {
               // Ignorar: não altera o estoque existente
