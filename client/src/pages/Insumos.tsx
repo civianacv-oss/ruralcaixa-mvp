@@ -1281,15 +1281,12 @@ export default function Insumos() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                     <TableRow>
-                      <TableHead className="w-[30px]"></TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead className="hidden sm:table-cell">Categoria</TableHead>
-                      <TableHead>Estoque</TableHead>
-                      <TableHead className="hidden md:table-cell">Progresso</TableHead>
+                      <TableHead className="min-w-[180px]">Nome</TableHead>
+                      <TableHead className="text-right">Estoque Atual</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">Mínimo</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="hidden lg:table-cell">Fornecedor</TableHead>
-                      <TableHead className="hidden md:table-cell">Reposição</TableHead>
-                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead className="hidden md:table-cell">Fornecedor</TableHead>
+                      <TableHead className="text-right w-[110px]">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1309,13 +1306,13 @@ export default function Insumos() {
                                   return next;
                                 })}
                               >
-                                <TableCell colSpan={9}>
+                                <TableCell colSpan={6}>
                                   <div className="flex items-center gap-2">
                                     {expandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                     <span className="font-semibold capitalize">{cat}</span>
                                     <span className="text-xs text-muted-foreground">({lista.length} itens)</span>
                                     {criticosGrupo > 0 && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">{criticosGrupo} crítico(s)</span>
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">{criticosGrupo} urgente(s)</span>
                                     )}
                                   </div>
                                 </TableCell>
@@ -1323,85 +1320,106 @@ export default function Insumos() {
                               {/* Linhas do grupo (colapsáveis) */}
                               {expandida && lista.map((ins: any) => {
                                 const catalogEntry = catalogList.find((c: any) => c.nome.toLowerCase() === ins.nome?.toLowerCase());
-                                const pct = ins.estoque_minimo > 0 ? Math.min(100, Math.round((ins.estoque_atual / ins.estoque_minimo) * 100)) : 100;
+                                const isCritico = ins.status_estoque === "critico";
+                                const isBaixo = ins.status_estoque === "baixo" || ins.status_estoque === "atencao";
                                 return (
                                   <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
+                                    {/* Coluna 1: Código + Nome */}
                                     <TableCell>
-                                      {catalogEntry && <span className="font-mono text-xs bg-muted px-1 py-0.5 rounded text-muted-foreground">{catalogEntry.codigo}</span>}
+                                      <div className="flex flex-col gap-0.5">
+                                        {catalogEntry && (
+                                          <span className="font-mono text-[10px] text-muted-foreground">{catalogEntry.codigo}</span>
+                                        )}
+                                        <span className="font-medium text-sm flex items-center gap-1.5">
+                                          <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
+                                          {ins.nome}
+                                        </span>
+                                      </div>
                                     </TableCell>
-                                    <TableCell className="font-medium">
-                                      <span className="flex items-center gap-1.5">
-                                        <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
-                                        {ins.nome}
+                                    {/* Coluna 2: Estoque Atual */}
+                                    <TableCell className="text-right">
+                                      <span className={`font-semibold tabular-nums ${
+                                        isCritico ? "text-red-600" : isBaixo ? "text-orange-600" : "text-foreground"
+                                      }`}>
+                                        {fmtEstoque(ins.estoque_atual, ins.unidade)}
                                       </span>
                                     </TableCell>
-                                    <TableCell className="hidden sm:table-cell capitalize text-sm text-muted-foreground">{ins.categoria}</TableCell>
-                                    <TableCell className={ins.status_estoque === "critico" ? "text-red-600 font-semibold" : ins.status_estoque === "baixo" ? "text-orange-600 font-medium" : ""}>
-                                      {fmtEstoque(ins.estoque_atual, ins.unidade)}
-                                      <span className="text-xs text-muted-foreground ml-1">/ {fmtEstoque(ins.estoque_minimo, ins.unidade)}</span>
+                                    {/* Coluna 3: Mínimo */}
+                                    <TableCell className="text-right hidden sm:table-cell">
+                                      <span className="text-sm text-muted-foreground tabular-nums">
+                                        {fmtEstoque(ins.estoque_minimo, ins.unidade)}
+                                      </span>
                                     </TableCell>
-                                    <TableCell className="hidden md:table-cell w-[100px]">
-                                      <Progress value={pct} className={`h-2 ${pct <= 50 ? "[&>div]:bg-red-500" : pct <= 80 ? "[&>div]:bg-orange-400" : "[&>div]:bg-green-500"}`} />
-                                      <span className="text-xs text-muted-foreground">{pct}%</span>
-                                    </TableCell>
+                                    {/* Coluna 4: Status Real */}
                                     <TableCell>
-                                      <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[ins.status_estoque ?? "ok"]}`}>
+                                      <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[ins.status_estoque ?? "ok"]}`}>
                                         {STATUS_LABELS[ins.status_estoque ?? "ok"]}
                                       </span>
                                     </TableCell>
-                                          <TableCell className="hidden lg:table-cell text-sm">
+                                    {/* Coluna 5: Fornecedor */}
+                                    <TableCell className="hidden md:table-cell">
                                       {ins.fornecedor_nome ? (
-                                        <span className="text-muted-foreground">{ins.fornecedor_nome}</span>
+                                        <span className="text-sm text-muted-foreground">{ins.fornecedor_nome}</span>
                                       ) : (
                                         <button
                                           className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
                                           onClick={(e) => { e.stopPropagation(); setOpenNovoFornecedor(true); }}
                                         >
-                                          <AlertTriangle className="h-3 w-3" /> Cadastrar
+                                          <AlertTriangle className="h-3 w-3" />
+                                          <span>Cadastrar</span>
                                         </button>
                                       )}
                                     </TableCell>
-                                    <TableCell className="hidden md:table-cell">
-                                      {ins.reposicao_modo === "automatico" ? (
-                                        <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium"><Zap className="h-3 w-3" /> Auto</span>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground">Manual</span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell onClick={e => e.stopPropagation()}>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                                            <MoreVertical className="h-4 w-4" />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          {(ins.status_estoque === "critico" || ins.status_estoque === "baixo") && (
-                                            <>
-                                              <DropdownMenuItem
-                                                className="text-emerald-700 font-medium"
-                                                onClick={() => {
-                                                  setNovoPedido(p => ({ ...p, insumo_id: ins.id }));
-                                                  setOpenNovoPedido(true);
-                                                }}
-                                              >
-                                                <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
-                                              </DropdownMenuItem>
-                                              <DropdownMenuSeparator />
-                                            </>
-                                          )}
-                                          <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
-                                            <History className="h-4 w-4 mr-2" /> Histórico
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
-                                            <Plus className="h-4 w-4 mr-2" /> Movimentar
-                                          </DropdownMenuItem>
-                                          <DropdownMenuSeparator />
-                                          <DropdownMenuItem className="text-red-600" onClick={() => setConfirmDeleteId(ins.id)}>
-                                            <Trash2 className="h-4 w-4 mr-2" /> Excluir
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
+                                    {/* Coluna 6: Ação direta */}
+                                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                      <div className="flex items-center justify-end gap-1">
+                                        {isCritico && (
+                                          <button
+                                            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                            onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
+                                          >
+                                            Fazer Pedido
+                                          </button>
+                                        )}
+                                        {isBaixo && !isCritico && (
+                                          <button
+                                            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                                            onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}
+                                          >
+                                            Reabastecer
+                                          </button>
+                                        )}
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                                              <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
+                                              <History className="h-4 w-4 mr-2" /> Histórico
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
+                                              <Plus className="h-4 w-4 mr-2" /> Movimentar
+                                            </DropdownMenuItem>
+                                            {(isCritico || isBaixo) && (
+                                              <>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem
+                                                  className="text-emerald-700 font-medium"
+                                                  onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
+                                                >
+                                                  <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
+                                                </DropdownMenuItem>
+                                              </>
+                                            )}
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem className="text-red-600" onClick={() => setConfirmDeleteId(ins.id)}>
+                                              <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
                                     </TableCell>
                                   </TableRow>
                                 );
@@ -1411,85 +1429,106 @@ export default function Insumos() {
                         })
                       : insumosFiltrados.map((ins: any) => {
                           const catalogEntry = catalogList.find((c: any) => c.nome.toLowerCase() === ins.nome?.toLowerCase());
-                          const pct = ins.estoque_minimo > 0 ? Math.min(100, Math.round((ins.estoque_atual / ins.estoque_minimo) * 100)) : 100;
+                          const isCritico = ins.status_estoque === "critico";
+                          const isBaixo = ins.status_estoque === "baixo" || ins.status_estoque === "atencao";
                           return (
                             <TableRow key={ins.id} className="cursor-pointer hover:bg-muted/40" onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
+                              {/* Coluna 1: Código + Nome */}
                               <TableCell>
-                                {catalogEntry && <span className="font-mono text-xs bg-muted px-1 py-0.5 rounded text-muted-foreground">{catalogEntry.codigo}</span>}
+                                <div className="flex flex-col gap-0.5">
+                                  {catalogEntry && (
+                                    <span className="font-mono text-[10px] text-muted-foreground">{catalogEntry.codigo}</span>
+                                  )}
+                                  <span className="font-medium text-sm flex items-center gap-1.5">
+                                    <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
+                                    {ins.nome}
+                                  </span>
+                                </div>
                               </TableCell>
-                              <TableCell className="font-medium">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="text-sm leading-none">{STATUS_ICONS[ins.status_estoque ?? "ok"]}</span>
-                                  {ins.nome}
+                              {/* Coluna 2: Estoque Atual */}
+                              <TableCell className="text-right">
+                                <span className={`font-semibold tabular-nums ${
+                                  isCritico ? "text-red-600" : isBaixo ? "text-orange-600" : "text-foreground"
+                                }`}>
+                                  {fmtEstoque(ins.estoque_atual, ins.unidade)}
                                 </span>
                               </TableCell>
-                              <TableCell className="hidden sm:table-cell capitalize text-sm text-muted-foreground">{ins.categoria}</TableCell>
-                              <TableCell className={ins.status_estoque === "critico" ? "text-red-600 font-semibold" : ins.status_estoque === "baixo" ? "text-orange-600 font-medium" : ""}>
-                                {fmtEstoque(ins.estoque_atual, ins.unidade)}
-                                <span className="text-xs text-muted-foreground ml-1">/ {fmtEstoque(ins.estoque_minimo, ins.unidade)}</span>
+                              {/* Coluna 3: Mínimo */}
+                              <TableCell className="text-right hidden sm:table-cell">
+                                <span className="text-sm text-muted-foreground tabular-nums">
+                                  {fmtEstoque(ins.estoque_minimo, ins.unidade)}
+                                </span>
                               </TableCell>
-                              <TableCell className="hidden md:table-cell w-[100px]">
-                                <Progress value={pct} className={`h-2 ${pct <= 50 ? "[&>div]:bg-red-500" : pct <= 80 ? "[&>div]:bg-orange-400" : "[&>div]:bg-green-500"}`} />
-                                <span className="text-xs text-muted-foreground">{pct}%</span>
-                              </TableCell>
+                              {/* Coluna 4: Status Real */}
                               <TableCell>
-                                <span className={`text-xs px-2 py-0.5 rounded border font-medium ${STATUS_COLORS[ins.status_estoque ?? "ok"]}`}>
+                                <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[ins.status_estoque ?? "ok"]}`}>
                                   {STATUS_LABELS[ins.status_estoque ?? "ok"]}
                                 </span>
                               </TableCell>
-                              <TableCell className="hidden lg:table-cell text-sm">
+                              {/* Coluna 5: Fornecedor */}
+                              <TableCell className="hidden md:table-cell">
                                 {ins.fornecedor_nome ? (
-                                  <span className="text-muted-foreground">{ins.fornecedor_nome}</span>
+                                  <span className="text-sm text-muted-foreground">{ins.fornecedor_nome}</span>
                                 ) : (
                                   <button
                                     className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
                                     onClick={(e) => { e.stopPropagation(); setOpenNovoFornecedor(true); }}
                                   >
-                                    <AlertTriangle className="h-3 w-3" /> Cadastrar
+                                    <AlertTriangle className="h-3 w-3" />
+                                    <span>Cadastrar</span>
                                   </button>
                                 )}
                               </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {ins.reposicao_modo === "automatico" ? (
-                                  <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium"><Zap className="h-3 w-3" /> Auto</span>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">Manual</span>
-                                )}
-                              </TableCell>
-                              <TableCell onClick={e => e.stopPropagation()}>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {(ins.status_estoque === "critico" || ins.status_estoque === "baixo") && (
-                                      <>
-                                        <DropdownMenuItem
-                                          className="text-emerald-700 font-medium"
-                                          onClick={() => {
-                                            setNovoPedido(p => ({ ...p, insumo_id: ins.id }));
-                                            setOpenNovoPedido(true);
-                                          }}
-                                        >
-                                          <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                      </>
-                                    )}
-                                    <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
-                                      <History className="h-4 w-4 mr-2" /> Histórico
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
-                                      <Plus className="h-4 w-4 mr-2" /> Movimentar
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem className="text-red-600" onClick={() => setConfirmDeleteId(ins.id)}>
-                                      <Trash2 className="h-4 w-4 mr-2" /> Excluir
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                              {/* Coluna 6: Ação direta */}
+                              <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1">
+                                  {isCritico && (
+                                    <button
+                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                      onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
+                                    >
+                                      Fazer Pedido
+                                    </button>
+                                  )}
+                                  {isBaixo && !isCritico && (
+                                    <button
+                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                                      onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}
+                                    >
+                                      Reabastecer
+                                    </button>
+                                  )}
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => { setSelectedInsumoId(ins.id); setHistoryOpen(true); }}>
+                                        <History className="h-4 w-4 mr-2" /> Histórico
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
+                                        <Plus className="h-4 w-4 mr-2" /> Movimentar
+                                      </DropdownMenuItem>
+                                      {(isCritico || isBaixo) && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            className="text-emerald-700 font-medium"
+                                            onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
+                                          >
+                                            <ShoppingBag className="h-4 w-4 mr-2" /> Fazer Pedido
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem className="text-red-600" onClick={() => setConfirmDeleteId(ins.id)}>
+                                        <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
                               </TableCell>
                             </TableRow>
                           );
