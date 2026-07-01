@@ -599,6 +599,49 @@ export const railwayRouter = router({
       return { success: true };
     }),
 
+  importarLancamentos: publicProcedure
+    .input(z.object({
+      produtorId: z.number(),
+      imovelId: z.number(),
+      arquivo: z.string(), // base64
+      nomeArquivo: z.string(),
+      mapaData: z.string().optional(),
+      mapaValor: z.string().optional(),
+      mapaDescricao: z.string().optional(),
+      mapaTipo: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertProdutor(claims, input.produtorId);
+      const { getRailwayToken } = await import("../db");
+      const token = await getRailwayToken(input.produtorId).catch(() => null);
+      const buffer = Buffer.from(input.arquivo, "base64");
+      const formData = new FormData();
+      const blob = new Blob([buffer], { type: "application/octet-stream" });
+      formData.append("arquivo", blob, input.nomeArquivo);
+      formData.append("produtor_id", String(input.produtorId));
+      formData.append("imovel_id", String(input.imovelId));
+      if (input.mapaData)      formData.append("mapa_data",      input.mapaData);
+      if (input.mapaValor)     formData.append("mapa_valor",     input.mapaValor);
+      if (input.mapaDescricao) formData.append("mapa_descricao", input.mapaDescricao);
+      if (input.mapaTipo)      formData.append("mapa_tipo",      input.mapaTipo);
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${RAILWAY_API}/importacao/lancamentos`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: (err as { detail?: string }).detail ?? `Erro na importação: HTTP ${res.status}`,
+        });
+      }
+      return res.json() as Promise<{ criados: number; erros: number; total: number; mensagem?: string }>;
+    }),
+
   // ── Sanitary ───────────────────────────────────────────────────────────────
   sanitario: publicProcedure
     .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "bovinos"]) }))
