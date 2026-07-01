@@ -722,6 +722,30 @@ export const railwayRouter = router({
       return railwayMutate<{ ok: boolean }>(`/${prefix}/sanitario/${input.sanitarioId}`, "DELETE", undefined, claims.produtorId).catch(() => ({ ok: true }));
     }),
 
+  updateSanitario: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      sanitarioId: z.number(),
+      data_aplicacao: z.string().optional(),
+      dose_ml: z.number().optional(),
+      via: z.string().optional(),
+      responsavel_nome: z.string().optional(),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const { imovelId, especie, sanitarioId, ...fields } = input;
+      return railwayMutate<{ ok: boolean }>(
+        `/${prefix}/sanitario/${sanitarioId}`,
+        "PATCH",
+        fields,
+        claims.produtorId,
+      ).catch(() => ({ ok: true }));
+    }),
+
   // ── Reproduction ───────────────────────────────────────────────────────────
   reproducao: publicProcedure
     .input(z.object({ imovelId: z.number(), especie: z.enum(["ovinos", "caprinos", "bovinos"]) }))

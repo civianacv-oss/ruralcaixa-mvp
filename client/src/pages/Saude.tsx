@@ -3,7 +3,7 @@ import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  HeartPulse, AlertTriangle, Calendar, Plus, Trash2,
+  HeartPulse, AlertTriangle, Calendar, Plus, Trash2, Pencil,
   Clock, CheckCircle2, Search, Upload, FileSpreadsheet, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,14 @@ export default function Saude() {
   // Confirmação de exclusão
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
+  // Edição de registro
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editDose, setEditDose] = useState("");
+  const [editVia, setEditVia] = useState("");
+  const [editResponsavel, setEditResponsavel] = useState("");
+  const [editObs, setEditObs] = useState("");
+  const [editData, setEditData] = useState("");
+
   const utils = trpc.useUtils();
 
   const historicoQ = trpc.railway.sanitario.useQuery(
@@ -88,6 +96,16 @@ export default function Saude() {
       setShowNew(false);
     },
     onError: (e) => toast.error(e.message || "Erro ao criar registro"),
+  });
+
+  const updateMut = trpc.railway.updateSanitario.useMutation({
+    onSuccess: () => {
+      toast.success("Registro atualizado!");
+      utils.railway.sanitario.invalidate();
+      utils.railway.sanitarioCalendario.invalidate();
+      setEditId(null);
+    },
+    onError: (e) => toast.error(e.message || "Erro ao atualizar registro"),
   });
 
   const deleteMut = trpc.railway.deleteSanitario.useMutation({
@@ -137,6 +155,29 @@ export default function Saude() {
     setFormInsumoId(""); setFormAnimalId("");
     setFormData(new Date().toISOString().slice(0, 10));
     setFormDose(""); setFormVia(""); setFormResponsavel(""); setFormObs("");
+  }
+
+  function openEdit(r: any) {
+    setEditId(r.id);
+    setEditData(r.data_aplicacao?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
+    setEditDose(r.dose_ml ? String(r.dose_ml) : "");
+    setEditVia(r.via ?? "");
+    setEditResponsavel(r.responsavel_nome ?? "");
+    setEditObs(r.observacoes ?? "");
+  }
+
+  function handleUpdate() {
+    if (!imovelId || !editId) return;
+    updateMut.mutate({
+      imovelId,
+      especie,
+      sanitarioId: editId,
+      data_aplicacao: editData,
+      dose_ml: editDose ? Number(editDose) : undefined,
+      via: editVia || undefined,
+      responsavel_nome: editResponsavel || undefined,
+      observacoes: editObs || undefined,
+    });
   }
 
   function handleCreate() {
@@ -309,14 +350,24 @@ export default function Saude() {
                           </p>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmDeleteId(r.id)}
-                        className="text-red-400 hover:text-red-600 w-7 h-7 p-0 shrink-0"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(r)}
+                          className="text-blue-400 hover:text-blue-600 w-7 h-7 p-0"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setConfirmDeleteId(r.id)}
+                          className="text-red-400 hover:text-red-600 w-7 h-7 p-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -502,6 +553,72 @@ export default function Saude() {
             <Button variant="outline" onClick={() => { resetForm(); setShowNew(false); }}>Cancelar</Button>
             <Button onClick={handleCreate} disabled={createMut.isPending} style={{ background: "oklch(0.42 0.14 145)" }} className="text-white">
               {createMut.isPending ? "Salvando..." : "Criar Registro"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Editar Registro */}
+      <Dialog open={editId !== null} onOpenChange={(v) => { if (!v) setEditId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Registro Sanitário</DialogTitle>
+            <DialogDescription>Atualize os dados do registro selecionado.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Data Aplicação *</Label>
+              <Input
+                type="date"
+                value={editData}
+                onChange={(e) => setEditData(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Dose (mL)</Label>
+                <Input
+                  type="number"
+                  placeholder="Ex: 2.0"
+                  value={editDose}
+                  onChange={(e) => setEditDose(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Via</Label>
+                <Select value={editVia} onValueChange={setEditVia}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SC">SC (Subcutânea)</SelectItem>
+                    <SelectItem value="IM">IM (Intramuscular)</SelectItem>
+                    <SelectItem value="IV">IV (Intravenosa)</SelectItem>
+                    <SelectItem value="VO">VO (Via Oral)</SelectItem>
+                    <SelectItem value="Topica">Tópica</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Responsável</Label>
+              <Input
+                placeholder="Nome do veterinário ou responsável"
+                value={editResponsavel}
+                onChange={(e) => setEditResponsavel(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Observações</Label>
+              <Input
+                placeholder="Observações adicionais..."
+                value={editObs}
+                onChange={(e) => setEditObs(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditId(null)}>Cancelar</Button>
+            <Button onClick={handleUpdate} disabled={updateMut.isPending} style={{ background: "oklch(0.42 0.14 145)" }} className="text-white">
+              {updateMut.isPending ? "Salvando..." : "Salvar Alterações"}
             </Button>
           </DialogFooter>
         </DialogContent>
