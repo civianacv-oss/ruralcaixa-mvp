@@ -1142,7 +1142,7 @@ export const railwayRouter = router({
 
       // ── VALIDAÇÃO 1: Normalização de nomes para deduplicação ──────────────────
       const normalizeNome = (s: string) =>
-        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
 
       // ── VALIDAÇÃO 2: Remover linhas sem nome (cabeçalhos extras, totais, etc.) ─
       const rowsComNome = allParsedRows.filter(r => r.nome.length > 0);
@@ -1165,17 +1165,6 @@ export const railwayRouter = router({
       const catalog = await listInsumosCatalogo(input.imovelId);
       const catalogNomes = new Set(catalog.map((c) => c.nomeNormalizado));
 
-      const unmapped: { nome: string; linha: number }[] = [];
-      const seen = new Set<string>();
-      for (const r of parsedRows) {
-        if (!r.nome) continue;
-        const key = normalizeNome(r.nome);
-        if (!catalogNomes.has(key) && !seen.has(key)) {
-          unmapped.push({ nome: r.nome, linha: r._linha });
-          seen.add(key);
-        }
-      }
-
       // ── VALIDAÇÃO 5: Detectar conflitos com insumos já existentes no Railway ───
       // Busca insumos já cadastrados para identificar quais da planilha já existem
       let insumosExistentesAnalise: Insumo[] = [];
@@ -1190,6 +1179,21 @@ export const railwayRouter = router({
       const mapaExistentes = new Map<string, Insumo>();
       for (const ins of insumosExistentesAnalise) {
         mapaExistentes.set(normalizeNome(ins.nome), ins);
+      }
+
+      // Identificar nomes sem correspondente: verifica catálogo local E Railway
+      // Se existe no Railway mas não no catálogo local, sincroniza automaticamente
+      const unmapped: { nome: string; linha: number }[] = [];
+      const seen = new Set<string>();
+      for (const r of parsedRows) {
+        if (!r.nome) continue;
+        const key = normalizeNome(r.nome);
+        // Reconhecido se está no catálogo local OU já existe no Railway
+        const reconhecido = catalogNomes.has(key) || mapaExistentes.has(key);
+        if (!reconhecido && !seen.has(key)) {
+          unmapped.push({ nome: r.nome, linha: r._linha });
+          seen.add(key);
+        }
       }
 
       // Separar linhas em: novas (não existem) e conflitos (já existem)
@@ -1266,7 +1270,7 @@ export const railwayRouter = router({
 
       // ── VALIDAÇÃO 1: Deduplicar as rows recebidas por nome normalizado ───────────────
       const normalizeNomeConf = (s: string) =>
-        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
       const seenNomesConf = new Set<string>();
       const rowsUnicas = input.rows.filter(r => {
         if (!r.nome) return false;
