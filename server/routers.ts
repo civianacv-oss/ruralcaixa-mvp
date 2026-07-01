@@ -463,6 +463,70 @@ export const appRouter = router({
         db.createMovement({ ...input, userId: ctx.user.id, date: input.date as unknown as Date, weight: input.weight as unknown as string | undefined, value: input.value as unknown as string | undefined })
       ),
   }),
+
+  // ── Alertas de Estoque ──────────────────────────────────────────────────────────────────
+  alertasEstoque: router({
+    /** Busca a configuração de alertas do produtor logado */
+    getConfig: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims) return null;
+      const dbConn = await (await import("./db")).getDb();
+      if (!dbConn) return null;
+      const { alertasEstoqueConfig } = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const rows = await dbConn.select().from(alertasEstoqueConfig).where(eq(alertasEstoqueConfig.produtorId, claims.produtorId)).limit(1);
+      return rows[0] ?? null;
+    }),
+
+    /** Salva (upsert) a configuração de alertas */
+    saveConfig: publicProcedure
+      .input(z.object({
+        ativo: z.boolean(),
+        nivelMinimo: z.enum(["critico", "atencao", "ambos"]),
+        horaEnvio: z.number().min(0).max(23),
+        cooldownHoras: z.number().min(1).max(168),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { getClaimsFromRequest } = await import("./railwayProxy");
+        const claims = await getClaimsFromRequest(ctx.req);
+        if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+        const dbConn = await (await import("./db")).getDb();
+        if (!dbConn) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+        const { alertasEstoqueConfig } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const existing = await dbConn.select().from(alertasEstoqueConfig).where(eq(alertasEstoqueConfig.produtorId, claims.produtorId)).limit(1);
+        if (existing.length > 0) {
+          await dbConn.update(alertasEstoqueConfig).set(input).where(eq(alertasEstoqueConfig.produtorId, claims.produtorId));
+        } else {
+          await dbConn.insert(alertasEstoqueConfig).values({ produtorId: claims.produtorId, ...input });
+        }
+        return { success: true };
+      }),
+
+    /** Dispara um alerta de teste imediato para o produtor logado */
+    testar: publicProcedure.mutation(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+      const { processarAlertasProdutor } = await import("./alertasEstoque");
+      const resultados = await processarAlertasProdutor(claims.produtorId);
+      const enviados = resultados.filter((r: { enviado: boolean }) => r.enviado).length;
+      return { success: true, enviados, total: resultados.length };
+    }),
+
+    /** Retorna os últimos 10 logs de alertas do produtor */
+    getLogs: publicProcedure.query(async ({ ctx }) => {
+      const { getClaimsFromRequest } = await import("./railwayProxy");
+      const claims = await getClaimsFromRequest(ctx.req);
+      if (!claims) return [];
+      const dbConn = await (await import("./db")).getDb();
+      if (!dbConn) return [];
+      const { alertasEstoqueLog } = await import("../drizzle/schema");
+      const { eq, desc } = await import("drizzle-orm");
+      return dbConn.select().from(alertasEstoqueLog).where(eq(alertasEstoqueLog.produtorId, claims.produtorId)).orderBy(desc(alertasEstoqueLog.criadoEm)).limit(10);
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

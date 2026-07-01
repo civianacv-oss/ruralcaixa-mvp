@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { processarTodosAlertas } from "../alertasEstoque";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,24 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  // ── Rota scheduled: alertas automáticos de estoque ──────────────────────────────
+  // Chamada pelo heartbeat job (cron) e também pode ser testada manualmente.
+  app.post("/api/scheduled/alertas-estoque", async (req, res) => {
+    const token = (req.headers["x-scheduled-token"] as string) ?? req.body?.token;
+    const expectedToken = process.env.SCHEDULED_SECRET ?? "ruralcaixa-scheduled";
+    if (token !== expectedToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const resultado = await processarTodosAlertas();
+      return res.json({ ok: true, ...resultado });
+    } catch (err) {
+      console.error("[alertas-estoque] Erro:", err);
+      return res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

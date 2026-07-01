@@ -131,7 +131,7 @@ export const movements = mysqlTable("movements", {
 export type Movement = typeof movements.$inferSelect;
 export type InsertMovement = typeof movements.$inferInsert;
 
-// ─── Produtor Config ────────────────────────────────────────────────────────────────────────────────────
+// ─── Produtor Config ──────────────────────────────────────────────────────────
 
 /**
  * Per-produtor configuration stored locally (Railway API has no telegram_chat_id field).
@@ -156,7 +156,7 @@ export const produtorConfig = mysqlTable("produtor_config", {
 export type ProdutorConfig = typeof produtorConfig.$inferSelect;
 export type InsertProdutorConfig = typeof produtorConfig.$inferInsert;
 
-// ─── Produtor Imovel (access control) ────────────────────────────────────────────────────────────────────
+// ─── Produtor Imovel (access control) ────────────────────────────────────────
 
 /**
  * Maps which Railway imóveis each produtor is allowed to access.
@@ -177,7 +177,7 @@ export const produtorImovel = mysqlTable("produtor_imovel", {
 export type ProdutorImovel = typeof produtorImovel.$inferSelect;
 export type InsertProdutorImovel = typeof produtorImovel.$inferInsert;
 
-// ─── Procurações ──────────────────────────────────────────────────────────────────────────────────
+// ─── Procurações ─────────────────────────────────────────────────────────────
 
 /**
  * Procurações enviadas por procuradores para acesso aos dados de um produtor.
@@ -206,7 +206,7 @@ export const procuracoes = mysqlTable("procuracoes", {
 export type Procuracao = typeof procuracoes.$inferSelect;
 export type InsertProcuracao = typeof procuracoes.$inferInsert;
 
-// ─── Catálogo de Insumos ────────────────────────────────────────────────────────────────────────────────────
+// ─── Catálogo de Insumos ──────────────────────────────────────────────────────
 
 /**
  * Catálogo local de insumos com código único por fazenda.
@@ -238,6 +238,7 @@ export type InsumosCatalogo = typeof insumosCatalogo.$inferSelect;
 export type InsertInsumosCatalogo = typeof insumosCatalogo.$inferInsert;
 
 // ─── Vínculo Contador ↔ Produtor ─────────────────────────────────────────────
+
 /**
  * Registra contadores (e procuradores) autorizados pelo próprio produtor.
  * O produtor informa CPF, nome e telefone do contador; o sistema cria
@@ -261,5 +262,58 @@ export const contadorVinculo = mysqlTable("contador_vinculo", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
 export type ContadorVinculo = typeof contadorVinculo.$inferSelect;
 export type InsertContadorVinculo = typeof contadorVinculo.$inferInsert;
+
+// ─── Alertas de Estoque ───────────────────────────────────────────────────────
+
+/**
+ * Log de alertas de estoque enviados via Telegram.
+ * Usado para evitar spam (cooldown configurável por produtor).
+ */
+export const alertasEstoqueLog = mysqlTable("alertas_estoque_log", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Railway imovel.id ao qual o alerta pertence */
+  imovelId: int("imovelId").notNull(),
+  /** Railway produtor.id que recebeu o alerta */
+  produtorId: int("produtorId").notNull(),
+  /** Número de insumos urgentes no momento do envio */
+  totalCriticos: int("totalCriticos").default(0).notNull(),
+  /** Número de insumos com atenção no momento do envio */
+  totalAtencao: int("totalAtencao").default(0).notNull(),
+  /** Canal usado: telegram_direct | telegram_group */
+  canal: varchar("canal", { length: 32 }).notNull().default("telegram_group"),
+  /** Status do envio */
+  status: mysqlEnum("status_ael", ["enviado", "falhou", "ignorado"]).default("enviado").notNull(),
+  /** Mensagem de erro se status = falhou */
+  erro: text("erro"),
+  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
+});
+
+export type AlertasEstoqueLog = typeof alertasEstoqueLog.$inferSelect;
+export type InsertAlertasEstoqueLog = typeof alertasEstoqueLog.$inferInsert;
+
+/**
+ * Configuração de alertas de estoque por produtor.
+ * Permite personalizar quando e como receber alertas.
+ */
+export const alertasEstoqueConfig = mysqlTable("alertas_estoque_config", {
+  id: int("id").autoincrement().primaryKey(),
+  produtorId: int("produtorId").notNull().unique(),
+  /** Alertas ativados */
+  ativo: boolean("ativo").default(true).notNull(),
+  /** Nível mínimo para disparar: critico | atencao | ambos */
+  nivelMinimo: mysqlEnum("nivel_minimo_aec", ["critico", "atencao", "ambos"]).default("ambos").notNull(),
+  /** Hora de envio do alerta diário (0-23) */
+  horaEnvio: int("horaEnvio").default(7).notNull(),
+  /** Cooldown em horas entre alertas do mesmo produtor */
+  cooldownHoras: int("cooldownHoras").default(24).notNull(),
+  /** taskUid do heartbeat job criado para este produtor */
+  heartbeatTaskUid: varchar("heartbeatTaskUid", { length: 128 }),
+  criadoEm: timestamp("criadoEm").defaultNow().notNull(),
+  atualizadoEm: timestamp("atualizadoEm").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AlertasEstoqueConfig = typeof alertasEstoqueConfig.$inferSelect;
+export type InsertAlertasEstoqueConfig = typeof alertasEstoqueConfig.$inferInsert;
