@@ -119,6 +119,8 @@ interface Insumo {
   estoque_minimo: number;
   estoque_ideal: number;
   preco_estimado?: number;
+  custo_medio?: number;
+  valor_total_estoque?: number;
   fornecedor_id?: number;
   fornecedor_nome?: string;
   reposicao_modo: string;

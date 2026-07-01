@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { fmtBRL, calcularNovoCustoMedio, calcularValorTotalEstoque } from "@/lib/custoCalculo";
 import { trpc } from "@/lib/trpc";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import * as XLSX from "xlsx";
 import {
   Package,
@@ -54,6 +56,9 @@ import {
   LayoutGrid,
   LayoutList,
   ArrowUpDown,
+  DollarSign,
+  TrendingUp,
+  Banknote,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -503,6 +508,17 @@ export default function Insumos() {
   // Detectar se o backend de insumos ainda não foi deployado (404 = endpoint não existe)
   const backendPendente = !loadingInsumos && insumos.length === 0 && !loadingAlertas && alertas.length === 0;
 
+  // ── Métricas de custo ──────────────────────────────────────────────────────
+  const valorTotalEstoque = insumos.reduce((acc: number, i: any) => {
+    const vt = i.valor_total_estoque ?? calcularValorTotalEstoque(Number(i.estoque_atual ?? 0), i.custo_medio ?? i.preco_estimado ?? null);
+    return acc + (vt || 0);
+  }, 0);
+
+  const insumosComCusto = insumos.filter((i: any) => (i.custo_medio ?? i.preco_estimado) != null && (i.custo_medio ?? i.preco_estimado) > 0);
+  const custoMedioGeral = insumosComCusto.length > 0
+    ? insumosComCusto.reduce((acc: number, i: any) => acc + (i.custo_medio ?? i.preco_estimado ?? 0), 0) / insumosComCusto.length
+    : 0;
+
   // ── Fase 1: Funções auxiliares ───────────────────────────────────────────
   // Padronizar exibição de estoque (unidade consistente)
   const fmtEstoque = (valor: number, unidade: string) => {
@@ -596,7 +612,13 @@ export default function Insumos() {
           </h1>
           <p className="text-sm text-muted-foreground">Gestão de estoque, fornecedores e pedidos de compra</p>
         </div>
-        <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link href="/insumos/analise-custos">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <BarChart2 className="h-4 w-4" /> Análise de Custos
+            </Button>
+          </Link>
+          <Dialog open={openImport} onOpenChange={(v) => { setOpenImport(v); if (!v) resetImport(); }}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm">
               <Upload className="h-4 w-4 mr-1" /> Importar Planilha
@@ -1033,9 +1055,9 @@ export default function Insumos() {
                 );
             })()}
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
-
       {/* Banner: backend pendente de deploy */}
       {backendPendente && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 flex items-start gap-3">
@@ -1100,6 +1122,38 @@ export default function Insumos() {
               ? <p className="text-xs text-muted-foreground mt-0.5">~{diasCobertura} dias cobertura</p>
               : <p className="text-xs text-muted-foreground mt-0.5">Sem consumo registrado</p>
             }
+          </div>
+        </div>
+      )}
+
+      {/* ── Cards de custo ── */}
+      {!backendPendente && (valorTotalEstoque > 0 || custoMedioGeral > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {/* Valor total do estoque */}
+          <div className="rounded-lg border bg-emerald-50 border-emerald-200 p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <Banknote className="h-3 w-3 text-emerald-600" /> Valor total em estoque
+            </p>
+            <p className="text-xl font-bold text-emerald-700 tabular-nums">{fmtBRL(valorTotalEstoque)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{insumosComCusto.length} insumos com custo</p>
+          </div>
+
+          {/* Custo médio geral */}
+          <div className="rounded-lg border bg-blue-50 border-blue-200 p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <TrendingUp className="h-3 w-3 text-blue-600" /> Custo médio geral
+            </p>
+            <p className="text-xl font-bold text-blue-700 tabular-nums">{fmtBRL(custoMedioGeral)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">por unidade (média ponderada)</p>
+          </div>
+
+          {/* Insumos sem custo cadastrado */}
+          <div className="rounded-lg border bg-card p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <DollarSign className="h-3 w-3" /> Sem custo cadastrado
+            </p>
+            <p className="text-xl font-bold">{insumos.length - insumosComCusto.length}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">registre o preço na movimentação</p>
           </div>
         </div>
       )}
@@ -1945,6 +1999,43 @@ export default function Insumos() {
                   <Label>Observação</Label>
                   <Input value={movimForm.observacao} onChange={e => setMovimForm(p => ({ ...p, observacao: e.target.value }))} placeholder="Opcional" />
                 </div>
+                {/* Preview custo médio calculado */}
+                {movimForm.tipo === "compra" && movimForm.custo_unitario && movimInsumoId && (() => {
+                  const ins = insumos.find((i: any) => i.id === movimInsumoId);
+                  if (!ins) return null;
+                  const novoCusto = calcularNovoCustoMedio(
+                    Number(ins.estoque_atual ?? 0),
+                    ins.custo_medio ?? ins.preco_estimado ?? null,
+                    movimForm.quantidade,
+                    Number(movimForm.custo_unitario)
+                  );
+                  const novoValor = calcularValorTotalEstoque(
+                    Number(ins.estoque_atual ?? 0) + movimForm.quantidade,
+                    novoCusto
+                  );
+                  return (
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-1">
+                      <p className="font-semibold text-emerald-800 flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3" /> Custo médio após esta compra
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-muted-foreground">Atual:</span>{" "}
+                          <span className="font-medium">{fmtBRL(ins.custo_medio ?? ins.preco_estimado ?? 0)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Novo:</span>{" "}
+                          <span className="font-bold text-emerald-700">{fmtBRL(novoCusto)}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Valor total em estoque:</span>{" "}
+                          <span className="font-bold text-emerald-700">{fmtBRL(novoValor)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <Button
                   className="w-full"
                   disabled={!movimInsumoId || movimForm.quantidade <= 0 || movimentar.isPending}

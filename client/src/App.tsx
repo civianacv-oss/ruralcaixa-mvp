@@ -30,6 +30,7 @@ import ESocialRural from "./pages/ESocialRural";
 import EFDReinf from "./pages/EFDReinf";
 import DCTFWeb from "./pages/DCTFWeb";
 import Insumos from "./pages/Insumos";
+import AnaliseCustos from "./pages/AnaliseCustos";
 import SimuladorTributacao from "./pages/SimuladorTributacao";
 import ProcuracaoGate from "./pages/ProcuracaoGate";
 import MeusContadores from "./pages/MeusContadores";
@@ -119,6 +120,7 @@ function Router() {
 
       {/* Insumos */}
       <Route path="/insumos">{() => <ProtectedRoute component={Insumos} />}</Route>
+      <Route path="/insumos/analise-custos">{() => <ProtectedRoute component={AnaliseCustos} />}</Route>
 
       {/* Relatórios */}
       <Route path="/relatorios">{() => <ProtectedRoute component={Relatorios} />}</Route>
