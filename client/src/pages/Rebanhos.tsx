@@ -226,74 +226,7 @@ export default function Rebanhos() {
   const ativos = (animais as any[]).filter((a) => a.status === "ativo").length;
 
   // ── Formulário reutilizável ───────────────────────────────────────────────
-  const FormFields = () => (
-    <div className="space-y-4 py-2">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Brinco / ID *</Label>
-          <Input placeholder="Ex: 001" value={form.brinco} onChange={(e) => setForm({ ...form, brinco: e.target.value })} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Nome</Label>
-          <Input placeholder="Opcional" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Sexo *</Label>
-          <Select value={form.sexo} onValueChange={(v) => setForm({ ...form, sexo: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="M">Macho</SelectItem>
-              <SelectItem value="F">Fêmea</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Raça</Label>
-          <Input placeholder="Ex: Santa Inês" value={form.raca} onChange={(e) => setForm({ ...form, raca: e.target.value })} />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Data Nascimento</Label>
-          <Input type="date" value={form.data_nascimento} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Peso Nasc. (kg)</Label>
-          <Input type="number" placeholder="0.0" value={form.peso_nascimento} onChange={(e) => setForm({ ...form, peso_nascimento: e.target.value })} />
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <Label>Categoria{especie === "bovino" ? " *" : ""}</Label>
-        {especie === "bovino" ? (
-          <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
-            <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-            <SelectContent>
-              {["novilho","novilha","matriz","reprodutor","bezerro","bezerra","touro","vaca","boi"].map((c) => (
-                <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Input placeholder="Ex: Matriz, Reprodutor, Cria..." value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
-        )}
-      </div>
-      {especie === "bovino" && (
-        <div className="space-y-1.5">
-          <Label>Aptidão de Manejo *</Label>
-          <Select value={form.aptidao_manejo} onValueChange={(v) => setForm({ ...form, aptidao_manejo: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="corte">Corte</SelectItem>
-              <SelectItem value="leite">Leite</SelectItem>
-              <SelectItem value="dupla">Dupla Aptidão</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-    </div>
-  );
+  // FormFields removido — JSX inline nos dialogs abaixo
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -446,7 +379,72 @@ export default function Rebanhos() {
           <DialogHeader>
             <DialogTitle>Novo Animal — {especieAtual.emoji} {especieAtual.label}</DialogTitle>
           </DialogHeader>
-          <FormFields />
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Brinco / ID *</Label>
+              <Input placeholder="Ex: 001" value={form.brinco} onChange={(e) => setForm((f) => ({ ...f, brinco: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input placeholder="Opcional" value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Sexo *</Label>
+              <Select value={form.sexo} onValueChange={(v) => setForm((f) => ({ ...f, sexo: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="M">Macho</SelectItem>
+                  <SelectItem value="F">Fêmea</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Raça</Label>
+              <Input placeholder="Ex: Santa Inês" value={form.raca} onChange={(e) => setForm((f) => ({ ...f, raca: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Data Nascimento</Label>
+              <Input type="date" value={form.data_nascimento} onChange={(e) => setForm((f) => ({ ...f, data_nascimento: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Peso Nasc. (kg)</Label>
+              <Input type="number" placeholder="0.0" value={form.peso_nascimento} onChange={(e) => setForm((f) => ({ ...f, peso_nascimento: e.target.value }))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Categoria{especie === "bovino" ? " *" : ""}</Label>
+            {especie === "bovino" ? (
+              <Select value={form.categoria} onValueChange={(v) => setForm((f) => ({ ...f, categoria: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {["novilho","novilha","matriz","reprodutor","bezerro","bezerra","touro","vaca","boi"].map((c) => (
+                    <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input placeholder="Ex: Matriz, Reprodutor, Cria..." value={form.categoria} onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))} />
+            )}
+          </div>
+          {especie === "bovino" && (
+            <div className="space-y-1.5">
+              <Label>Aptidão de Manejo *</Label>
+              <Select value={form.aptidao_manejo} onValueChange={(v) => setForm((f) => ({ ...f, aptidao_manejo: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="corte">Corte</SelectItem>
+                  <SelectItem value="leite">Leite</SelectItem>
+                  <SelectItem value="dupla">Dupla Aptidão</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
             <Button onClick={handleCreate} disabled={createAnimal.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
@@ -462,7 +460,72 @@ export default function Rebanhos() {
           <DialogHeader>
             <DialogTitle>Editar Animal — #{editAnimal?.brinco}</DialogTitle>
           </DialogHeader>
-          <FormFields />
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Brinco / ID *</Label>
+              <Input placeholder="Ex: 001" value={form.brinco} onChange={(e) => setForm((f) => ({ ...f, brinco: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nome</Label>
+              <Input placeholder="Opcional" value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Sexo *</Label>
+              <Select value={form.sexo} onValueChange={(v) => setForm((f) => ({ ...f, sexo: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="M">Macho</SelectItem>
+                  <SelectItem value="F">Fêmea</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Raça</Label>
+              <Input placeholder="Ex: Santa Inês" value={form.raca} onChange={(e) => setForm((f) => ({ ...f, raca: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Data Nascimento</Label>
+              <Input type="date" value={form.data_nascimento} onChange={(e) => setForm((f) => ({ ...f, data_nascimento: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Peso Nasc. (kg)</Label>
+              <Input type="number" placeholder="0.0" value={form.peso_nascimento} onChange={(e) => setForm((f) => ({ ...f, peso_nascimento: e.target.value }))} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Categoria{especie === "bovino" ? " *" : ""}</Label>
+            {especie === "bovino" ? (
+              <Select value={form.categoria} onValueChange={(v) => setForm((f) => ({ ...f, categoria: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {["novilho","novilha","matriz","reprodutor","bezerro","bezerra","touro","vaca","boi"].map((c) => (
+                    <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input placeholder="Ex: Matriz, Reprodutor, Cria..." value={form.categoria} onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))} />
+            )}
+          </div>
+          {especie === "bovino" && (
+            <div className="space-y-1.5">
+              <Label>Aptidão de Manejo *</Label>
+              <Select value={form.aptidao_manejo} onValueChange={(v) => setForm((f) => ({ ...f, aptidao_manejo: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="corte">Corte</SelectItem>
+                  <SelectItem value="leite">Leite</SelectItem>
+                  <SelectItem value="dupla">Dupla Aptidão</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditAnimal(null)}>Cancelar</Button>
             <Button onClick={handleUpdate} disabled={updateAnimal.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
