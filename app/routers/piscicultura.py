@@ -169,6 +169,7 @@ def _criar_lancamento_lcdpr(conn, imovel_id: int, produtor_id: Optional[int],
         if lcdpr_conn:
             lcdpr_conn.close()
 
+@router.post("/ciclos", response_model=CicloResponse, status_code=201)
 def criar_ciclo(data: CicloCreate):
     """Inicia um novo ciclo de produção."""
     conn = get_db()
