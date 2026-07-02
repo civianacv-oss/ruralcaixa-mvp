@@ -18,6 +18,7 @@ import {
   Users,
   ShoppingCart,
   Palmtree,
+  Fish,
   Package,
   ClipboardList,
   Globe,
@@ -94,6 +95,7 @@ const NAV_SECTIONS: NavSection[] = [
           { icon: Ham,    label: "Suínos",   path: "/rebanhos/suinos" },
         ],
       },
+      { icon: Fish,      label: "Piscicultura", path: "/piscicultura" },
       { icon: Sprout,    label: "Agricultura",  path: "/agricultura" },
       { icon: HeartPulse, label: "Saúde Animal", path: "/saude" },
       { icon: Baby,       label: "Reprodução",   path: "/reproducao" },
@@ -106,7 +108,14 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: BarChart3,   label: "Relatórios",           path: "/relatorios" },
       { icon: Package,     label: "Insumos",              path: "/insumos" },
       { icon: ShoppingCart, label: "Compra e Venda",      path: "/compra-venda" },
-      { icon: Palmtree,    label: "Cultivo de Açaí",      path: "/cultivo-acai" },
+    ],
+  },
+  {
+    label: "Fruticultura",
+    items: [
+      { icon: Palmtree, label: "Cultivo de Açaí", path: "/cultivo-acai" },
+      // Novas culturas de fruticultura entram aqui conforme forem
+      // desenvolvidas (ex: sugestao do produtor -> protocolo aprovado).
     ],
   },
   {
