@@ -31,6 +31,19 @@ import re
 
 router = APIRouter(prefix="/importacao", tags=["Importacao Generica"])
 
+# Sinônimos aceitos para cada campo, quando o usuário não informa mapeamento manual.
+# Ordem importa: primeiro sinônimo encontrado no cabeçalho vence.
+SINONIMOS = {
+    "data": ["data", "data_transacao", "dt_lancamento", "data_lancamento", "dt"],
+    "valor": ["valor", "valor_rs", "valor_r", "vl_total", "montante"],
+    "descricao": ["descricao", "historico", "descr", "obs", "observacao"],
+    "tipo": ["tipo", "natureza", "tipo_lancamento"],
+    # Colunas extras usadas como fallback quando "descricao" vem vazia/"—"
+    "categoria_fallback": ["natureza", "plano_de_contas", "categoria"],
+}
+
+PALAVRAS_CABECALHO = ["data", "valor", "descri", "historico", "natureza", "status", "tipo"]
+
 
 def normalizar_cabecalho(nome: str) -> str:
     nome = nome.strip().lower()
@@ -39,14 +52,15 @@ def normalizar_cabecalho(nome: str) -> str:
     nome = re.sub(r"[íî]", "i", nome)
     nome = re.sub(r"[óôõ]", "o", nome)
     nome = re.sub(r"[úû]", "u", nome)
+    nome = re.sub(r"[ç]", "c", nome)
     nome = re.sub(r"[^a-z0-9_]", "_", nome)
+    nome = re.sub(r"_+", "_", nome).strip("_")
     return nome
 
 
 def parse_data(valor) -> Optional[str]:
     if valor is None:
         return None
-    # openpyxl retorna date/datetime nativos para celulas de data
     if isinstance(valor, datetime):
         return valor.date().isoformat()
     if isinstance(valor, date):
@@ -54,7 +68,6 @@ def parse_data(valor) -> Optional[str]:
     valor = str(valor).strip()
     if not valor:
         return None
-    # remove hora se vier junto (ex: "01/07/2026 00:00:00")
     valor = valor.split(" ")[0]
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"):
         try:
@@ -65,41 +78,61 @@ def parse_data(valor) -> Optional[str]:
 
 
 def parse_valor(valor) -> Optional[float]:
+    """Aceita numero puro, ou texto no formato brasileiro/monetario:
+    '-R$  250,00', 'R$ 1.234,56', '250,00', '250.00', '-250'..."""
     if valor is None:
         return None
     if isinstance(valor, (int, float)):
         return float(valor)
-    valor = str(valor).strip()
-    if not valor:
+    texto = str(valor).strip()
+    if not texto or texto == "—":
         return None
-    valor = valor.replace("R$", "").replace(" ", "")
-    if "," in valor and "." in valor:
-        valor = valor.replace(".", "").replace(",", ".")
-    elif "," in valor:
-        valor = valor.replace(",", ".")
+    negativo = "-" in texto
+    texto = texto.replace("R$", "").replace("-", "").replace(" ", "").strip()
+    if not texto:
+        return None
+    if "," in texto and "." in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    elif "," in texto:
+        texto = texto.replace(",", ".")
     try:
-        return float(valor)
+        num = float(texto)
+        return -num if negativo else num
     except ValueError:
         return None
 
 
-def ler_linhas_csv(conteudo: bytes) -> list[dict]:
+def linha_parece_cabecalho(celulas: list) -> bool:
+    """Detecta se uma linha e o cabecalho real, contando quantas palavras-chave
+    esperadas aparecem nela (ignora linhas de metadados tipo 'Gerado em...')."""
+    textos = [normalizar_cabecalho(str(c or "")) for c in celulas]
+    acertos = sum(1 for t in textos for palavra in PALAVRAS_CABECALHO if palavra in t)
+    return acertos >= 2
+
+
+def resolver_coluna(cabecalho_normalizado: list, campo: str, mapa_manual: Optional[str]) -> Optional[str]:
+    """Decide qual coluna do cabecalho usar para um campo (data/valor/descricao/tipo).
+    Prioridade: mapeamento manual do usuario > sinonimos conhecidos."""
+    if mapa_manual:
+        col = normalizar_cabecalho(mapa_manual)
+        if col in cabecalho_normalizado:
+            return col
+    for sinonimo in SINONIMOS.get(campo, []):
+        if sinonimo in cabecalho_normalizado:
+            return sinonimo
+    return None
+
+
+def ler_linhas_csv(conteudo: bytes) -> tuple[list[dict], list[str]]:
     texto = conteudo.decode("utf-8-sig", errors="replace")
-    primeira_linha = texto.splitlines()[0] if texto.splitlines() else ""
+    linhas_texto = texto.splitlines()
+    primeira_linha = linhas_texto[0] if linhas_texto else ""
     leitor = csv.reader(io.StringIO(texto), delimiter=";" if ";" in primeira_linha else ",")
-    linhas = list(leitor)
-    if not linhas:
-        return []
-    cabecalho = [normalizar_cabecalho(c) for c in linhas[0]]
-    resultado = []
-    for linha in linhas[1:]:
-        if not any(c.strip() for c in linha):
-            continue
-        resultado.append(dict(zip(cabecalho, linha)))
-    return resultado
+    todas_linhas = list(leitor)
+    return _processar_linhas_com_deteccao(todas_linhas)
 
 
-def ler_linhas_xlsx(conteudo: bytes) -> list[dict]:
+def ler_linhas_xlsx(conteudo: bytes) -> tuple[list[dict], list[str]]:
     try:
         from openpyxl import load_workbook
     except ImportError:
@@ -110,16 +143,32 @@ def ler_linhas_xlsx(conteudo: bytes) -> list[dict]:
     wb = load_workbook(io.BytesIO(conteudo), data_only=True)
     ws = wb.active
     linhas_raw = list(ws.iter_rows(values_only=True))
-    if not linhas_raw:
-        return []
-    cabecalho = [normalizar_cabecalho(str(c or "")) for c in linhas_raw[0]]
+    todas_linhas = [[("" if c is None else c) for c in linha] for linha in linhas_raw]
+    return _processar_linhas_com_deteccao(todas_linhas)
+
+
+def _processar_linhas_com_deteccao(todas_linhas: list) -> tuple[list[dict], list[str]]:
+    """Procura a linha de cabecalho real nas primeiras 20 linhas (pula linhas
+    de metadados tipo 'Gerado em...', 'Fazenda...', 'Total de...'), depois
+    monta os dicionarios de dados a partir dela em diante."""
+    if not todas_linhas:
+        return [], []
+
+    idx_cabecalho = 0
+    for i, linha in enumerate(todas_linhas[:20]):
+        if linha_parece_cabecalho(linha):
+            idx_cabecalho = i
+            break
+
+    cabecalho_bruto = [str(c or "") for c in todas_linhas[idx_cabecalho]]
+    cabecalho = [normalizar_cabecalho(c) for c in cabecalho_bruto]
+
     resultado = []
-    for linha in linhas_raw[1:]:
-        if not any(c is not None and str(c).strip() for c in linha):
+    for linha in todas_linhas[idx_cabecalho + 1:]:
+        if not any(str(c).strip() for c in linha):
             continue
-        valores = [("" if c is None else c) for c in linha]
-        resultado.append(dict(zip(cabecalho, valores)))
-    return resultado
+        resultado.append(dict(zip(cabecalho, linha)))
+    return resultado, cabecalho
 
 
 @router.post("/lancamentos")
@@ -127,10 +176,10 @@ async def importar_lancamentos(
     arquivo: UploadFile = File(...),
     produtor_id: int = Form(...),
     imovel_id: Optional[int] = Form(None),
-    mapa_data: str = Form("data"),
-    mapa_valor: str = Form("valor"),
-    mapa_descricao: str = Form("descricao"),
-    mapa_tipo: str = Form("tipo"),
+    mapa_data: Optional[str] = Form(None),
+    mapa_valor: Optional[str] = Form(None),
+    mapa_descricao: Optional[str] = Form(None),
+    mapa_tipo: Optional[str] = Form(None),
 ):
     # Import tardio para evitar dependencia circular com app.main
     from app.main import criar_lancamento, LancamentoCreate
@@ -139,16 +188,29 @@ async def importar_lancamentos(
     nome = (arquivo.filename or "").lower()
 
     if nome.endswith(".xlsx") or nome.endswith(".xls"):
-        linhas = ler_linhas_xlsx(conteudo)
+        linhas, cabecalho = ler_linhas_xlsx(conteudo)
     elif nome.endswith(".csv"):
-        linhas = ler_linhas_csv(conteudo)
+        linhas, cabecalho = ler_linhas_csv(conteudo)
     else:
         raise HTTPException(status_code=400, detail="Formato não suportado. Envie .csv ou .xlsx")
 
-    col_data = normalizar_cabecalho(mapa_data)
-    col_valor = normalizar_cabecalho(mapa_valor)
-    col_descricao = normalizar_cabecalho(mapa_descricao)
-    col_tipo = normalizar_cabecalho(mapa_tipo)
+    if not linhas:
+        return {"criados": 0, "erros": 0, "total": 0, "mensagem": "Nenhuma linha de dados encontrada no arquivo."}
+
+    col_data = resolver_coluna(cabecalho, "data", mapa_data)
+    col_valor = resolver_coluna(cabecalho, "valor", mapa_valor)
+    col_descricao = resolver_coluna(cabecalho, "descricao", mapa_descricao)
+    col_tipo = resolver_coluna(cabecalho, "tipo", mapa_tipo)
+    col_fallback_desc = resolver_coluna(cabecalho, "categoria_fallback", None)
+
+    if not col_data or not col_valor:
+        return {
+            "criados": 0, "erros": len(linhas), "total": len(linhas),
+            "mensagem": (
+                f"Não encontrei as colunas obrigatórias de data/valor automaticamente. "
+                f"Cabeçalho detectado: {cabecalho}. Informe manualmente 'Coluna de Data' e 'Coluna de Valor' no modal."
+            ),
+        }
 
     criados = 0
     erros_lista = []
@@ -157,25 +219,34 @@ async def importar_lancamentos(
         try:
             data_lanc = parse_data(linha.get(col_data))
             valor = parse_valor(linha.get(col_valor))
-            descricao = str(linha.get(col_descricao, "")).strip()
-            tipo = str(linha.get(col_tipo, "despesa")).strip().lower() or "despesa"
+
+            descricao = str(linha.get(col_descricao, "") or "").strip() if col_descricao else ""
+            if (not descricao or descricao == "—") and col_fallback_desc:
+                descricao = str(linha.get(col_fallback_desc, "") or "").strip()
+
+            tipo_bruto = str(linha.get(col_tipo, "") or "").strip().lower() if col_tipo else ""
+            if tipo_bruto in ("receita", "entrada", "credito"):
+                tipo = "receita"
+            elif tipo_bruto in ("despesa", "saida", "débito", "debito"):
+                tipo = "despesa"
+            elif valor is not None:
+                # Sem coluna de tipo explicita/reconhecida: deriva do sinal do valor
+                tipo = "receita" if valor > 0 else "despesa"
+            else:
+                tipo = "despesa"
 
             if not data_lanc:
-                valor_bruto = linha.get(col_data)
-                erros_lista.append(f"Linha {i}: data inválida ou ausente (valor recebido: {valor_bruto!r}, coluna buscada: '{col_data}')")
+                erros_lista.append(f"Linha {i}: data inválida ou ausente (valor recebido: {linha.get(col_data)!r})")
                 continue
             if valor is None or valor == 0:
-                erros_lista.append(f"Linha {i}: valor inválido ou ausente")
+                erros_lista.append(f"Linha {i}: valor inválido ou ausente (valor recebido: {linha.get(col_valor)!r})")
                 continue
             if not descricao:
-                erros_lista.append(f"Linha {i}: descrição ausente")
-                continue
-            if tipo not in ("receita", "despesa"):
-                tipo = "despesa"
+                descricao = "Importação sem descrição"
 
             payload = LancamentoCreate(
                 produtor_id=produtor_id,
-                valor=valor,
+                valor=abs(valor),
                 data=data_lanc,
                 data_lancamento=data_lanc,
                 descricao=descricao,
