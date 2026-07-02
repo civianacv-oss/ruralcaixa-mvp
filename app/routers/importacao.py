@@ -43,10 +43,19 @@ def normalizar_cabecalho(nome: str) -> str:
     return nome
 
 
-def parse_data(valor: str) -> Optional[str]:
-    valor = (valor or "").strip()
+def parse_data(valor) -> Optional[str]:
+    if valor is None:
+        return None
+    # openpyxl retorna date/datetime nativos para celulas de data
+    if isinstance(valor, datetime):
+        return valor.date().isoformat()
+    if isinstance(valor, date):
+        return valor.isoformat()
+    valor = str(valor).strip()
     if not valor:
         return None
+    # remove hora se vier junto (ex: "01/07/2026 00:00:00")
+    valor = valor.split(" ")[0]
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y"):
         try:
             return datetime.strptime(valor, fmt).date().isoformat()
@@ -146,13 +155,14 @@ async def importar_lancamentos(
 
     for i, linha in enumerate(linhas, start=2):
         try:
-            data_lanc = parse_data(str(linha.get(col_data, "")))
+            data_lanc = parse_data(linha.get(col_data))
             valor = parse_valor(linha.get(col_valor))
             descricao = str(linha.get(col_descricao, "")).strip()
             tipo = str(linha.get(col_tipo, "despesa")).strip().lower() or "despesa"
 
             if not data_lanc:
-                erros_lista.append(f"Linha {i}: data inválida ou ausente")
+                valor_bruto = linha.get(col_data)
+                erros_lista.append(f"Linha {i}: data inválida ou ausente (valor recebido: {valor_bruto!r}, coluna buscada: '{col_data}')")
                 continue
             if valor is None or valor == 0:
                 erros_lista.append(f"Linha {i}: valor inválido ou ausente")
