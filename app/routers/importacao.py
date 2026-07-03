@@ -38,8 +38,20 @@ SINONIMOS = {
     "valor": ["valor", "valor_rs", "valor_r", "vl_total", "montante"],
     "descricao": ["descricao", "historico", "descr", "obs", "observacao"],
     "tipo": ["tipo", "natureza", "tipo_lancamento"],
+    "status": ["status", "situacao"],
     # Colunas extras usadas como fallback quando "descricao" vem vazia/"—"
     "categoria_fallback": ["natureza", "plano_de_contas", "categoria"],
+}
+
+# Valores de status que indicam que a transação JÁ aconteceu de verdade.
+# Qualquer outro valor reconhecido (ex: "Planejamento", "Plan. Obrigatório",
+# "Previsto", "Pendente") é tratado como projeção/futuro e NÃO é importado —
+# livro caixa/LCDPR deve refletir movimentação de caixa real, não planejada.
+# Se a planilha não tiver coluna de status, importa tudo normalmente (esse
+# filtro só entra em ação quando a coluna existe).
+STATUS_REALIZADOS = {
+    "realizada", "realizado", "concluida", "concluido", "efetivada", "efetivado",
+    "confirmada", "confirmado", "pago", "paga", "liquidada", "liquidado",
 }
 
 PALAVRAS_CABECALHO = ["data", "valor", "descri", "historico", "natureza", "status", "tipo"]
@@ -100,6 +112,20 @@ def parse_valor(valor) -> Optional[float]:
         return -num if negativo else num
     except ValueError:
         return None
+
+
+def normalizar_valor_status(valor: str) -> str:
+    """Normaliza um VALOR de status (não um nome de coluna) pra comparar com
+    STATUS_REALIZADOS — minúsculo, sem acento, sem pontuação."""
+    texto = str(valor or "").strip().lower()
+    texto = re.sub(r"[áàâã]", "a", texto)
+    texto = re.sub(r"[éê]", "e", texto)
+    texto = re.sub(r"[íî]", "i", texto)
+    texto = re.sub(r"[óôõ]", "o", texto)
+    texto = re.sub(r"[úû]", "u", texto)
+    texto = re.sub(r"[ç]", "c", texto)
+    texto = re.sub(r"[^a-z]", "", texto)
+    return texto
 
 
 def linha_parece_cabecalho(celulas: list) -> bool:
@@ -202,6 +228,7 @@ async def importar_lancamentos(
     col_descricao = resolver_coluna(cabecalho, "descricao", mapa_descricao)
     col_tipo = resolver_coluna(cabecalho, "tipo", mapa_tipo)
     col_fallback_desc = resolver_coluna(cabecalho, "categoria_fallback", None)
+    col_status = resolver_coluna(cabecalho, "status", None)
 
     if not col_data or not col_valor:
         return {
@@ -213,10 +240,23 @@ async def importar_lancamentos(
         }
 
     criados = 0
+    ignorados_planejamento = 0
     erros_lista = []
 
     for i, linha in enumerate(linhas, start=2):
         try:
+            # Pula transações ainda não realizadas (planejamento/previsão) —
+            # livro caixa/LCDPR só deve refletir movimentação de caixa real.
+            # Só filtra se a coluna de status existir E o valor for reconhecido
+            # como um status "não realizado"; valores desconhecidos não filtram
+            # (evita descartar linha por engano num formato de arquivo diferente).
+            if col_status:
+                status_norm = normalizar_valor_status(linha.get(col_status))
+                nao_realizado_hints = ("planejamento", "previsto", "pendente", "aguardando", "obrigatorio")
+                if status_norm and status_norm not in STATUS_REALIZADOS and any(p in status_norm for p in nao_realizado_hints):
+                    ignorados_planejamento += 1
+                    continue
+
             data_lanc = parse_data(linha.get(col_data))
             valor = parse_valor(linha.get(col_valor))
 
@@ -261,6 +301,10 @@ async def importar_lancamentos(
     return {
         "criados": criados,
         "erros": len(erros_lista),
+        "ignorados_planejamento": ignorados_planejamento,
         "total": len(linhas),
-        "mensagem": "; ".join(erros_lista[:10]) if erros_lista else None,
+        "mensagem": "; ".join(erros_lista[:10]) if erros_lista else (
+            f"{ignorados_planejamento} linha(s) ignorada(s) por ainda não estarem realizadas (planejamento/previsão)."
+            if ignorados_planejamento else None
+        ),
     }
