@@ -449,7 +449,7 @@ export const railwayRouter = router({
 
       const brincoExistente = new Set(existentes.map((a) => String(a.brinco ?? "").toLowerCase().trim()));
 
-      const COL_BRINCO = ["brinco", "id", "identificacao", "numero", "tag", "brinco/id"];
+      const COL_BRINCO = ["brinco", "id", "identificacao", "identificador", "numero", "tag", "brinco/id"];
       const COL_NOME   = ["nome", "name"];
       const COL_RACA   = ["raca", "ra\u00e7a", "breed", "raca_nome"];
       const COL_SEXO   = ["sexo", "sex", "genero", "g\u00eanero"];
@@ -462,9 +462,25 @@ export const railwayRouter = router({
       // Garante que colunas com acentos (ex: Raça, Gênero, Aptidão) sejam encontradas
       const normColKey = (s: string) =>
         s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      // Quebra o nome da coluna em palavras (por espaço/underscore/hífen/barra) já normalizadas
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
       const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        // 1ª passada: nome da coluna inteiro bate exatamente com o alias
+        // (comportamento original — cobre "Brinco" === "brinco", "ID" === "id")
         for (const k of keys) {
-          const found = Object.keys(row).find((c) => normColKey(c) === normColKey(k));
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        // 2ª passada: alguma PALAVRA do nome da coluna bate exatamente com o
+        // alias — cobre "Nome Animal" (~ "nome"), "Identificador Animal"
+        // (~ "identificador"), sem o risco de "Sobrenome" casar com "nome"
+        // (substring cru casaria errado; por palavra, não).
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
           if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
         }
         return undefined;
@@ -545,6 +561,128 @@ export const railwayRouter = router({
       }
 
       return { criados, atualizados, ignorados, erros, total: criados + atualizados + ignorados + erros };
+    }),
+
+  // ── Genealogia (Bovino) ──────────────────────────────────────────────────
+  // Importa exportações de sistemas de genealogia (ex.: GISleite), que
+  // frequentemente vêm como tabela HTML salva com extensão .xls e com nomes
+  // de coluna diferentes do template padrão (ex.: "Identificador Animal" em
+  // vez de "Brinco", data de nascimento partida em Dia/Mês/Ano, pai/mãe por
+  // número de registro em vez de estarem no próprio rebanho).
+  analisarPlanilhaGenealogiaBovino: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      rows: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      let existentes: Animal[] = [];
+      try {
+        existentes = await railwayFetch<Animal[]>(`/bovino/animais/${input.imovelId}`, undefined, claims.produtorId);
+      } catch (_) { existentes = []; }
+      const brincoExistente = new Set(existentes.map((a) => String(a.brinco ?? "").toLowerCase().trim()));
+
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        for (const k of keys) {
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+
+      const COL_BRINCO = ["brinco", "id", "identificacao", "identificador", "numero", "tag"];
+      const COL_NOME = ["nome", "name"];
+      const COL_REG_PAI = ["registropai", "registro_pai", "regpai", "numero_pai"];
+      const COL_NOME_PAI = ["nomepai", "nome_pai", "pai"];
+      const COL_REG_MAE = ["registromae", "registro_mae", "regmae", "numero_mae"];
+      const COL_NOME_MAE = ["nomemae", "nome_mae", "mae", "mãe"];
+      const COL_SEXO = ["sexo", "sex", "genero", "gênero"];
+      const COL_RACA = ["raca", "raça", "breed"];
+      const COL_COMPOSICAO = ["composicaoracial", "composicao_racial", "composicao"];
+      const COL_NASC_DIA = ["datanascimentodia", "diananscimento", "dia"];
+      const COL_NASC_MES = ["datanascimentomes", "mesnascimento", "mes"];
+      const COL_NASC_ANO = ["datanascimentoano", "anonascimento", "ano"];
+
+      const rows_novas: any[] = [];
+      const conflitos: any[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        if (!brinco) { ignoradas_count++; continue; }
+
+        // Data de nascimento: aceita tanto uma coluna única quanto Dia+Mês+Ano separados
+        let data_nascimento: string | undefined;
+        const dia = findCol(row, COL_NASC_DIA);
+        const mes = findCol(row, COL_NASC_MES);
+        const ano = findCol(row, COL_NASC_ANO);
+        if (dia && mes && ano) {
+          const diaNum = parseInt(dia, 10);
+          const mesNum = parseInt(mes, 10);
+          const anoNum = parseInt(ano, 10);
+          if (!isNaN(diaNum) && !isNaN(mesNum) && !isNaN(anoNum)) {
+            data_nascimento = `${anoNum}-${String(mesNum).padStart(2, "0")}-${String(diaNum).padStart(2, "0")}`;
+          }
+        }
+
+        const sexoRaw = (findCol(row, COL_SEXO) ?? "").toUpperCase();
+        const parsed: Record<string, any> = {
+          brinco,
+          nome: findCol(row, COL_NOME),
+          sexo: sexoRaw.startsWith("F") ? "F" : "M",
+          raca_nome: findCol(row, COL_RACA),        // resolvido pro raca_id no backend, se houver match
+          composicao_racial: findCol(row, COL_COMPOSICAO),
+          data_nascimento,
+          nome_pai: findCol(row, COL_NOME_PAI),
+          registro_pai_externo: findCol(row, COL_REG_PAI),
+          nome_mae: findCol(row, COL_NOME_MAE),
+          registro_mae_externo: findCol(row, COL_REG_MAE),
+          categoria: sexoRaw.startsWith("F") ? "matriz" : "reprodutor",
+          aptidao_manejo: "leite",
+          origem: "importacao_genealogia",
+        };
+
+        if (brincoExistente.has(brinco.toLowerCase())) {
+          const existente = existentes.find((a) => String(a.brinco ?? "").toLowerCase().trim() === brinco.toLowerCase());
+          conflitos.push({ brinco, parsed, existente_id: existente?.id, existente });
+        } else {
+          rows_novas.push(parsed);
+        }
+      }
+
+      if (rows_novas.length === 0 && conflitos.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Nenhuma linha com identificação de animal reconhecida. Colunas aceitas: Brinco, Identificador (Animal), ID, Número, Tag.`,
+        });
+      }
+
+      return { rows_novas, conflitos, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  // Segunda passada: depois que confirmarImportacaoAnimais criar os animais
+  // (via /bovino/animais, que já aceita nome_pai/nome_mae/registro_*_externo/
+  // composicao_racial desde a migração 017), chama isso pra tentar linkar
+  // pai_id/mae_id de verdade sempre que o pai/mãe também estiver no rebanho.
+  relinkGenealogiaBovino: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayMutate(`/bovino/animais/relink-genealogia/${input.imovelId}`, "POST", {}, claims.produtorId);
     }),
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -881,6 +1019,9 @@ export const railwayRouter = router({
       motivo_saida: z.enum(["consumo_rebanho", "perda", "vencimento", "transferencia", "venda", "ajuste", "outro"]).optional(),
       lote_destino: z.string().optional(),
       atividade: z.enum(["pecuaria_corte", "pecuaria_leite", "suinocultura", "avicultura", "agricultura", "geral"]).optional(),
+      // Vínculo real com o Rebanho (para GMD/custo por kg e litros/dia por animal)
+      animal_id: z.number().optional(),
+      lote_id: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
@@ -899,9 +1040,63 @@ export const railwayRouter = router({
         custo_unitario: fields.custo_unitario,
         data_movim: fields.data_movim,
         observacao: observacaoEnriquecida,
+        animal_id: fields.animal_id,
+        lote_id: fields.lote_id,
+        atividade: fields.atividade,
       };
       const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", payload, claims.produtorId);
       return (data as { data: MovimentacaoInsumo }).data ?? data;
+    }),
+
+  // ── Produção integrada com Insumos (GMD/custo por kg, ou litros/dia e custo/litro) ──
+  // Bovino tem endpoint dedicado (corte + leite); Ovino/Caprino reaproveitam o
+  // endpoint de indicadores já existente; Suíno tem endpoint espelhado do de Bovino.
+  producaoInsumosAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      animalId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      dias: z.number().min(1).max(365).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+
+      if (input.especie === "bovinos") {
+        return railwayFetch<{
+          animal_id: number; tipo: "corte" | "leite"; periodo_dias: number;
+          gmd_kg_dia?: number | null; ganho_total_kg?: number | null;
+          litros_dia?: number; producao_total_l?: number;
+          custo_insumos_periodo: number; custo_por_kg_ganho?: number | null;
+          custo_por_litro?: number | null; aviso?: string | null;
+        }>(`/${prefix}/animais/${input.animalId}/producao-insumos?dias=${input.dias}`, undefined, claims.produtorId);
+      }
+
+      if (input.especie === "suinos") {
+        const r = await railwayFetch<{
+          animal_id: number; periodo_dias: number; gmd_kg_dia?: number | null;
+          ganho_total_kg?: number | null; custo_insumos_periodo: number;
+          custo_por_kg_ganho?: number | null; aviso?: string | null;
+        }>(`/${prefix}/animais/${input.animalId}/producao-insumos?dias=${input.dias}`, undefined, claims.produtorId);
+        return { ...r, tipo: "corte" as const };
+      }
+
+      // Ovino/Caprino: reaproveita /indicadores/animal/{id} (não recebe `dias` — usa histórico completo de pesagens)
+      const r = await railwayFetch<{
+        gmd_geral?: number | null; ganho_total_kg?: number | null;
+        custo_insumos_periodo?: number; custo_por_kg_ganho?: number | null;
+      }>(`/${prefix}/indicadores/animal/${input.animalId}`, undefined, claims.produtorId);
+      return {
+        animal_id: input.animalId,
+        tipo: "corte" as const,
+        periodo_dias: input.dias,
+        gmd_kg_dia: r.gmd_geral ?? null,
+        ganho_total_kg: r.ganho_total_kg ?? null,
+        custo_insumos_periodo: r.custo_insumos_periodo ?? 0,
+        custo_por_kg_ganho: r.custo_por_kg_ganho ?? null,
+        aviso: null,
+      };
     }),
 
   deleteInsumo: publicProcedure
