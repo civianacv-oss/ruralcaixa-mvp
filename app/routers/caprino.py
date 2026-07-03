@@ -1,6 +1,6 @@
 """
-RuralCaixa ÔÇö routers/caprino.py  (v2 ÔÇö psycopg2 s├¡ncrono)
-Compat├¡vel com o padr├úo do main_api.py existente.
+RuralCaixa — routers/caprino.py  (v2 — psycopg2 síncrono)
+Compatível com o padrão do main_api.py existente.
 
 Adicione em main_api.py:
     from routers.caprino import router as caprino_router
@@ -17,7 +17,7 @@ import logging
 import sys
 import os
 
-# Importa o servi├ºo de IA
+# Importa o serviço de IA
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.services.caprino_ia import classificar_mensagem_sync
 
@@ -30,9 +30,9 @@ def get_db():
     return psycopg2.connect(DB_URL, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # SCHEMAS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 class AnimalCreate(BaseModel):
     imovel_id: int
@@ -113,9 +113,9 @@ class WhatsAppMensagem(BaseModel):
     imovel_id: Optional[int] = None
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # ANIMAIS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.patch("/animais/{animal_id}")
 def editar_animal(animal_id: int, payload: dict):
@@ -138,7 +138,7 @@ def editar_animal(animal_id: int, payload: dict):
         """, valores)
         row = cur.fetchone()
         if not row:
-            raise HTTPException(404, "Animal n├úo encontrado.")
+            raise HTTPException(404, "Animal não encontrado.")
         conn.commit()
         return dict(row)
     except HTTPException:
@@ -170,7 +170,7 @@ def criar_animal(payload: AnimalCreate):
         return row
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
-        raise HTTPException(409, f"Brinco '{payload.brinco}' j├í cadastrado neste im├│vel.")
+        raise HTTPException(409, f"Brinco '{payload.brinco}' já cadastrado neste imóvel.")
     except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
@@ -229,7 +229,7 @@ def detalhe_animal(animal_id: int):
         """, (animal_id,))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(404, "Animal n├úo encontrado.")
+            raise HTTPException(404, "Animal não encontrado.")
         return dict(row)
     finally:
         conn.close()
@@ -246,16 +246,16 @@ def atualizar_status_animal(animal_id: int, novo_status: str = Query(...)):
         """, (novo_status, animal_id))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(404, "Animal n├úo encontrado.")
+            raise HTTPException(404, "Animal não encontrado.")
         conn.commit()
         return dict(row)
     finally:
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # LOTES
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/lotes", status_code=201)
 def criar_lote(payload: LoteCreate):
@@ -293,9 +293,9 @@ def listar_lotes(imovel_id: int = Query(...)):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # PESAGENS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @router.post("/pesagens", status_code=201)
@@ -448,9 +448,9 @@ def historico_pesagens(animal_id: int):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# SA├ÜDE
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# SAÚDE
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/saude", status_code=201)
 def registrar_evento_saude(payload: SaudeCreate):
@@ -496,9 +496,9 @@ def alertas_sanitarios(
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# REPRODU├ç├âO
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# REPRODUÇÃO
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/reproducao", status_code=201)
 def registrar_reproducao(payload: ReproducaoCreate):
@@ -522,9 +522,9 @@ def registrar_reproducao(payload: ReproducaoCreate):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # ABATES
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/abates", status_code=201)
 def registrar_abate(payload: AbateCreate):
@@ -551,9 +551,9 @@ def registrar_abate(payload: AbateCreate):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # DASHBOARD
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/dashboard/{imovel_id}")
 def dashboard_caprino(imovel_id: int):
@@ -612,9 +612,9 @@ def dashboard_caprino(imovel_id: int):
 
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# RECLASSIFICA├ç├âO AUTOM├üTICA DE LOTES
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# RECLASSIFICAÇÃO AUTOMÁTICA DE LOTES
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/animais/reclassificar")
 def reclassificar_rebanho(
@@ -629,9 +629,9 @@ def reclassificar_rebanho(
     try:
         cur = conn.cursor()
 
-        fases = ["cria", "recria", "engorda", "reprodu├º├úo", "descarte"]
+        fases = ["cria", "recria", "engorda", "reprodução", "descarte"]
         nomes_padrao = {"cria": "Cria", "recria": "Recria", "engorda": "Engorda",
-                        "reprodu├º├úo": "Reprodu├º├úo", "descarte": "Pr├®-abate"}
+                        "reprodução": "Reprodução", "descarte": "Pré-abate"}
 
         lote_ids = {}
         for fase in fases:
@@ -682,7 +682,7 @@ def reclassificar_rebanho(
             if (sexo == "F" and idade_dias is not None
                     and idade_dias >= config.idade_min_reproducao_dias
                     and peso is not None and peso >= config.peso_min_reproducao_femea):
-                fase_destino = "reprodu├º├úo"
+                fase_destino = "reprodução"
                 motivo = f"femea, {idade_dias}d, {peso}kg >= {config.peso_min_reproducao_femea}kg"
 
             elif sexo == "M" and peso is not None and peso >= config.peso_pre_abate_macho:
@@ -731,7 +731,7 @@ def reclassificar_rebanho(
                         cur, imovel_id, animal["id"], lote_destino_id, fase_destino
                     )
                 if not config.dry_run:
-                    # Registra movimenta├º├úo de lote via fun├º├úo SQL
+                    # Registra movimentação de lote via função SQL
                     cur.execute(
                         "SELECT registrar_movimentacao_lote(%s, %s, %s, 'reclassificacao')",
                         (animal["id"], lote_destino_id, imovel_id)
@@ -757,9 +757,9 @@ def reclassificar_rebanho(
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # ALERTAS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/alertas")
 def listar_alertas(
@@ -809,7 +809,7 @@ def atualizar_status_alerta(
         """, (novo_status, alerta_id))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(404, "Alerta n├úo encontrado.")
+            raise HTTPException(404, "Alerta não encontrado.")
         conn.commit()
         return dict(row)
     finally:
@@ -818,7 +818,7 @@ def atualizar_status_alerta(
 
 @router.get("/alertas/resumo/{imovel_id}")
 def resumo_alertas(imovel_id: int):
-    """Contagem de alertas por prioridade e por lote ÔÇö para o dashboard."""
+    """Contagem de alertas por prioridade e por lote — para o dashboard."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -853,9 +853,9 @@ def resumo_alertas(imovel_id: int):
     finally:
         conn.close()
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# TAREFAS ZOOT├ëCNICAS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# TAREFAS ZOOTÉCNICAS
+# ══════════════════════════════════════════════════════════════════════════════
 
 class TarefaCreate(BaseModel):
     imovel_id: int
@@ -946,7 +946,7 @@ def criar_tarefa(payload: TarefaCreate):
     except Exception as e:
         conn.rollback()
         if "unique" in str(e).lower():
-            raise HTTPException(409, "Tarefa j├í existe.")
+            raise HTTPException(409, "Tarefa já existe.")
         raise HTTPException(500, str(e))
     finally:
         conn.close()
@@ -994,7 +994,7 @@ def reagendar_tarefa(
         """, (nova_data, nova_data, motivo, tarefa_id))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(404, "Tarefa n├úo encontrada.")
+            raise HTTPException(404, "Tarefa não encontrada.")
         cur.execute("""
             INSERT INTO caprino_tarefa_execucao
                 (tarefa_id, acao, executado_por, observacao, reagendado_para, status_resultante)
@@ -1078,9 +1078,9 @@ def listar_protocolos(imovel_id: Optional[int] = Query(None)):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# PROTOCOLO SANIT├üRIO
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# PROTOCOLO SANITÁRIO
+# ══════════════════════════════════════════════════════════════════════════════
 
 class AplicacaoSanitariaCreate(BaseModel):
     imovel_id: int
@@ -1092,7 +1092,7 @@ class AplicacaoSanitariaCreate(BaseModel):
     via: Optional[str] = None
     lote_produto: Optional[str] = None
     validade_produto: Optional[date] = None
-    dias_carencia_override: Optional[int] = None  # sobrescreve o padr├úo do insumo
+    dias_carencia_override: Optional[int] = None  # sobrescreve o padrão do insumo
     responsavel_nome: Optional[str] = None
     responsavel_tel: Optional[str] = None
     observacoes: Optional[str] = None
@@ -1121,11 +1121,11 @@ def listar_insumos(
 @router.post("/sanitario/aplicar", status_code=201)
 def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
     """
-    Registra aplica├º├úo sanit├íria (individual ou por lote).
+    Registra aplicação sanitária (individual ou por lote).
     Gera automaticamente:
-    - Per├¡odo de car├¬ncia por animal/lote
-    - Tarefa de refor├ºo se o insumo exigir
-    - Bloqueio de abate durante car├¬ncia
+    - Período de carência por animal/lote
+    - Tarefa de reforço se o insumo exigir
+    - Bloqueio de abate durante carência
     """
     conn = get_db()
     try:
@@ -1135,7 +1135,7 @@ def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
         cur.execute("SELECT * FROM caprino_insumo_sanitario WHERE id = %s", (payload.insumo_id,))
         insumo = cur.fetchone()
         if not insumo:
-            raise HTTPException(404, "Insumo n├úo encontrado.")
+            raise HTTPException(404, "Insumo não encontrado.")
         ins = dict(insumo)
 
         dias_carencia = payload.dias_carencia_override \
@@ -1145,7 +1145,7 @@ def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
         dose = payload.dose_ml or ins["dose_padrao_ml"]
         via = payload.via or ins["via_padrao"]
 
-        # Se aplica├º├úo por lote, expande para todos os animais ativos
+        # Se aplicação por lote, expande para todos os animais ativos
         animais_alvo = []
         if payload.lote_id and not payload.animal_id:
             cur.execute("""
@@ -1162,7 +1162,7 @@ def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
         for animal in animais_alvo if animais_alvo else [{"id": None}]:
             animal_id = animal.get("id")
 
-            # Calcula refor├ºo
+            # Calcula reforço
             reforco_previsto = None
             if ins["dias_reforco"] and not ins.get("reforco_aplicado"):
                 reforco_previsto = payload.data_aplicacao + timedelta(days=ins["dias_reforco"])
@@ -1184,10 +1184,10 @@ def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
             aplic = dict(cur.fetchone())
             aplicacoes_criadas.append(aplic)
 
-            # Gera tarefa de refor├ºo se necess├írio
+            # Gera tarefa de reforço se necessário
             if reforco_previsto and ins["reforco_obrigatorio"] and animal_id:
                 import hashlib
-                titulo_reforco = f"­ƒÆë Refor├ºo: {ins['nome_comercial']}"
+                titulo_reforco = f"💉 Reforço: {ins['nome_comercial']}"
                 h_raw = f"{animal_id}::{payload.imovel_id}:vacina:{titulo_reforco.lower()}:{reforco_previsto.isoformat()}:protocolo"
                 h = hashlib.sha256(h_raw.encode()).hexdigest()
                 cur.execute("""
@@ -1204,7 +1204,7 @@ def registrar_aplicacao(payload: AplicacaoSanitariaCreate):
                 row = cur.fetchone()
                 if row:
                     tarefas_reforco += 1
-                    # Vincula tarefa ├á aplica├º├úo
+                    # Vincula tarefa à aplicação
                     cur.execute("""
                         UPDATE caprino_sanitario_aplicacao
                         SET tarefa_reforco_id = %s WHERE id = %s
@@ -1235,7 +1235,7 @@ def listar_carencias(
     imovel_id: int = Query(...),
     incluir_lote: Optional[int] = Query(None),
 ):
-    """Retorna animais/lotes com car├¬ncia ativa ÔÇö bloqueia abate."""
+    """Retorna animais/lotes com carência ativa — bloqueia abate."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -1256,8 +1256,8 @@ def listar_carencias(
 @router.get("/sanitario/verificar-abate/{animal_id}")
 def verificar_carencia_abate(animal_id: int):
     """
-    Verifica se o animal est├í liberado para abate.
-    Considera car├¬ncias do animal e do lote ao qual pertence.
+    Verifica se o animal está liberado para abate.
+    Considera carências do animal e do lote ao qual pertence.
     """
     conn = get_db()
     try:
@@ -1267,10 +1267,10 @@ def verificar_carencia_abate(animal_id: int):
         cur.execute("SELECT lote_id, brinco FROM caprino_animais WHERE id = %s", (animal_id,))
         animal = cur.fetchone()
         if not animal:
-            raise HTTPException(404, "Animal n├úo encontrado.")
+            raise HTTPException(404, "Animal não encontrado.")
         a = dict(animal)
 
-        # Verifica car├¬ncia do animal
+        # Verifica carência do animal
         cur.execute("""
             SELECT * FROM caprino_carencias_ativas
             WHERE animal_id = %s
@@ -1278,7 +1278,7 @@ def verificar_carencia_abate(animal_id: int):
         """, (animal_id,))
         carencia_animal = cur.fetchone()
 
-        # Verifica car├¬ncia do lote
+        # Verifica carência do lote
         carencia_lote = None
         if a["lote_id"]:
             cur.execute("""
@@ -1354,12 +1354,12 @@ def calendario_sanitario(
     imovel_id: int = Query(...),
     dias: int = Query(60),
 ):
-    """Pr├│ximas aplica├º├Áes previstas: refor├ºos pendentes + tarefas sanit├írias."""
+    """Próximas aplicações previstas: reforços pendentes + tarefas sanitárias."""
     conn = get_db()
     try:
         cur = conn.cursor()
 
-        # Refor├ºos pendentes de aplica├º├Áes j├í feitas
+        # Reforços pendentes de aplicações já feitas
         cur.execute("""
             SELECT
                 ap.reforco_previsto AS data_prevista,
@@ -1381,7 +1381,7 @@ def calendario_sanitario(
         """, (imovel_id, dias))
         reforcos = [dict(r) for r in cur.fetchall()]
 
-        # Tarefas sanit├írias pendentes
+        # Tarefas sanitárias pendentes
         cur.execute("""
             SELECT t.data_prevista, t.titulo AS nome_comercial,
                    t.tipo AS categoria, 'tarefa' AS tipo,
@@ -1407,13 +1407,13 @@ def calendario_sanitario(
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# MOVIMENTA├ç├òES DE LOTE
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# MOVIMENTAÇÕES DE LOTE
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/movimentacoes/{animal_id}")
 def historico_movimentacoes(animal_id: int):
-    """Hist├│rico completo de lotes de um animal."""
+    """Histórico completo de lotes de um animal."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -1429,14 +1429,14 @@ def historico_movimentacoes(animal_id: int):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# INDICADORES ZOOT├ëCNICOS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# INDICADORES ZOOTÉCNICOS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/indicadores/{imovel_id}")
 def indicadores_por_lote(imovel_id: int):
     """
-    KPIs zoot├®cnicos por lote: GMD, peso m├®dio, mortalidade, abate, proje├º├úo.
+    KPIs zootécnicos por lote: GMD, peso médio, mortalidade, abate, projeção.
     """
     conn = get_db()
     try:
@@ -1445,7 +1445,7 @@ def indicadores_por_lote(imovel_id: int):
         # Indicadores da view
         cur.execute("""
             SELECT *,
-                -- Proje├º├úo de abate: dias para atingir 35kg no GMD atual
+                -- Projeção de abate: dias para atingir 35kg no GMD atual
                 CASE
                     WHEN gmd_kg_dia > 0 AND peso_medio_atual IS NOT NULL AND peso_medio_atual < 35
                     THEN ROUND((35 - peso_medio_atual) / gmd_kg_dia)
@@ -1458,7 +1458,7 @@ def indicadores_por_lote(imovel_id: int):
         """, (imovel_id,))
         lotes = [dict(r) for r in cur.fetchall()]
 
-        # Consolidado do im├│vel
+        # Consolidado do imóvel
         cur.execute("""
             SELECT
                 SUM(animais_ativos)                                 AS total_ativo,
@@ -1482,7 +1482,7 @@ def indicadores_por_lote(imovel_id: int):
 
 @router.get("/indicadores/animal/{animal_id}")
 def indicadores_animal(animal_id: int):
-    """GMD, ganho total, dias no lote atual e proje├º├úo para um animal espec├¡fico."""
+    """GMD, ganho total, dias no lote atual e projeção para um animal específico."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -1500,7 +1500,7 @@ def indicadores_animal(animal_id: int):
         """, (animal_id,))
         pesagens = [dict(r) for r in cur.fetchall()]
 
-        # Movimenta├º├úo atual
+        # Movimentação atual
         cur.execute("""
             SELECT m.*, l.nome AS lote_nome, l.fase
             FROM caprino_movimentacao_lote m
@@ -1524,7 +1524,7 @@ def indicadores_animal(animal_id: int):
             gmd_geral = None
             ganho_total = None
 
-        # Proje├º├úo de abate
+        # Projeção de abate
         peso_atual = float(pesagens[-1]["peso_kg"]) if pesagens else None
         projecao_35 = None
         projecao_40 = None
@@ -1534,12 +1534,38 @@ def indicadores_animal(animal_id: int):
             if peso_atual < 40:
                 projecao_40 = round((40 - peso_atual) / gmd_geral)
 
+        # Custo de insumos vinculados (item "Rebanho x Insumos"): direto no animal
+        # OU rateado pelo lote (mesmo padrão usado no módulo Bovino).
+        cur.execute("""
+            SELECT COALESCE(SUM(custo_total), 0) AS custo_direto
+            FROM movimentacoes_insumo
+            WHERE animal_id = %s AND tipo = 'uso'
+              AND data_movim >= CURRENT_DATE - 30
+        """, (animal_id,))
+        custo_direto = float(cur.fetchone()["custo_direto"] or 0)
+
+        custo_lote_rateado = 0.0
+        if movim_atual and movim_atual.get("lote_id"):
+            cur.execute("SELECT COUNT(*) AS qtd FROM caprino_animais WHERE lote_id = %s AND status = 'ativo'", (movim_atual["lote_id"],))
+            qtd_lote = cur.fetchone()["qtd"] or 1
+            cur.execute("""
+                SELECT COALESCE(SUM(custo_total), 0) AS custo_lote
+                FROM movimentacoes_insumo
+                WHERE lote_id = %s AND tipo = 'uso' AND data_movim >= CURRENT_DATE - 30
+            """, (movim_atual["lote_id"],))
+            custo_lote_rateado = float(cur.fetchone()["custo_lote"] or 0) / qtd_lote
+
+        custo_insumos_periodo = round(custo_direto + custo_lote_rateado, 2)
+        custo_por_kg_ganho = round(custo_insumos_periodo / ganho_total, 2) if ganho_total and ganho_total > 0 else None
+
         return {
             "pesagens": pesagens,
             "gmd_geral": gmd_geral,
             "ganho_total_kg": ganho_total,
             "peso_atual": peso_atual,
             "movimentacao_atual": movim_atual,
+            "custo_insumos_periodo": custo_insumos_periodo,
+            "custo_por_kg_ganho": custo_por_kg_ganho,
             "projecao_abate": {
                 "meta_35kg": {"dias": projecao_35, "data": (
                     (date.today() + timedelta(days=projecao_35)).isoformat()
@@ -1557,7 +1583,7 @@ def indicadores_animal(animal_id: int):
 
 @router.post("/desvios/processar")
 def processar_desvios_endpoint(imovel_id: Optional[int] = Query(None)):
-    """Detecta desvios zoot├®cnicos e emite alertas. Chamado pelo cron."""
+    """Detecta desvios zootécnicos e emite alertas. Chamado pelo cron."""
     try:
         from app.services.caprino_desvios import processar_desvios_caprinos
         return processar_desvios_caprinos(imovel_id=imovel_id)
@@ -1565,9 +1591,9 @@ def processar_desvios_endpoint(imovel_id: Optional[int] = Query(None)):
         raise HTTPException(500, str(e))
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# PREVIS├âO DE DEMANDA DE RA├ç├âO
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# PREVISÃO DE DEMANDA DE RAÇÃO
+# ══════════════════════════════════════════════════════════════════════════════
 
 class RacaoConfigUpdate(BaseModel):
     pct_ms_racao: Optional[float] = None
@@ -1578,8 +1604,8 @@ class RacaoConfigUpdate(BaseModel):
 
 
 def _resolver_fase_racao(fase_lote: str, sexo: str) -> str:
-    """Mapeia fase do lote para categoria de consumo de ra├º├úo."""
-    if fase_lote == "reprodu├º├úo":
+    """Mapeia fase do lote para categoria de consumo de ração."""
+    if fase_lote == "reprodução":
         return "matriz_seca" if sexo == "F" else "reprodutor"
     mapa = {
         "cria": "cria", "recria": "recria",
@@ -1591,14 +1617,14 @@ def _resolver_fase_racao(fase_lote: str, sexo: str) -> str:
 @router.get("/racao/previsao/{imovel_id}")
 def previsao_racao(imovel_id: int):
     """
-    Calcula previs├úo de demanda de ra├º├úo por lote e total da fazenda.
-    Retorna consumo di├írio, proje├º├úo 7/15/30 dias, custo e alerta de estoque.
+    Calcula previsão de demanda de ração por lote e total da fazenda.
+    Retorna consumo diário, projeção 7/15/30 dias, custo e alerta de estoque.
     """
     conn = get_db()
     try:
         cur = conn.cursor()
 
-        # Configura├º├úo da fazenda
+        # Configuração da fazenda
         cur.execute("""
             SELECT * FROM caprino_racao_config WHERE imovel_id = %s
         """, (imovel_id,))
@@ -1615,7 +1641,7 @@ def previsao_racao(imovel_id: int):
         estoque = float(config["estoque_atual_kg"]) if config["estoque_atual_kg"] else None
         margem_dias = config["margem_seguranca_dias"] or 7
 
-        # Par├ómetros de consumo por fase
+        # Parâmetros de consumo por fase
         cur.execute("""
             SELECT fase, pct_ms_pv_dia FROM caprino_racao_parametro
             WHERE ativo = TRUE AND (imovel_id = %s OR imovel_id IS NULL)
@@ -1627,7 +1653,7 @@ def previsao_racao(imovel_id: int):
             if p["fase"] not in params_ms:
                 params_ms[p["fase"]] = float(p["pct_ms_pv_dia"]) / 100
 
-        # Animais ativos com ├║ltima pesagem e lote
+        # Animais ativos com última pesagem e lote
         cur.execute("""
             SELECT a.id, a.brinco, a.sexo, a.lote_id,
                    l.nome AS lote_nome, l.fase AS lote_fase,
@@ -1659,7 +1685,7 @@ def previsao_racao(imovel_id: int):
 
             lote_key = a.get("lote_id") or 0
             lote_nome = a.get("lote_nome") or "Sem lote"
-            fase_lote = a.get("lote_fase") or "ÔÇö"
+            fase_lote = a.get("lote_fase") or "—"
 
             if lote_key not in lotes_calc:
                 lotes_calc[lote_key] = {
@@ -1709,7 +1735,7 @@ def previsao_racao(imovel_id: int):
             if dias_estoque <= margem_dias:
                 alerta_estoque = {
                     "severidade": "alta" if dias_estoque <= 3 else "media",
-                    "mensagem": f"Estoque para {dias_estoque} dias ÔÇö reposi├º├úo necess├íria",
+                    "mensagem": f"Estoque para {dias_estoque} dias — reposição necessária",
                     "repor_kg": round(total_racao_dia * 30 - estoque, 1),
                     "custo_reposicao_rs": round((total_racao_dia * 30 - estoque) * preco, 2) if preco else None,
                 }
@@ -1742,7 +1768,7 @@ def previsao_racao(imovel_id: int):
 
 @router.patch("/racao/config/{imovel_id}")
 def atualizar_config_racao(imovel_id: int, payload: RacaoConfigUpdate):
-    """Atualiza configura├º├úo de ra├º├úo da fazenda."""
+    """Atualiza configuração de ração da fazenda."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -1780,15 +1806,15 @@ def atualizar_config_racao(imovel_id: int, payload: RacaoConfigUpdate):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # CONTROLE DE MORTALIDADE
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 CAUSAS_CATEGORIA = {
     "doenca": ["respiratoria","digestiva","clostridiose","parasitaria","nervosa","outro"],
     "acidente": ["trauma","afogamento","intoxicacao","outro"],
     "predador": ["cao","onca","raposa","outro"],
-    "neonatal": ["natimorto","hipotermia","inani├º├úo","malformacao","outro"],
+    "neonatal": ["natimorto","hipotermia","inanição","malformacao","outro"],
     "descarte_sanitario": ["brucelose","tuberculose","outro"],
     "causa_desconhecida": [],
     "outro": [],
@@ -1833,7 +1859,7 @@ def registrar_morte(payload: MorteCreate):
         """, (payload.animal_id,))
         animal = cur.fetchone()
         if not animal:
-            raise HTTPException(404, "Animal n├úo encontrado ou j├í inativo.")
+            raise HTTPException(404, "Animal não encontrado ou já inativo.")
         a = dict(animal)
 
         faixa = _calcular_faixa_etaria(a.get("data_nascimento"), payload.data_morte)
@@ -1880,7 +1906,7 @@ def registrar_morte(payload: MorteCreate):
                     "tipo": "cluster_mortalidade",
                     "causa": c["causa_categoria"],
                     "mortes_7d": c["mortes"],
-                    "mensagem": f"ÔÜá´©Å Cluster: {c['mortes']} mortes por {c['causa_categoria']} em 7 dias no lote"
+                    "mensagem": f"⚠️ Cluster: {c['mortes']} mortes por {c['causa_categoria']} em 7 dias no lote"
                 }
                 # Gera alerta no sistema
                 import hashlib
@@ -1901,7 +1927,7 @@ def registrar_morte(payload: MorteCreate):
             "morte_id": morte_id,
             "brinco": a["brinco"],
             "faixa_etaria": faixa,
-            "causa": f"{payload.causa_categoria}/{payload.causa_subcategoria or 'ÔÇö'}",
+            "causa": f"{payload.causa_categoria}/{payload.causa_subcategoria or '—'}",
             "alerta_cluster": alerta_cluster,
         }
     except HTTPException:
@@ -1969,7 +1995,7 @@ def indicadores_mortalidade(imovel_id: int):
         """, (imovel_id,))
         por_causa = [dict(r) for r in cur.fetchall()]
 
-        # Tend├¬ncia mensal (12 meses)
+        # Tendência mensal (12 meses)
         cur.execute("""
             SELECT TO_CHAR(data_morte, 'YYYY-MM') AS mes,
                    COUNT(*) AS mortes,
@@ -2006,13 +2032,13 @@ def indicadores_mortalidade(imovel_id: int):
 
 @router.get("/mortalidade/causas/lista")
 def listar_causas():
-    """Retorna categorias e subcategorias dispon├¡veis."""
+    """Retorna categorias e subcategorias disponíveis."""
     return CAUSAS_CATEGORIA
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # MANEJO DE PASTAGEM
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 class PiqueteCreate(BaseModel):
     imovel_id: int
@@ -2081,7 +2107,7 @@ def criar_piquete(payload: PiqueteCreate):
 def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
     """
     Move um lote para o piquete. Fecha o piquete anterior e abre o novo.
-    Calcula UA e press├úo de pastejo automaticamente.
+    Calcula UA e pressão de pastejo automaticamente.
     """
     conn = get_db()
     try:
@@ -2091,13 +2117,13 @@ def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
         cur.execute("SELECT * FROM caprino_piquete WHERE id = %s AND ativo = TRUE", (piquete_id,))
         piquete = cur.fetchone()
         if not piquete:
-            raise HTTPException(404, "Piquete n├úo encontrado.")
+            raise HTTPException(404, "Piquete não encontrado.")
         p = dict(piquete)
 
         if p["status"] == "descanso":
-            raise HTTPException(422, f"Piquete em descanso at├® {p['data_liberacao_descanso']}.")
+            raise HTTPException(422, f"Piquete em descanso até {p['data_liberacao_descanso']}.")
         if p["status"] == "recuperacao":
-            raise HTTPException(422, "Piquete em recupera├º├úo ÔÇö n├úo pode receber lote.")
+            raise HTTPException(422, "Piquete em recuperação — não pode receber lote.")
 
         # Calcula UA do lote
         cur.execute("""
@@ -2117,7 +2143,7 @@ def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
 
         data_saida_prev = date.today() + timedelta(days=p["dias_ocupacao_padrao"])
 
-        # Fecha movimenta├º├úo anterior do lote se existir
+        # Fecha movimentação anterior do lote se existir
         cur.execute("""
             UPDATE caprino_piquete_movimentacao
             SET data_saida = CURRENT_DATE, motivo_saida = 'rotacao'
@@ -2138,7 +2164,7 @@ def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
             WHERE lote_id_atual = %s AND id != %s
         """, (payload.lote_id, piquete_id))
 
-        # Registra movimenta├º├úo
+        # Registra movimentação
         cur.execute("""
             INSERT INTO caprino_piquete_movimentacao
                 (piquete_id, lote_id, imovel_id, data_entrada,
@@ -2158,12 +2184,12 @@ def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
             WHERE id = %s
         """, (payload.lote_id, data_saida_prev, piquete_id))
 
-        # Alerta se press├úo > 110%
+        # Alerta se pressão > 110%
         alerta_pressao = None
         if pressao > 110:
             alerta_pressao = {
                 "severidade": "alta",
-                "mensagem": f"ÔÜá´©Å Press├úo de pastejo {pressao}% ÔÇö acima da capacidade do piquete",
+                "mensagem": f"⚠️ Pressão de pastejo {pressao}% — acima da capacidade do piquete",
             }
 
         conn.commit()
@@ -2187,7 +2213,7 @@ def mover_lote_para_piquete(piquete_id: int, payload: MoverLoteRequest):
 
 @router.post("/pastagem/piquetes/{piquete_id}/fechar")
 def fechar_piquete(piquete_id: int, motivo: str = Query("rotacao")):
-    """Fecha o piquete e inicia per├¡odo de descanso."""
+    """Fecha o piquete e inicia período de descanso."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -2235,35 +2261,35 @@ def alertas_pastagem(imovel_id: int):
             pressao = float(p.get("pressao_pct") or 0)
             dias_lib = p.get("dias_para_liberar")
 
-            # Cr├¡tico: press├úo > 110%
+            # Crítico: pressão > 110%
             if pressao > 110:
                 alertas.append({"piquete": p["piquete_nome"], "severidade": "alta",
                     "tipo": "pressao_excessiva",
-                    "mensagem": f"Press├úo {pressao}% ÔÇö mover lote imediatamente"})
+                    "mensagem": f"Pressão {pressao}% — mover lote imediatamente"})
 
-            # Alto: tempo m├íximo excedido
+            # Alto: tempo máximo excedido
             if p["status"] == "ocupado" and dias_ocup and dias_ocup > p["dias_ocupacao_padrao"]:
                 alertas.append({"piquete": p["piquete_nome"], "severidade": "alta",
                     "tipo": "tempo_excedido",
-                    "mensagem": f"Lote h├í {dias_ocup} dias (m├íx {p['dias_ocupacao_padrao']}d) ÔÇö rotacionar"})
+                    "mensagem": f"Lote há {dias_ocup} dias (máx {p['dias_ocupacao_padrao']}d) — rotacionar"})
 
-            # M├®dio: descanso conclu├¡do
+            # Médio: descanso concluído
             if p["status"] == "descanso" and dias_lib is not None and dias_lib <= 0:
                 alertas.append({"piquete": p["piquete_nome"], "severidade": "media",
                     "tipo": "descanso_concluido",
-                    "mensagem": f"Piquete pronto para reocupa├º├úo"})
+                    "mensagem": f"Piquete pronto para reocupação"})
 
-            # M├®dio: descanso concluindo em breve
+            # Médio: descanso concluindo em breve
             if p["status"] == "descanso" and dias_lib is not None and 0 < dias_lib <= 3:
                 alertas.append({"piquete": p["piquete_nome"], "severidade": "media",
                     "tipo": "descanso_proximidade",
                     "mensagem": f"Piquete liberado em {dias_lib} dia(s)"})
 
-            # M├®dio: press├úo alta mas n├úo cr├¡tica
+            # Médio: pressão alta mas não crítica
             if 80 <= pressao <= 110:
                 alertas.append({"piquete": p["piquete_nome"], "severidade": "media",
                     "tipo": "pressao_alta",
-                    "mensagem": f"Press├úo {pressao}% ÔÇö monitorar lota├º├úo"})
+                    "mensagem": f"Pressão {pressao}% — monitorar lotação"})
 
         return {"alertas": alertas, "total": len(alertas), "piquetes": piquetes}
     finally:
@@ -2287,9 +2313,9 @@ def historico_piquete(piquete_id: int):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# AN├üLISE DE SAZONALIDADE
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# ANÁLISE DE SAZONALIDADE
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/sazonalidade/{imovel_id}")
 def analise_sazonalidade(
@@ -2297,7 +2323,7 @@ def analise_sazonalidade(
     meses: int = Query(24),
 ):
     """
-    An├ílise de sazonalidade de abates e margens por m├¬s.
+    Análise de sazonalidade de abates e margens por mês.
     Identifica os meses mais lucrativos para venda.
     """
     conn = get_db()
@@ -2328,7 +2354,7 @@ def analise_sazonalidade(
         """, (imovel_id, meses))
         por_mes = [dict(r) for r in cur.fetchall()]
 
-        # Agrega por m├¬s do ano (ignora ano) para sazonalidade
+        # Agrega por mês do ano (ignora ano) para sazonalidade
         cur.execute("""
             SELECT
                 TO_CHAR(data_abate, 'MM')               AS mes_num,
@@ -2355,7 +2381,7 @@ def analise_sazonalidade(
             reverse=True
         )
 
-        # Melhor e pior m├¬s
+        # Melhor e pior mês
         melhor_mes = ranking[0] if ranking else None
         pior_mes = ranking[-1] if len(ranking) > 1 else None
 
@@ -2383,10 +2409,10 @@ def analise_sazonalidade(
             "melhor_mes": melhor_mes,
             "pior_mes": pior_mes,
             "recomendacao": (
-                f"Melhor ├®poca para venda: {melhor_mes['mes_nome']} "
-                f"(R$ {melhor_mes['preco_medio_kg']}/kg de carca├ºa em m├®dia)"
+                f"Melhor época para venda: {melhor_mes['mes_nome']} "
+                f"(R$ {melhor_mes['preco_medio_kg']}/kg de carcaça em média)"
                 if melhor_mes else
-                "Registre abates para gerar an├ílise de sazonalidade."
+                "Registre abates para gerar análise de sazonalidade."
             ),
         }
     except Exception as e:
@@ -2397,13 +2423,13 @@ def analise_sazonalidade(
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-# MULTIESP├ëCIE ÔÇö ESP├ëCIES E FASES PRODUTIVAS
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
+# MULTIESPÉCIE — ESPÉCIES E FASES PRODUTIVAS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/especies")
 def listar_especies():
-    """Lista esp├®cies dispon├¡veis no sistema."""
+    """Lista espécies disponíveis no sistema."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -2415,7 +2441,7 @@ def listar_especies():
 
 @router.get("/especies/{codigo}/fases")
 def listar_fases(codigo: str):
-    """Lista fases produtivas de uma esp├®cie."""
+    """Lista fases produtivas de uma espécie."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -2431,13 +2457,13 @@ def listar_fases(codigo: str):
         conn.close()
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK WHATSAPP
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/webhook/whatsapp")
 def webhook_whatsapp_caprino(payload: WhatsAppMensagem):
-    # 1. Classifica via IA (s├¡ncrono)
+    # 1. Classifica via IA (síncrono)
     classificacao = classificar_mensagem_sync(
         texto=payload.conteudo,
         imovel_id=payload.imovel_id,
@@ -2521,13 +2547,62 @@ def webhook_whatsapp_caprino(payload: WhatsAppMensagem):
                     evento_tab = "caprino_animais"
                 except psycopg2.errors.UniqueViolation:
                     conn.rollback()
-                    resumo = f"Animal {entidades.get('brinco')} j├í cadastrado."
+                    resumo = f"Animal {entidades.get('brinco')} já cadastrado."
+            elif intent == "compra":
+                produtor_id = _produtor_do_imovel_caprino(cur, payload.imovel_id)
+                valor_total = entidades.get("valor_total")
+                qtd = entidades.get("quantidade")
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_caprino(
+                        conn, produtor_id, entidades.get("data_evento"), "despesa",
+                        valor_total, f"Compra de {qtd or '?'} caprino(s)"
+                                     + (f" — {entidades['raca']}" if entidades.get("raca") else ""),
+                    )
+                    if lanc_id:
+                        evento_id = lanc_id
+                        evento_tab = "lancamentos"
+                        resumo = (
+                            f"✅ Compra registrada: {qtd or '?'} animal(is) por "
+                            f"R$ {float(valor_total):,.2f}. Lance o rebanho individualmente "
+                            f"(com brinco) quando possível para o cadastro ficar completo."
+                        )
+                    else:
+                        status_log = "erro"
+                        resumo = "Entendi a compra, mas não consegui gravar o lançamento financeiro. Confira manualmente."
+                else:
+                    status_log = "pendente"
+                    resumo = "Entendi que foi uma compra, mas não identifiquei o valor. Pode informar o valor total?"
+
+            elif intent == "venda":
+                produtor_id = _produtor_do_imovel_caprino(cur, payload.imovel_id)
+                valor_total = entidades.get("valor_total")
+                qtd = entidades.get("quantidade")
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_caprino(
+                        conn, produtor_id, entidades.get("data_evento"), "receita",
+                        valor_total, f"Venda de {qtd or '?'} caprino(s)"
+                                     + (f" — brinco {entidades['brinco']}" if entidades.get("brinco") else ""),
+                    )
+                    if lanc_id:
+                        evento_id = lanc_id
+                        evento_tab = "lancamentos"
+                        resumo = (
+                            f"✅ Venda registrada: {qtd or '?'} animal(is) por "
+                            f"R$ {float(valor_total):,.2f}."
+                        )
+                    else:
+                        status_log = "erro"
+                        resumo = "Entendi a venda, mas não consegui gravar o lançamento financeiro. Confira manualmente."
+                else:
+                    status_log = "pendente"
+                    resumo = "Entendi que foi uma venda, mas não identifiquei o valor. Pode informar o valor total?"
+
             else:
                 status_log = "ignorado"
 
         elif confianca < 0.5:
             status_log = "pendente"
-            resumo = "N├úo entendi bem. Pode repetir com mais detalhes?"
+            resumo = "Não entendi bem. Pode repetir com mais detalhes?"
         else:
             status_log = "ignorado"
 
@@ -2568,7 +2643,44 @@ def webhook_whatsapp_caprino(payload: WhatsAppMensagem):
     }
 
 
-# ÔöÇÔöÇ Helper ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Helper ────────────────────────────────────────────────────────────────────
+def _produtor_do_imovel_caprino(cur, imovel_id: int):
+    cur.execute("SELECT produtor_id FROM imoveis_rurais WHERE id = %s", (imovel_id,))
+    row = cur.fetchone()
+    return row["produtor_id"] if row else None
+
+
+def _criar_lancamento_lcdpr_caprino(conn, produtor_id, data, tipo: str, valor: float,
+                                     descricao: str, origem: str = "whatsapp_caprino"):
+    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py /
+    ovino.py), para não interferir na transação principal do webhook."""
+    tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
+    lcdpr_conn = None
+    try:
+        lcdpr_conn = get_db()
+        with lcdpr_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1
+            """, (tipo_lancamento,))
+            sub = cur.fetchone()
+            subconta_id = sub["id"] if sub else None
+            cur.execute("""
+                INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (produtor_id, subconta_id, float(valor), data, origem))
+            row = cur.fetchone()
+            lcdpr_conn.commit()
+            return row["id"] if row else None
+    except Exception as e:
+        logger.error("[CAPRINO] Erro ao criar lançamento LCDPR: %s", e)
+        if lcdpr_conn:
+            lcdpr_conn.rollback()
+        return None
+    finally:
+        if lcdpr_conn:
+            lcdpr_conn.close()
+
+
 def _buscar_animal(cur, brinco: Optional[str], imovel_id: int) -> Optional[dict]:
     if not brinco:
         return None

@@ -104,6 +104,7 @@ class CicloResponse(BaseModel):
     ica_atual: Optional[Decimal] = None
     mortalidade_acumulada: Optional[int] = None
     mortalidade_perc: Optional[Decimal] = None
+    alertas_povoamento: Optional[list] = None
 
     class Config:
         from_attributes = True
@@ -150,6 +151,10 @@ class RegistroDiarioCreate(BaseModel):
     custo_racao_dia: Optional[Decimal] = Field(None, ge=0)
     preco_kg_racao: Optional[Decimal] = Field(None, ge=0)
     preco_kg_racao: Optional[Decimal] = None
+    # Se informado, a baixa de racao_kg é feita automaticamente no estoque geral de
+    # Insumos (PMP global) e custo_racao_dia passa a ser calculado pelo PMP vigente,
+    # em vez de exigir preco_kg_racao manual.
+    insumo_racao_id: Optional[int] = None
     mortalidade_qtd: int = Field(0, ge=0)
     mortalidade_causa: Optional[str] = None
     oxigenio_dissolvido: Optional[Decimal] = Field(None, ge=0, le=20)
@@ -172,6 +177,8 @@ class RegistroDiarioResponse(BaseModel):
     temperatura_c: Optional[Decimal]
     transparencia_secchi_cm: Optional[int]
     alertas: Optional[str]
+    insumo_racao_id: Optional[int] = None
+    alerta_racao: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -191,6 +198,9 @@ class CompraInsumoCreate(BaseModel):
     valor_total: Decimal = Field(..., gt=0)
     fornecedor: Optional[str] = Field(None, max_length=150)
     nota_fiscal: Optional[str] = Field(None, max_length=50)
+    # Se informado (e quantidade > 0), a compra também entra como ENTRADA no
+    # estoque geral de Insumos (fazenda), atualizando o PMP global do insumo.
+    insumo_id: Optional[int] = None
 
 
 class CompraInsumoResponse(BaseModel):
@@ -205,6 +215,7 @@ class CompraInsumoResponse(BaseModel):
     fornecedor: Optional[str]
     nota_fiscal: Optional[str]
     lancamento_id: Optional[int]
+    insumo_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -258,6 +269,8 @@ class DashboardCiclo(BaseModel):
     biomassa_atual_kg: Optional[Decimal]
     ica_atual: Optional[Decimal]
     dias_em_producao: int
+    sugestao_racao: Optional[dict] = None
+    aeracao_recomendada: Optional[dict] = None
     # Econômico
     total_racao_kg: Decimal
     custo_racao_total: Decimal

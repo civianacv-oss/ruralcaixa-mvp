@@ -192,6 +192,10 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if any(k in texto.lower() for k in keywords_ovino):
         return await _processar_zootecnico(msg, "ovino", texto)
 
+    keywords_caprino = ["cabra", "caprino", "bode", "cabrito", "chibato", "cabrita"]
+    if any(k in texto.lower() for k in keywords_caprino):
+        return await _processar_zootecnico(msg, "caprino", texto)
+
     keywords_bovino = ["boi", "vaca", "novilho", "bezerro", "bovino",
                        "nelore", "angus", "gado"]
     if any(k in texto.lower() for k in keywords_bovino):
@@ -313,6 +317,58 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
             )
             resultado = webhook_whatsapp_ovino(payload)
             return resultado.get("resumo", "Registrado.")
+
+        if modulo == "caprino":
+            from app.routers.caprino import webhook_whatsapp_caprino, WhatsAppMensagem as WhatsAppMensagemCaprino
+            from app.db import engine
+            from sqlalchemy import text as sqlt
+            with engine.connect() as conn:
+                row = conn.execute(sqlt(
+                    "SELECT id FROM imoveis_rurais WHERE produtor_id = "
+                    "(SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+                ), {"tel": f"%{msg.numero[-8:]}"}).fetchone()
+                imovel_id = row[0] if row else 1
+            payload = WhatsAppMensagemCaprino(
+                telefone=msg.numero, tipo_midia="texto",
+                conteudo=texto, imovel_id=imovel_id,
+            )
+            resultado = webhook_whatsapp_caprino(payload)
+            return resultado.get("resumo", "Registrado.")
+
+        if modulo == "bovino":
+            from app.routers.bovino import webhook_whatsapp_bovino, WhatsAppMensagemBovino
+            from app.db import engine
+            from sqlalchemy import text as sqlt
+            with engine.connect() as conn:
+                row = conn.execute(sqlt(
+                    "SELECT id FROM imoveis_rurais WHERE produtor_id = "
+                    "(SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+                ), {"tel": f"%{msg.numero[-8:]}"}).fetchone()
+                imovel_id = row[0] if row else 1
+            payload = WhatsAppMensagemBovino(
+                telefone=msg.numero, tipo_midia="texto",
+                conteudo=texto, imovel_id=imovel_id,
+            )
+            resultado = webhook_whatsapp_bovino(payload)
+            return resultado.get("resumo", "Registrado.")
+
+        if modulo == "piscicultura":
+            from app.routers.piscicultura import webhook_whatsapp_piscicultura, WhatsAppMensagemPiscicultura
+            from app.db import engine
+            from sqlalchemy import text as sqlt
+            with engine.connect() as conn:
+                row = conn.execute(sqlt(
+                    "SELECT id FROM imoveis_rurais WHERE produtor_id = "
+                    "(SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+                ), {"tel": f"%{msg.numero[-8:]}"}).fetchone()
+                imovel_id = row[0] if row else 1
+            payload = WhatsAppMensagemPiscicultura(
+                telefone=msg.numero, tipo_midia="texto",
+                conteudo=texto, imovel_id=imovel_id,
+            )
+            resultado = webhook_whatsapp_piscicultura(payload)
+            return resultado.get("resumo", "Registrado.")
+
         return f"Módulo {modulo} recebido. Acesse o app para detalhes."
     except Exception as e:
         logger.error("Erro zootécnico %s: %s", modulo, e)

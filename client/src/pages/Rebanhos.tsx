@@ -62,6 +62,7 @@ export default function Rebanhos() {
   const [editAnimal, setEditAnimal] = useState<any | null>(null);
   const [deleteId,   setDeleteId]   = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [producaoAnimalId, setProducaoAnimalId] = useState<number | null>(null);
 
   // ── Formulário (novo / editar) ────────────────────────────────────────────
   const [form, setForm] = useState({ ...FORM_EMPTY });
@@ -108,6 +109,12 @@ export default function Rebanhos() {
     onError: (e: any) => toast.error(e.message ?? "Erro ao remover animal"),
   });
 
+  // Produção integrada com Insumos (GMD/custo por kg, ou litros/dia e custo/litro) — todas as espécies
+  const { data: producaoInsumos, isLoading: loadingProducao } = trpc.railway.producaoInsumosAnimal.useQuery(
+    { imovelId: imovelId!, animalId: producaoAnimalId!, especie: especieAtual.trpc, dias: 30 },
+    { enabled: !!imovelId && !!producaoAnimalId }
+  );
+
   const analisarPlanilha = trpc.railway.analisarPlanilhaAnimais.useMutation({
     onSuccess: (data) => {
       setImportPreview(data);
@@ -125,8 +132,34 @@ export default function Rebanhos() {
       setImportResult(data);
       setImportStep("resultado");
       utils.railway.animais.invalidate();
+      if (importIsGenealogia && imovelId) {
+        relinkGenealogia.mutate({ imovelId });
+      }
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao importar animais"),
+  });
+
+  // ── Genealogia (Bovino) ──────────────────────────────────────────────────
+  const [importIsGenealogia, setImportIsGenealogia] = useState(false);
+
+  const analisarGenealogia = trpc.railway.analisarPlanilhaGenealogiaBovino.useMutation({
+    onSuccess: (data) => {
+      setImportPreview(data);
+      const dec: Record<string, "atualizar" | "ignorar"> = {};
+      data.conflitos.forEach((c: any) => { dec[c.brinco] = "ignorar"; });
+      setConflitosDecisoes(dec);
+      setImportStep(data.conflitos.length > 0 ? "conflitos" : "resultado");
+      if (data.conflitos.length === 0) handleConfirmarImportacao(data.rows_novas, []);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha de genealogia"),
+  });
+
+  const relinkGenealogia = trpc.railway.relinkGenealogiaBovino.useMutation({
+    onSuccess: (data) => {
+      if (data.pais_linkados > 0 || data.maes_linkadas > 0) {
+        toast.success(`Genealogia: ${data.pais_linkados} pai(s) e ${data.maes_linkadas} mãe(s) linkados ao rebanho`);
+      }
+    },
   });
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -177,39 +210,75 @@ export default function Rebanhos() {
 
   const HEADER_HINTS = ["brinco", "id", "identificacao", "numero", "tag"];
 
-const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file || !imovelId) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    try {
-      const wb = XLSX.read(ev.target?.result, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !imovelId) return;
+    setImportIsGenealogia(false);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target?.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
 
-      // Detecta a linha real de cabeçalho (pula linhas de metadados tipo
-      // "Gerado em...", "Fazenda...", etc. antes do cabeçalho verdadeiro).
-      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
-      let headerRowIndex = 0;
-      for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
-        const rowVals = (rawRows[i] || []).map((v) =>
-          String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        );
-        if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
-          headerRowIndex = i;
-          break;
+        // Detecta a linha real de cabeçalho (pula linhas de metadados tipo
+        // "Gerado em...", "Fazenda...", etc. antes do cabeçalho verdadeiro).
+        const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+          const rowVals = (rawRows[i] || []).map((v) =>
+            String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          );
+          if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
+            headerRowIndex = i;
+            break;
+          }
         }
-      }
 
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
-      if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna "Brinco" reconhecível.'); return; }
-      analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
-    } catch {
-      toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
-    }
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
+        if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna "Brinco" reconhecível.'); return; }
+        analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+      } catch {
+        toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
   };
-  reader.readAsArrayBuffer(file);
-  e.target.value = "";
-};
+
+  const fileInputGenealogiaRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChangeGenealogia = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !imovelId) return;
+    setImportIsGenealogia(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target?.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+
+        const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+          const rowVals = (rawRows[i] || []).map((v) =>
+            String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          );
+          if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
+        if (rows.length === 0) { toast.error("Planilha vazia ou sem coluna de identificação reconhecível."); return; }
+        analisarGenealogia.mutate({ imovelId: imovelId!, rows });
+      } catch {
+        toast.error("Erro ao ler o arquivo. Verifique se é um Excel/HTML de genealogia válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
 
   const handleConfirmarImportacao = (rows_novas: any[], conflitos: any[]) => {
     if (!imovelId) return;
@@ -233,6 +302,7 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setConflitosDecisoes({});
     setImportResult(null);
     setShowImport(false);
+    setImportIsGenealogia(false);
   };
 
   const filtered = (animais as any[]).filter((a) =>
@@ -259,10 +329,16 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
+          <Button variant="outline" size="sm" onClick={() => { setImportIsGenealogia(false); setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
             <Upload className="w-4 h-4 mr-2" />
             Importar Planilha
           </Button>
+          {especie === "bovino" && (
+            <Button variant="outline" size="sm" onClick={() => { setImportIsGenealogia(true); setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Importar Genealogia
+            </Button>
+          )}
           <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Animal
@@ -366,6 +442,14 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                   </div>
                   {/* Botões de ação */}
                   <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost" size="icon"
+                      className="w-8 h-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
+                      title="Produção × Insumos (GMD/custo)"
+                      onClick={() => setProducaoAnimalId(a.id)}
+                    >
+                      📈
+                    </Button>
                     <Button
                       variant="ghost" size="icon"
                       className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
@@ -579,13 +663,79 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         </DialogContent>
       </Dialog>
 
+      {/* ── Dialog: Produção × Insumos (GMD/custo por kg, ou litros/dia e custo/litro) ──── */}
+      <Dialog open={producaoAnimalId !== null} onOpenChange={(o) => { if (!o) setProducaoAnimalId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Produção × Insumos — últimos 30 dias</DialogTitle>
+          </DialogHeader>
+          {loadingProducao ? (
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-10 rounded-lg" />
+              <Skeleton className="h-10 rounded-lg" />
+            </div>
+          ) : !producaoInsumos ? (
+            <p className="text-sm text-muted-foreground py-4">Sem dados de produção para este animal ainda.</p>
+          ) : producaoInsumos.tipo === "leite" ? (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Litros/dia</p>
+                <p className="text-xl font-bold mt-0.5" style={{ color: "oklch(0.35 0.12 145)" }}>
+                  {producaoInsumos.litros_dia ?? "—"}
+                </p>
+              </div>
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo/litro</p>
+                <p className="text-xl font-bold mt-0.5">
+                  {producaoInsumos.custo_por_litro != null ? `R$ ${producaoInsumos.custo_por_litro.toFixed(2)}` : "—"}
+                </p>
+              </div>
+              <div className="col-span-2 border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo de insumos no período</p>
+                <p className="text-lg font-semibold mt-0.5">R$ {producaoInsumos.custo_insumos_periodo.toFixed(2)}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">GMD</p>
+                <p className="text-xl font-bold mt-0.5" style={{ color: "oklch(0.35 0.12 145)" }}>
+                  {producaoInsumos.gmd_kg_dia != null ? `${producaoInsumos.gmd_kg_dia} kg/dia` : "—"}
+                </p>
+              </div>
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo/kg de ganho</p>
+                <p className="text-xl font-bold mt-0.5">
+                  {producaoInsumos.custo_por_kg_ganho != null ? `R$ ${producaoInsumos.custo_por_kg_ganho.toFixed(2)}` : "—"}
+                </p>
+              </div>
+              <div className="col-span-2 border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo de insumos no período</p>
+                <p className="text-lg font-semibold mt-0.5">R$ {producaoInsumos.custo_insumos_periodo.toFixed(2)}</p>
+              </div>
+              {producaoInsumos.aviso && (
+                <div className="col-span-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800 flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  {producaoInsumos.aviso}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProducaoAnimalId(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Dialog: Importar Planilha ───────────────────────────────────────── */}
       <Dialog open={showImport} onOpenChange={(o) => { if (!o) resetImport(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-              Importar Planilha — {especieAtual.emoji} {especieAtual.label}
+              {importIsGenealogia
+                ? "Importar Genealogia — 🐄 Bovino"
+                : `Importar Planilha — ${especieAtual.emoji} ${especieAtual.label}`}
             </DialogTitle>
           </DialogHeader>
 
@@ -609,20 +759,39 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
               <div
                 className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 transition-colors"
                 style={{ borderColor: "oklch(0.80 0.04 145)" }}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => (importIsGenealogia ? fileInputGenealogiaRef : fileInputRef).current?.click()}
               >
                 <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
-                <p className="font-medium text-sm">Clique para selecionar o arquivo Excel</p>
-                <p className="text-xs text-muted-foreground mt-1">Formatos aceitos: .xlsx, .xls, .csv</p>
+                <p className="font-medium text-sm">Clique para selecionar o arquivo</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Formatos aceitos: .xlsx, .xls, .csv — inclusive .xls que na
+                  verdade é tabela HTML (comum em exports de sistemas de genealogia)
+                </p>
               </div>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputGenealogiaRef} type="file" accept=".xlsx,.xls,.csv,.html" className="hidden" onChange={handleFileChangeGenealogia} />
 
               <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
-                <p className="font-semibold">Colunas reconhecidas automaticamente:</p>
-                <p><strong>Brinco/ID</strong> (obrigatório) · Nome · Raça · Sexo (M/F) · Data Nascimento · Peso · Categoria{especie === "bovino" ? " · Aptidão de Manejo" : ""}</p>
+                {importIsGenealogia ? (
+                  <>
+                    <p className="font-semibold">Colunas de genealogia reconhecidas automaticamente:</p>
+                    <p><strong>Identificador/Brinco</strong> (obrigatório) · Nome Animal · Sexo · Raça · Composição
+                      Racial · Data Nascimento (Dia/Mês/Ano separados ou coluna única) · Registro/Nome do Pai ·
+                      Registro/Nome da Mãe</p>
+                    <p className="text-blue-500">
+                      Pai/mãe que já estiverem no rebanho são linkados automaticamente depois da importação;
+                      os que não estiverem ficam guardados como texto (nada se perde).
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold">Colunas reconhecidas automaticamente:</p>
+                    <p><strong>Brinco/ID</strong> (obrigatório) · Nome · Raça · Sexo (M/F) · Data Nascimento · Peso · Categoria{especie === "bovino" ? " · Aptidão de Manejo" : ""}</p>
+                  </>
+                )}
               </div>
 
-              {analisarPlanilha.isPending && (
+              {(analisarPlanilha.isPending || analisarGenealogia.isPending) && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   Analisando planilha...

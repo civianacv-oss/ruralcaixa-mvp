@@ -9,6 +9,10 @@ from datetime import date
 import psycopg2
 import psycopg2.extras
 import os
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/bovino", tags=["Bovino"])
 
@@ -23,6 +27,7 @@ class AnimalIn(BaseModel):
     brinco: str
     nome: Optional[str] = None
     raca_id: Optional[int] = None
+    raca_nome: Optional[str] = None  # usado na importação: resolve raca_id por nome/código se possível
     sexo: str
     aptidao_manejo: str
     categoria: str
@@ -35,6 +40,13 @@ class AnimalIn(BaseModel):
     origem: str = "nascimento"
     valor_aquisicao: Optional[float] = None
     observacoes: Optional[str] = None
+    # Genealogia (importação) — usados quando o pai/mãe NÃO está cadastrado
+    # neste rebanho. Se mae_id/pai_id vierem preenchidos, têm prioridade.
+    nome_pai: Optional[str] = None
+    nome_mae: Optional[str] = None
+    registro_pai_externo: Optional[str] = None
+    registro_mae_externo: Optional[str] = None
+    composicao_racial: Optional[str] = None
 
 class PesagemIn(BaseModel):
     animal_id: int
@@ -183,19 +195,80 @@ def cadastrar_animal(data: AnimalIn):
         cur = conn.cursor()
         cur.execute("SELECT id FROM especie WHERE codigo = 'BOVINO'")
         especie_id = cur.fetchone()['id']
+
+        raca_id = data.raca_id
+        if raca_id is None and data.raca_nome:
+            cur.execute(
+                "SELECT id FROM bovino_racas WHERE LOWER(nome) = LOWER(%s) LIMIT 1",
+                (data.raca_nome,)
+            )
+            row = cur.fetchone()
+            raca_id = row["id"] if row else None
+            # Não força criação de raça nova nem tenta match parcial (arriscado
+            # dar palpite errado) — se não achar, composicao_racial guarda o
+            # texto original mesmo assim, nada se perde.
+
         cur.execute("""
             INSERT INTO bovino_animais
             (imovel_id, especie_id, brinco, nome, raca_id, sexo, aptidao_manejo,
              categoria, data_nascimento, peso_nascimento, mae_id, pai_id, lote_id,
-             data_entrada, origem, valor_aquisicao, observacoes)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
-        """, (data.imovel_id, especie_id, data.brinco, data.nome, data.raca_id,
+             data_entrada, origem, valor_aquisicao, observacoes,
+             nome_pai, nome_mae, registro_pai_externo, registro_mae_externo, composicao_racial)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
+        """, (data.imovel_id, especie_id, data.brinco, data.nome, raca_id,
               data.sexo, data.aptidao_manejo, data.categoria, data.data_nascimento,
               data.peso_nascimento, data.mae_id, data.pai_id, data.lote_id,
               data.data_entrada or date.today(), data.origem,
-              data.valor_aquisicao, data.observacoes))
+              data.valor_aquisicao, data.observacoes,
+              data.nome_pai, data.nome_mae, data.registro_pai_externo,
+              data.registro_mae_externo, data.composicao_racial))
         conn.commit()
         return dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+@router.post("/animais/relink-genealogia/{imovel_id}")
+def relink_genealogia(imovel_id: int):
+    """
+    Segunda passada da importação de genealogia: tenta linkar pai_id/mae_id
+    de verdade (FK) sempre que o registro_pai_externo/registro_mae_externo
+    de um animal bater com o brinco de outro animal já cadastrado no mesmo
+    rebanho (inclusive animais recém-importados no mesmo lote).
+    Roda quantas vezes quiser — é idempotente (só atualiza o que ainda não
+    está linkado).
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE bovino_animais AS filho
+            SET pai_id = pai.id
+            FROM bovino_animais AS pai
+            WHERE filho.imovel_id = %s
+              AND filho.pai_id IS NULL
+              AND filho.registro_pai_externo IS NOT NULL
+              AND pai.imovel_id = filho.imovel_id
+              AND LOWER(pai.brinco) = LOWER(filho.registro_pai_externo)
+            RETURNING filho.id
+        """, (imovel_id,))
+        pais_linkados = len(cur.fetchall())
+
+        cur.execute("""
+            UPDATE bovino_animais AS filho
+            SET mae_id = mae.id
+            FROM bovino_animais AS mae
+            WHERE filho.imovel_id = %s
+              AND filho.mae_id IS NULL
+              AND filho.registro_mae_externo IS NOT NULL
+              AND mae.imovel_id = filho.imovel_id
+              AND LOWER(mae.brinco) = LOWER(filho.registro_mae_externo)
+            RETURNING filho.id
+        """, (imovel_id,))
+        maes_linkadas = len(cur.fetchall())
+
+        conn.commit()
+        return {"pais_linkados": pais_linkados, "maes_linkadas": maes_linkadas}
     finally:
         conn.close()
 
@@ -968,5 +1041,296 @@ def dashboard_v2(imovel_id: int):
         return result
     finally:
         conn.close()
+
+# ── WEBHOOK WHATSAPP/TELEGRAM (IA) ──────────────────────────────────────────
+
+class WhatsAppMensagemBovino(BaseModel):
+    telefone: str
+    tipo_midia: str = "texto"
+    conteudo: str
+    imovel_id: Optional[int] = None
+
+
+def _buscar_animal_bovino(cur, brinco: Optional[str], imovel_id: int) -> Optional[dict]:
+    if not brinco:
+        return None
+    cur.execute(
+        "SELECT id, brinco FROM bovino_animais WHERE imovel_id=%s AND LOWER(brinco)=LOWER(%s)",
+        (imovel_id, brinco)
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _produtor_do_imovel_bovino(cur, imovel_id: int) -> Optional[int]:
+    cur.execute("SELECT produtor_id FROM imoveis_rurais WHERE id = %s", (imovel_id,))
+    row = cur.fetchone()
+    return row["produtor_id"] if row else None
+
+
+def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: float,
+                                    descricao: str, origem: str = "whatsapp_bovino"):
+    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py / ovino.py)."""
+    tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
+    lcdpr_conn = None
+    try:
+        lcdpr_conn = get_db()
+        with lcdpr_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1", (tipo_lancamento,))
+            sub = cur.fetchone()
+            subconta_id = sub["id"] if sub else None
+            cur.execute("""
+                INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (produtor_id, subconta_id, float(valor), data, origem))
+            row = cur.fetchone()
+            lcdpr_conn.commit()
+            return row["id"] if row else None
+    except Exception as e:
+        logger.error("[BOVINO] Erro ao criar lançamento LCDPR: %s", e)
+        if lcdpr_conn:
+            lcdpr_conn.rollback()
+        return None
+    finally:
+        if lcdpr_conn:
+            lcdpr_conn.close()
+
+
+@router.post("/webhook-whatsapp")
+def webhook_whatsapp_bovino(payload: WhatsAppMensagemBovino):
+    from app.services.bovino_ia import classificar_mensagem_sync
+
+    classificacao = classificar_mensagem_sync(texto=payload.conteudo, imovel_id=payload.imovel_id)
+    intent = classificacao["intent"]
+    entidades = classificacao["entidades"]
+    confianca = classificacao["confianca"]
+    resumo = classificacao["resumo"]
+    evento_id = None
+    evento_tab = None
+    status_log = "processado"
+    erro_msg = None
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+
+        if confianca >= 0.5 and payload.imovel_id:
+
+            if intent == "pesagem":
+                animal = _buscar_animal_bovino(cur, entidades.get("brinco"), payload.imovel_id)
+                if animal:
+                    cur.execute("""
+                        INSERT INTO bovino_pesagens (animal_id, data, peso_kg, motivo)
+                        VALUES (%s,%s,%s,%s) RETURNING id
+                    """, (animal["id"], entidades.get("data_evento"), entidades.get("peso_kg"),
+                          entidades.get("motivo", "rotina")))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "bovino_pesagens"
+                else:
+                    status_log = "pendente"
+                    resumo = f"Não encontrei o animal {entidades.get('brinco')}. Confira o brinco."
+
+            elif intent == "producao_leite":
+                animal = _buscar_animal_bovino(cur, entidades.get("brinco"), payload.imovel_id)
+                cur.execute("""
+                    INSERT INTO bovino_producao_leite
+                        (imovel_id, animal_id, data, turno, volume_l, destinacao)
+                    VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+                """, (payload.imovel_id, animal["id"] if animal else None,
+                      entidades.get("data_evento"), entidades.get("turno", "total"),
+                      entidades.get("volume_l"), entidades.get("destinacao", "venda")))
+                evento_id = cur.fetchone()["id"]
+                evento_tab = "bovino_producao_leite"
+
+            elif intent in ("vacinacao", "vermifugacao", "tratamento"):
+                animal = _buscar_animal_bovino(cur, entidades.get("brinco"), payload.imovel_id)
+                cur.execute("""
+                    INSERT INTO bovino_sanitario
+                        (animal_id, tipo, produto, dose_ml, data_aplicacao, observacoes)
+                    VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+                """, (animal["id"] if animal else None, intent, entidades.get("produto"),
+                      entidades.get("dose_ml"), entidades.get("data_evento"),
+                      entidades.get("diagnostico")))
+                evento_id = cur.fetchone()["id"]
+                evento_tab = "bovino_sanitario"
+
+            elif intent == "cobertura":
+                femea = _buscar_animal_bovino(cur, entidades.get("brinco_femea"), payload.imovel_id)
+                touro = _buscar_animal_bovino(cur, entidades.get("brinco_touro"), payload.imovel_id)
+                if femea:
+                    cur.execute("""
+                        INSERT INTO bovino_reproducao (femea_id, touro_id, metodo, data_cobertura)
+                        VALUES (%s,%s,%s,%s) RETURNING id
+                    """, (femea["id"], touro["id"] if touro else None,
+                          entidades.get("metodo", "monta_natural"), entidades.get("data_evento")))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "bovino_reproducao"
+                else:
+                    status_log = "pendente"
+                    resumo = f"Não encontrei a fêmea {entidades.get('brinco_femea')}. Confira o brinco."
+
+            elif intent == "parto":
+                femea = _buscar_animal_bovino(cur, entidades.get("brinco_matriz"), payload.imovel_id)
+                if femea:
+                    cur.execute("""
+                        UPDATE bovino_reproducao SET data_parto_real = %s
+                        WHERE femea_id = %s AND resultado = 'positivo' AND data_parto_real IS NULL
+                        RETURNING id
+                    """, (entidades.get("data_evento"), femea["id"]))
+                    row = cur.fetchone()
+                    if row:
+                        evento_id = row["id"]
+                        evento_tab = "bovino_reproducao"
+                    else:
+                        status_log = "pendente"
+                        resumo = "Parto registrado no resumo, mas não achei uma cobertura em aberto para essa matriz — confira manualmente."
+                else:
+                    status_log = "pendente"
+                    resumo = f"Não encontrei a matriz {entidades.get('brinco_matriz')}. Confira o brinco."
+
+            elif intent == "abate":
+                animal = _buscar_animal_bovino(cur, entidades.get("brinco"), payload.imovel_id)
+                if animal:
+                    cur.execute("""
+                        INSERT INTO bovino_abates
+                            (animal_id, data, tipo, peso_vivo_kg, peso_carcaca_kg,
+                             preco_arroba, valor_total, comprador)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+                    """, (animal["id"], entidades.get("data_evento"), "abate_frigorif",
+                          entidades.get("peso_vivo_kg"), entidades.get("peso_carcaca_kg"),
+                          entidades.get("preco_arroba"), entidades.get("valor_total"),
+                          entidades.get("comprador")))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "bovino_abates"
+                    cur.execute("UPDATE bovino_animais SET status='abatido', updated_at=NOW() WHERE id=%s", (animal["id"],))
+                else:
+                    status_log = "pendente"
+                    resumo = f"Não encontrei o animal {entidades.get('brinco')}. Confira o brinco."
+
+            elif intent == "cadastro":
+                try:
+                    cur.execute("SELECT id FROM especie WHERE codigo = 'BOVINO'")
+                    especie_row = cur.fetchone()
+                    especie_id = especie_row["id"] if especie_row else None
+                    cur.execute("""
+                        INSERT INTO bovino_animais
+                            (imovel_id, especie_id, brinco, sexo, categoria, aptidao_manejo,
+                             data_nascimento, origem)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,'nascimento') RETURNING id
+                    """, (payload.imovel_id, especie_id, entidades.get("brinco"),
+                          entidades.get("sexo", "F"), entidades.get("categoria", "bezerro"),
+                          "corte", entidades.get("data_nascimento")))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "bovino_animais"
+                except psycopg2.errors.UniqueViolation:
+                    conn.rollback()
+                    resumo = f"Animal {entidades.get('brinco')} já cadastrado."
+
+            elif intent == "morte":
+                animal = _buscar_animal_bovino(cur, entidades.get("brinco"), payload.imovel_id)
+                if animal:
+                    cur.execute("UPDATE bovino_animais SET status='morto', updated_at=NOW() WHERE id=%s RETURNING id",
+                                (animal["id"],))
+                    evento_id = cur.fetchone()["id"]
+                    evento_tab = "bovino_animais"
+                else:
+                    status_log = "pendente"
+                    resumo = f"Não encontrei o animal {entidades.get('brinco')}. Confira o brinco."
+
+            elif intent == "compra":
+                produtor_id = _produtor_do_imovel_bovino(cur, payload.imovel_id)
+                valor_total = entidades.get("valor_total")
+                qtd = entidades.get("quantidade")
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_bovino(
+                        conn, produtor_id, entidades.get("data_evento"), "despesa",
+                        valor_total, f"Compra de {qtd or '?'} bovino(s)"
+                                     + (f" — {entidades['raca']}" if entidades.get("raca") else ""),
+                    )
+                    if lanc_id:
+                        evento_id = lanc_id
+                        evento_tab = "lancamentos"
+                        resumo = (
+                            f"✅ Compra registrada: {qtd or '?'} animal(is) por "
+                            f"R$ {float(valor_total):,.2f}. Cadastre os animais individualmente "
+                            f"(com brinco) quando possível para o rebanho ficar completo."
+                        )
+                    else:
+                        status_log = "erro"
+                        resumo = "Entendi a compra, mas não consegui gravar o lançamento financeiro. Confira manualmente."
+                else:
+                    status_log = "pendente"
+                    resumo = "Entendi que foi uma compra, mas não identifiquei o valor. Pode informar o valor total?"
+
+            elif intent == "venda":
+                produtor_id = _produtor_do_imovel_bovino(cur, payload.imovel_id)
+                valor_total = entidades.get("valor_total")
+                qtd = entidades.get("quantidade")
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_bovino(
+                        conn, produtor_id, entidades.get("data_evento"), "receita",
+                        valor_total, f"Venda de {qtd or '?'} bovino(s)"
+                                     + (f" — brinco {entidades['brinco']}" if entidades.get("brinco") else ""),
+                    )
+                    if lanc_id:
+                        evento_id = lanc_id
+                        evento_tab = "lancamentos"
+                        resumo = f"✅ Venda registrada: {qtd or '?'} animal(is) por R$ {float(valor_total):,.2f}."
+                        brinco_vendido = entidades.get("brinco")
+                        if brinco_vendido:
+                            animal = _buscar_animal_bovino(cur, brinco_vendido, payload.imovel_id)
+                            if animal:
+                                cur.execute("UPDATE bovino_animais SET status='vendido', updated_at=NOW() WHERE id=%s", (animal["id"],))
+                    else:
+                        status_log = "erro"
+                        resumo = "Entendi a venda, mas não consegui gravar o lançamento financeiro. Confira manualmente."
+                else:
+                    status_log = "pendente"
+                    resumo = "Entendi que foi uma venda, mas não identifiquei o valor. Pode informar o valor total?"
+
+            else:
+                status_log = "ignorado"
+
+        elif confianca < 0.5:
+            status_log = "pendente"
+            resumo = "Não entendi bem. Pode repetir com mais detalhes?"
+        else:
+            status_log = "ignorado"
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        status_log = "erro"
+        erro_msg = str(e)
+        resumo = "Erro ao salvar. Tente novamente."
+        logger.error("webhook_bovino erro: %s", e, exc_info=True)
+
+    # Log da mensagem
+    try:
+        cur2 = conn.cursor()
+        cur2.execute("""
+            INSERT INTO bovino_whatsapp_log
+                (telefone, tipo_midia, conteudo_raw, intent_detectada,
+                 entidades_json, status, evento_id, evento_tabela, erro_msg)
+            VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+        """, (payload.telefone, payload.tipo_midia, payload.conteudo[:2000],
+              intent, json.dumps(entidades, default=str),
+              status_log, evento_id, evento_tab, erro_msg))
+        conn.commit()
+    except Exception as e:
+        logger.warning("Falha ao salvar log WhatsApp bovino: %s", e)
+    finally:
+        conn.close()
+
+    return {
+        "intent": intent,
+        "confianca": confianca,
+        "status": status_log,
+        "resumo": resumo,
+        "evento_id": evento_id,
+        "evento_tabela": evento_tab,
+    }
+
 
 print("BOVINO ROUTER LOADED OK")

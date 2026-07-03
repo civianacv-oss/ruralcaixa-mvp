@@ -21,6 +21,10 @@ from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, validator
 import httpx
 
+from app.services.estoque_insumos import (
+    aplicar_movimentacao_insumo, custos_por_origem, TIPOS_VALIDOS,
+)
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Insumos"])
 
@@ -60,11 +64,6 @@ class InsumoCreate(BaseModel):
     estoque_minimo: float = 0
     estoque_ideal: float = 0
     estoque_atual: float = 0
-    estoque_reservado: float = 0
-    estoque_maximo: Optional[float] = None
-    lote: Optional[str] = None
-    validade: Optional[date] = None
-    local_armazenamento: Optional[str] = None
     preco_estimado: Optional[float] = None
     fornecedor_id: Optional[int] = None
     reposicao_modo: str = "manual"
@@ -88,12 +87,18 @@ class MovimentacaoCreate(BaseModel):
     custo_unitario: Optional[float] = None
     observacao: Optional[str] = None
     data_movim: Optional[date] = None
+    # Origem/apropriação de custo — opcional; default é lançamento manual pela tela de Insumos.
+    # Módulos de produção (piscicultura, acai, bovino, ...) preenchem estes campos ao
+    # chamar aplicar_movimentacao_insumo() diretamente; este endpoint cobre o uso manual.
+    origem_modulo: str = "manual"
+    origem_tipo: Optional[str] = None
+    origem_id: Optional[int] = None
+    origem_descricao: Optional[str] = None
 
     @validator("tipo")
     def tipo_valido(cls, v):
-        tipos = ("compra","producao_propria","doacao","ajuste_positivo","uso","venda","perda","ajuste_negativo")
-        if v not in tipos:
-            raise ValueError(f"tipo deve ser um de: {list(tipos)}")
+        if v not in TIPOS_VALIDOS:
+            raise ValueError(f"tipo deve ser um de: {sorted(TIPOS_VALIDOS)}")
         return v
 
 class PedidoCreate(BaseModel):
@@ -187,14 +192,6 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
     if origem:    where.append("i.origem = %s");    params.append(origem)
     sql = f"""
         SELECT i.*, f.nome AS fornecedor_nome, f.whatsapp AS fornecedor_whatsapp,
-            (i.estoque_atual - i.estoque_reservado) AS estoque_disponivel,
-            COALESCE((
-                SELECT AVG(m.quantidade) FROM movimentacoes_insumo m
-                WHERE m.insumo_id = i.id AND m.tipo IN ('uso','venda','perda')
-                  AND m.data_movim >= CURRENT_DATE - 30
-            ), 0) AS consumo_medio_diario,
-            (SELECT MAX(m.data_movim) FROM movimentacoes_insumo m WHERE m.insumo_id = i.id AND m.tipo = 'compra') AS ultima_compra,
-            (SELECT MAX(m.data_movim) FROM movimentacoes_insumo m WHERE m.insumo_id = i.id AND m.tipo IN ('uso','venda','perda')) AS ultima_saida,
             CASE
                 WHEN i.estoque_atual <= 0 THEN 'critico'
                 WHEN i.estoque_atual <= i.estoque_minimo THEN 'baixo'
@@ -209,12 +206,7 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            rows = cur.fetchall()
-            for r in rows:
-                consumo = float(r.get("consumo_medio_diario") or 0)
-                disponivel = float(r.get("estoque_disponivel") or 0)
-                r["autonomia_dias"] = round(disponivel / consumo) if consumo > 0 else None
-            return {"data": rows}
+            return {"data": cur.fetchall()}
 
 @router.get("/insumos/alertas")
 def alertas_estoque(request: Request):
@@ -256,26 +248,27 @@ def criar_insumo(body: InsumoCreate, request: Request):
 
             cur.execute("""
                 INSERT INTO insumos (fazenda_id, nome, descricao, categoria, unidade, origem,
-                    estoque_atual, estoque_minimo, estoque_ideal, estoque_reservado, estoque_maximo,
-                    lote, validade, local_armazenamento, preco_estimado,
+                    estoque_atual, estoque_minimo, estoque_ideal, preco_estimado, custo_medio,
                     fornecedor_id, reposicao_modo, lead_time_dias)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING *
             """, (fazenda_id, body.nome.strip(), body.descricao, body.categoria, body.unidade,
-                  body.origem, body.estoque_atual, body.estoque_minimo, body.estoque_ideal,
-                  body.estoque_reservado, body.estoque_maximo, body.lote, body.validade,
-                  body.local_armazenamento, body.preco_estimado, body.fornecedor_id,
-                  body.reposicao_modo, body.lead_time_dias))
+                  body.origem, 0, body.estoque_minimo, body.estoque_ideal,
+                  body.preco_estimado, body.preco_estimado,
+                  body.fornecedor_id, body.reposicao_modo, body.lead_time_dias))
             conn.commit()
             insumo = cur.fetchone()
-            # Se estoque_atual > 0, registra movimentação inicial
+            # Se estoque_atual > 0, registra movimentação inicial via engine (fixa PMP inicial)
             if body.estoque_atual > 0:
-                cur.execute("""
-                    INSERT INTO movimentacoes_insumo
-                        (insumo_id, fazenda_id, tipo, quantidade, custo_unitario, observacao, data_movim)
-                    VALUES (%s,%s,'ajuste_positivo',%s,%s,'Estoque inicial',%s)
-                """, (insumo["id"], fazenda_id, body.estoque_atual, body.preco_estimado, date.today()))
+                aplicar_movimentacao_insumo(
+                    cur, fazenda_id=fazenda_id, insumo_id=insumo["id"],
+                    tipo="ajuste_positivo", quantidade=body.estoque_atual,
+                    custo_unitario=body.preco_estimado,
+                    origem_modulo="manual", observacao="Estoque inicial",
+                )
                 conn.commit()
+                cur.execute("SELECT * FROM insumos WHERE id=%s", (insumo["id"],))
+                insumo = cur.fetchone()
             return {"data": insumo}
 
 # ── ROTAS ESTÁTICAS PRIMEIRO (evitar conflito com /insumos/{iid}) ──────────────────────
@@ -392,13 +385,11 @@ def atualizar_insumo(iid: int, body: InsumoCreate, request: Request):
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE insumos SET nome=%s, descricao=%s, categoria=%s, unidade=%s, origem=%s,
-                    estoque_minimo=%s, estoque_ideal=%s, estoque_reservado=%s, estoque_maximo=%s,
-                    lote=%s, validade=%s, local_armazenamento=%s, preco_estimado=%s,
+                    estoque_minimo=%s, estoque_ideal=%s, preco_estimado=%s,
                     fornecedor_id=%s, reposicao_modo=%s, lead_time_dias=%s, atualizado_em=NOW()
                 WHERE id=%s AND fazenda_id=%s RETURNING *
             """, (body.nome, body.descricao, body.categoria, body.unidade, body.origem,
-                  body.estoque_minimo, body.estoque_ideal, body.estoque_reservado, body.estoque_maximo,
-                  body.lote, body.validade, body.local_armazenamento, body.preco_estimado,
+                  body.estoque_minimo, body.estoque_ideal, body.preco_estimado,
                   body.fornecedor_id, body.reposicao_modo, body.lead_time_dias, iid, fazenda_id))
             conn.commit()
             row = cur.fetchone()
@@ -413,33 +404,40 @@ def movimentar_insumo(iid: int, body: MovimentacaoCreate, request: Request):
     fazenda_id = _auth(request)
     with get_db() as conn:
         with conn.cursor() as cur:
-            # Verifica insumo
-            cur.execute("SELECT * FROM insumos WHERE id=%s AND fazenda_id=%s", (iid, fazenda_id))
-            insumo = cur.fetchone()
-            if not insumo: raise HTTPException(404, "Insumo não encontrado")
-
-            custo_total = None
-            if body.custo_unitario:
-                custo_total = body.custo_unitario * body.quantidade
-
-            cur.execute("""
-                INSERT INTO movimentacoes_insumo
-                    (insumo_id, fazenda_id, tipo, quantidade, custo_unitario, custo_total, observacao, data_movim)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                RETURNING *
-            """, (iid, fazenda_id, body.tipo, body.quantidade, body.custo_unitario,
-                  custo_total, body.observacao, body.data_movim or date.today()))
+            resultado = aplicar_movimentacao_insumo(
+                cur, fazenda_id=fazenda_id, insumo_id=iid, tipo=body.tipo,
+                quantidade=body.quantidade, custo_unitario=body.custo_unitario,
+                origem_modulo=body.origem_modulo, origem_tipo=body.origem_tipo,
+                origem_id=body.origem_id, origem_descricao=body.origem_descricao,
+                observacao=body.observacao, data_movim=body.data_movim,
+            )
             conn.commit()
-            movim = cur.fetchone()
+            movim = resultado["movimentacao"]
 
             # Verifica alerta de estoque baixo após movimentação de saída
-            if body.tipo in ("uso","venda","perda","ajuste_negativo"):
+            if body.tipo in ("uso", "venda", "perda", "ajuste_negativo"):
                 cur.execute("SELECT * FROM vw_insumos_alerta WHERE id=%s", (iid,))
                 alerta = cur.fetchone()
-                if alerta and alerta["status_estoque"] in ("critico","baixo"):
+                if alerta and alerta["status_estoque"] in ("critico", "baixo"):
+                    cur.execute("SELECT * FROM insumos WHERE id=%s AND fazenda_id=%s", (iid, fazenda_id))
+                    insumo = cur.fetchone()
                     _verificar_reposicao_automatica(insumo, alerta, fazenda_id, cur, conn)
 
-            return {"data": movim}
+            return {
+                "data": movim,
+                "novo_estoque": resultado["novo_estoque"],
+                "novo_custo_medio": resultado["novo_custo_medio"],
+            }
+
+
+@router.get("/insumos/custos-por-origem")
+def obter_custos_por_origem(origem_modulo: str, origem_id: int, request: Request):
+    """Soma o custo de insumos consumidos por uma atividade específica
+    (ex.: origem_modulo=piscicultura&origem_id=7 para um ciclo)."""
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            return custos_por_origem(cur, fazenda_id, origem_modulo, origem_id)
 
 
 # ── PEDIDOS DE COMPRA ─────────────────────────────────────────────────

@@ -40,12 +40,16 @@ Intents disponíveis e seus campos:
 - tratamento     → brinco (str), produto (str), diagnostico? (str)
 - desmame        → brinco_cordeiro (str), peso_kg? (float)
 - morte          → brinco (str), causa? (str)
+- compra         → quantidade (int), valor_total (float), raca? (str), fornecedor? (str)
+- venda          → quantidade (int), valor_total (float), brinco? (str), comprador? (str)
 - outro          → descricao (str)
 
 Regras:
 - Datas sem ano assumem o ano atual.
 - Pesos em arrobas (@): multiplique por 15 para obter kg.
 - Se confiança < 0.4, use intent "outro".
+- "Comprei/adquiri N carneiros/ovelhas/cordeiros por R$ X" → intent "compra".
+- "Vendi N carneiros/ovelhas/cordeiros por R$ X" → intent "venda".
 """
 
 

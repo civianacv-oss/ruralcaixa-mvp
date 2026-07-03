@@ -25,6 +25,7 @@ import Agricultura from "./pages/Agricultura";
 import CompraVenda from "./pages/CompraVenda";
 import CultivoAcai from "./pages/CultivoAcai";
 import Piscicultura from "./pages/Piscicultura";
+import GestaoCulturas from "./pages/GestaoCulturas";
 import NFeProdutor from "./pages/NFeProdutor";
 import Relatorios from "./pages/Relatorios";
 import ESocialRural from "./pages/ESocialRural";
@@ -109,6 +110,7 @@ function Router() {
 
       {/* Agricultura */}
       <Route path="/piscicultura">{() => <ProtectedRoute component={Piscicultura} />}</Route>
+      <Route path="/gestao-culturas">{() => <ProtectedRoute component={GestaoCulturas} />}</Route>
       <Route path="/agricultura">{() => <ProtectedRoute component={Agricultura} />}</Route>
       <Route path="/cultivo-acai">{() => <ProtectedRoute component={CultivoAcai} />}</Route>
 
