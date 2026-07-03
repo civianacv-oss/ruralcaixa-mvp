@@ -104,14 +104,28 @@ def run():
         log("  [OK]  registros_diarios_piscicultura.insumo_racao_id / movimentacao_id")
 
         # ── 4. Açaí: liga aplicação de insumos (adubo, defensivo etc.) ao estoque geral ──
-        log("-- Ajustando tabela acai_insumos")
+        # Verifica se a tabela existe antes de alterar — em algumas bases o
+        # módulo Açaí pode não ter sido migrado ainda, e isso não deve travar
+        # o resto desta migração (insumos/piscicultura já foram aplicados
+        # com sucesso nos passos anteriores, cada um com commit próprio).
         cur.execute("""
-            ALTER TABLE acai_insumos
-                ADD COLUMN IF NOT EXISTS insumo_id      INTEGER REFERENCES insumos(id),
-                ADD COLUMN IF NOT EXISTS movimentacao_id INTEGER REFERENCES movimentacoes_insumo(id)
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables WHERE table_name = 'acai_insumos'
+            )
         """)
-        conn.commit()
-        log("  [OK]  acai_insumos.insumo_id / movimentacao_id")
+        acai_existe = cur.fetchone()["exists"]
+        if acai_existe:
+            log("-- Ajustando tabela acai_insumos")
+            cur.execute("""
+                ALTER TABLE acai_insumos
+                    ADD COLUMN IF NOT EXISTS insumo_id      INTEGER REFERENCES insumos(id),
+                    ADD COLUMN IF NOT EXISTS movimentacao_id INTEGER REFERENCES movimentacoes_insumo(id)
+            """)
+            conn.commit()
+            log("  [OK]  acai_insumos.insumo_id / movimentacao_id")
+        else:
+            log("  [SKIP] tabela 'acai_insumos' não existe nesta base — módulo Açaí")
+            log("         pode não estar migrado ainda. Pulando sem travar a migração.")
 
         # ── Registrar ────────────────────────────────────────────────────
         cur.execute("""
@@ -122,10 +136,14 @@ def run():
 
         print()
         print("✅  Migração 012 aplicada com sucesso!")
-        for t in ["insumos.custo_medio", "movimentacoes_insumo.origem_*",
-                  "compras_insumos_piscicultura.insumo_id", "registros_diarios_piscicultura.insumo_racao_id",
-                  "acai_insumos.insumo_id"]:
+        itens_ok = ["insumos.custo_medio", "movimentacoes_insumo.origem_*",
+                    "compras_insumos_piscicultura.insumo_id", "registros_diarios_piscicultura.insumo_racao_id"]
+        if acai_existe:
+            itens_ok.append("acai_insumos.insumo_id")
+        for t in itens_ok:
             print(f"    ✓ {t}")
+        if not acai_existe:
+            print("    ⊘ acai_insumos.insumo_id — pulado (tabela não existe nesta base)")
         print()
         print("  Nenhum backfill de histórico foi necessário (sem dados anteriores).")
         print("  A partir de agora, ligue insumo_id nas compras/consumo desses módulos")
