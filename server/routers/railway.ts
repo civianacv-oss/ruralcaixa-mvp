@@ -118,6 +118,16 @@ interface Insumo {
   estoque_atual: number;
   estoque_minimo: number;
   estoque_ideal: number;
+  estoque_reservado?: number;
+  estoque_maximo?: number;
+  estoque_disponivel?: number;
+  consumo_medio_diario?: number;
+  autonomia_dias?: number | null;
+  lote?: string;
+  validade?: string;
+  local_armazenamento?: string;
+  ultima_compra?: string;
+  ultima_saida?: string;
   preco_estimado?: number;
   custo_medio?: number;
   valor_total_estoque?: number;
@@ -487,6 +497,13 @@ export const railwayRouter = router({
         }
       }
 
+      if (rows_novas.length === 0 && conflitos.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Nenhuma linha com brinco reconhecido. Verifique se a planilha tem uma coluna "Brinco" (ou ID/Identificação/Número/Tag) e se o cabeçalho está na primeira linha de dados.`,
+        });
+      }
+
       return { rows_novas, conflitos, ignoradas_count, total_planilha: input.rows.length };
     }),
 
@@ -824,6 +841,11 @@ export const railwayRouter = router({
       estoque_atual: z.number().default(0),
       estoque_minimo: z.number().default(0),
       estoque_ideal: z.number().default(0),
+      estoque_reservado: z.number().default(0),
+      estoque_maximo: z.number().optional(),
+      lote: z.string().optional(),
+      validade: z.string().optional(),
+      local_armazenamento: z.string().optional(),
       preco_estimado: z.number().optional(),
       fornecedor_id: z.number().optional(),
       reposicao_modo: z.enum(["automatico", "manual"]).default("manual"),

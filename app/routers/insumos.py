@@ -60,6 +60,11 @@ class InsumoCreate(BaseModel):
     estoque_minimo: float = 0
     estoque_ideal: float = 0
     estoque_atual: float = 0
+    estoque_reservado: float = 0
+    estoque_maximo: Optional[float] = None
+    lote: Optional[str] = None
+    validade: Optional[date] = None
+    local_armazenamento: Optional[str] = None
     preco_estimado: Optional[float] = None
     fornecedor_id: Optional[int] = None
     reposicao_modo: str = "manual"
@@ -182,6 +187,14 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
     if origem:    where.append("i.origem = %s");    params.append(origem)
     sql = f"""
         SELECT i.*, f.nome AS fornecedor_nome, f.whatsapp AS fornecedor_whatsapp,
+            (i.estoque_atual - i.estoque_reservado) AS estoque_disponivel,
+            COALESCE((
+                SELECT AVG(m.quantidade) FROM movimentacoes_insumo m
+                WHERE m.insumo_id = i.id AND m.tipo IN ('uso','venda','perda')
+                  AND m.data_movim >= CURRENT_DATE - 30
+            ), 0) AS consumo_medio_diario,
+            (SELECT MAX(m.data_movim) FROM movimentacoes_insumo m WHERE m.insumo_id = i.id AND m.tipo = 'compra') AS ultima_compra,
+            (SELECT MAX(m.data_movim) FROM movimentacoes_insumo m WHERE m.insumo_id = i.id AND m.tipo IN ('uso','venda','perda')) AS ultima_saida,
             CASE
                 WHEN i.estoque_atual <= 0 THEN 'critico'
                 WHEN i.estoque_atual <= i.estoque_minimo THEN 'baixo'
@@ -196,7 +209,12 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return {"data": cur.fetchall()}
+            rows = cur.fetchall()
+            for r in rows:
+                consumo = float(r.get("consumo_medio_diario") or 0)
+                disponivel = float(r.get("estoque_disponivel") or 0)
+                r["autonomia_dias"] = round(disponivel / consumo) if consumo > 0 else None
+            return {"data": rows}
 
 @router.get("/insumos/alertas")
 def alertas_estoque(request: Request):
@@ -238,13 +256,16 @@ def criar_insumo(body: InsumoCreate, request: Request):
 
             cur.execute("""
                 INSERT INTO insumos (fazenda_id, nome, descricao, categoria, unidade, origem,
-                    estoque_atual, estoque_minimo, estoque_ideal, preco_estimado,
+                    estoque_atual, estoque_minimo, estoque_ideal, estoque_reservado, estoque_maximo,
+                    lote, validade, local_armazenamento, preco_estimado,
                     fornecedor_id, reposicao_modo, lead_time_dias)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING *
             """, (fazenda_id, body.nome.strip(), body.descricao, body.categoria, body.unidade,
                   body.origem, body.estoque_atual, body.estoque_minimo, body.estoque_ideal,
-                  body.preco_estimado, body.fornecedor_id, body.reposicao_modo, body.lead_time_dias))
+                  body.estoque_reservado, body.estoque_maximo, body.lote, body.validade,
+                  body.local_armazenamento, body.preco_estimado, body.fornecedor_id,
+                  body.reposicao_modo, body.lead_time_dias))
             conn.commit()
             insumo = cur.fetchone()
             # Se estoque_atual > 0, registra movimentação inicial
@@ -371,11 +392,13 @@ def atualizar_insumo(iid: int, body: InsumoCreate, request: Request):
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE insumos SET nome=%s, descricao=%s, categoria=%s, unidade=%s, origem=%s,
-                    estoque_minimo=%s, estoque_ideal=%s, preco_estimado=%s,
+                    estoque_minimo=%s, estoque_ideal=%s, estoque_reservado=%s, estoque_maximo=%s,
+                    lote=%s, validade=%s, local_armazenamento=%s, preco_estimado=%s,
                     fornecedor_id=%s, reposicao_modo=%s, lead_time_dias=%s, atualizado_em=NOW()
                 WHERE id=%s AND fazenda_id=%s RETURNING *
             """, (body.nome, body.descricao, body.categoria, body.unidade, body.origem,
-                  body.estoque_minimo, body.estoque_ideal, body.preco_estimado,
+                  body.estoque_minimo, body.estoque_ideal, body.estoque_reservado, body.estoque_maximo,
+                  body.lote, body.validade, body.local_armazenamento, body.preco_estimado,
                   body.fornecedor_id, body.reposicao_modo, body.lead_time_dias, iid, fazenda_id))
             conn.commit()
             row = cur.fetchone()
