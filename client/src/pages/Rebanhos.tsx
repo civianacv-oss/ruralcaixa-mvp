@@ -175,24 +175,41 @@ export default function Rebanhos() {
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !imovelId) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const wb = XLSX.read(ev.target?.result, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        if (rows.length === 0) { toast.error("Planilha vazia ou sem dados reconhecíveis"); return; }
-        analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
-      } catch {
-        toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
+  const HEADER_HINTS = ["brinco", "id", "identificacao", "numero", "tag"];
+
+const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !imovelId) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const wb = XLSX.read(ev.target?.result, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      // Detecta a linha real de cabeçalho (pula linhas de metadados tipo
+      // "Gerado em...", "Fazenda...", etc. antes do cabeçalho verdadeiro).
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+        const rowVals = (rawRows[i] || []).map((v) =>
+          String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        );
+        if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
+          headerRowIndex = i;
+          break;
+        }
       }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = "";
+
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
+      if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna "Brinco" reconhecível.'); return; }
+      analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+    } catch {
+      toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
+    }
   };
+  reader.readAsArrayBuffer(file);
+  e.target.value = "";
+};
 
   const handleConfirmarImportacao = (rows_novas: any[], conflitos: any[]) => {
     if (!imovelId) return;
