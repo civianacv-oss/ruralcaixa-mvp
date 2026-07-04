@@ -5,7 +5,8 @@ from datetime import date
 REGRAS = [
     (["diesel","gasolina","etanol","combustivel","abastec"], "3.1.2", "despesa", None),
     (["semente","adubo","fertilizante","calcario","defensivo"], "3.1.1", "despesa", None),
-    (["racao","vacina","vermifugo","medicamento animal"], "3.1.3", "despesa", None),
+    (["racao", "vacina", "vermifugo", "medicamento", "remedio", "farmacia",
+      "antibiotico", "antiinflamatorio", "antiflamatorio"], "3.1.3", "despesa", None),
     (["salario","funcionario","diarista","mao de obra"], "3.1.4", "despesa", None),
     (["manutencao","reparo","conserto","peca"], "3.1.5", "despesa", None),
     (["energia","luz","conta de luz"], "3.1.6", "despesa", None),
@@ -103,22 +104,34 @@ def detectar_produto(texto_norm):
             return produto
     return None
 
-def classificar(texto):
+def classificar(texto, termos_aprendidos: dict = None):
+    """termos_aprendidos: dict opcional {termo_normalizado: (conta, tipo)},
+    vindo de correções manuais anteriores do produtor (tabela
+    termos_aprendidos_financeiro). Tem prioridade sobre as REGRAS fixas,
+    porque representa uma escolha explícita do próprio produtor."""
     texto_norm = normalizar(texto)
     melhor = None
     melhor_score = 0
 
-    for palavras, conta, tipo, produto in REGRAS:
-        score = sum(1 for p in palavras if p in texto_norm)
-        if score > melhor_score:
-            melhor_score = score
-            melhor = (conta, tipo, produto)
+    if termos_aprendidos:
+        for termo, (conta_aprendida, tipo_aprendido) in termos_aprendidos.items():
+            if termo in texto_norm:
+                melhor = (conta_aprendida, tipo_aprendido, None)
+                melhor_score = 99  # aprendido > regra fixa, mas ainda passa pelas checagens abaixo
+                break
+
+    if melhor is None:
+        for palavras, conta, tipo, produto in REGRAS:
+            score = sum(1 for p in palavras if p in texto_norm)
+            if score > melhor_score:
+                melhor_score = score
+                melhor = (conta, tipo, produto)
 
     if not melhor or melhor_score == 0:
         return None
 
     valor = extrair_valor(texto)
-    confianca = min(95, 60 + melhor_score * 15)
+    confianca = min(95, 60 + melhor_score * 15) if melhor_score < 99 else 90
     produto = melhor[2] or detectar_produto(texto_norm)
 
     # Detectar atividade
@@ -148,6 +161,27 @@ def classificar(texto):
         else:
             melhor = ("3.9", "despesa", None)
 
+    # Algumas contas são ambíguas quanto à direção (quem paga x quem recebe)
+    # sem mais contexto — "aluguel"/"arrendamento" pode ser tanto despesa
+    # (paguei pra alugar de alguém) quanto receita (aluguei o que é meu pra
+    # alguém). Tenta resolver pelo próprio texto antes de marcar como
+    # ambíguo — só pergunta ao produtor quando não há pista nenhuma.
+    CONTAS_AMBIGUAS_DIRECAO = {"3.1.7"}
+    ambiguo_direcao = False
+    if melhor[0] in CONTAS_AMBIGUAS_DIRECAO:
+        # Só resolve sozinho quando há um verbo inequívoco de quem recebeu ou
+        # pagou — frases como "aluguei pro vizinho" têm o objeto no meio
+        # ("aluguei A PÁ pro vizinho"), então não dá pra confiar em casar
+        # "aluguei" + preposição coladas. Melhor perguntar do que arriscar.
+        PALAVRAS_RECEITA_CTX = ["recebi", "cobrei", "ganhei", "faturei"]
+        PALAVRAS_DESPESA_CTX = ["paguei", "gastei", "contratei", "desembolsei"]
+        if any(p in texto_norm for p in PALAVRAS_RECEITA_CTX):
+            melhor = (melhor[0], "receita", melhor[2])
+        elif any(p in texto_norm for p in PALAVRAS_DESPESA_CTX):
+            melhor = (melhor[0], "despesa", melhor[2])
+        else:
+            ambiguo_direcao = True
+
     return {
         "conta": melhor[0],
         "tipo": melhor[1],
@@ -156,4 +190,5 @@ def classificar(texto):
         "confianca": confianca,
         "produto": produto,
         "atividade": atividade,
+        "ambiguo_direcao": ambiguo_direcao,
     }

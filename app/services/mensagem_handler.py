@@ -17,7 +17,9 @@ Estrutura da mensagem normalizada (MsgIn):
 """
 
 import os
+import re
 import logging
+from datetime import date
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -120,6 +122,47 @@ async def processar_mensagem(msg: MsgIn) -> str:
             sess = sessoes[key]
             sess["valor"] = valor_digitado
             sess.pop("_aguardando_valor", None)
+            return _proximo_passo_apos_valor(sess, msg.numero)
+
+        # Sub-fluxo: termo desconhecido pelo classificador — produtor escolhe
+        # a conta certa, o sistema aprende e prossegue com o lançamento
+        if sessoes[key].get("_aguardando_conta_novo_termo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            escolha = _resolver_escolha_conta(texto)
+            if not escolha:
+                return _texto_lista_contas(prefixo="Não entendi a escolha. ")
+            texto_original = sessoes[key]["_texto_original"]
+            conta, label = escolha
+            tipo = _tipo_da_conta(conta)
+            _aprender_termos(msg.numero, texto_original, conta, tipo)
+            from app.services.classifier import extrair_valor
+            novo_sess = {
+                "conta": conta, "tipo": tipo,
+                "valor": extrair_valor(texto_original),
+                "data": date.today().isoformat(),
+                "confianca": 90, "produto": None, "atividade": "rural",
+            }
+            sessoes[key] = novo_sess
+            prefixo = f"Aprendido! Da próxima vez que aparecer algo parecido, já classifico direto.\n\n"
+            if novo_sess["valor"] is None:
+                sessoes[key]["_aguardando_valor"] = True
+                return prefixo + "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
+            return prefixo + _texto_confirmacao(novo_sess)
+
+        # Sub-fluxo: direção ambígua (aluguel etc.) — despesa ou receita?
+        if sessoes[key].get("_aguardando_direcao"):
+            resp = texto_up.strip()
+            sess = sessoes[key]
+            if resp in ("1", "DESPESA", "PAGUEI"):
+                sess["tipo"] = "despesa"
+            elif resp in ("2", "RECEITA", "RECEBI"):
+                sess["tipo"] = "receita"
+            else:
+                return _texto_pergunta_direcao(prefixo="Não entendi. ")
+            sess.pop("_aguardando_direcao", None)
+            sess.pop("ambiguo_direcao", None)
             return _proximo_passo_compra_animal(sess, msg.numero)
 
         # Sub-fluxo: compra de animal — produtor já tem cadastro de compra-e-
@@ -295,15 +338,13 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if any(k in texto.lower() for k in keywords_pisc):
         return await _processar_zootecnico(msg, "piscicultura", texto)
 
-    # Classificação financeira via IA
-    resultado = classificar(texto)
+    # Classificação financeira via IA (com termos que o produtor já ensinou antes)
+    termos_aprendidos = _buscar_termos_aprendidos(msg.numero)
+    resultado = classificar(texto, termos_aprendidos=termos_aprendidos)
     if not resultado:
-        return (
-            "Não entendi. Exemplos:\n"
-            "• 'vendi 5 bois por 10000'\n"
-            "• 'comprei ração 500 reais'\n"
-            "• /saldo — ver resumo do mês\n"
-            "• /ajuda — todos os comandos"
+        sessoes[key] = {"_aguardando_conta_novo_termo": True, "_texto_original": texto}
+        return _texto_lista_contas(
+            prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
         )
 
     sessoes[key] = resultado
@@ -313,7 +354,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
         sessoes[key]["_aguardando_valor"] = True
         return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
 
-    return _proximo_passo_compra_animal(resultado, msg.numero)
+    return _proximo_passo_apos_valor(resultado, msg.numero)
 
 
 def _resolver_imovel_id(numero: str) -> int:
@@ -384,6 +425,26 @@ def _texto_pergunta_tipo_atividade(especie: str, prefixo: str = "") -> str:
         f"1. Revenda (compra-e-venda)\n"
         f"2. Rural (cria/engorda)"
     )
+
+
+def _texto_pergunta_direcao(prefixo: str = "") -> str:
+    return (
+        f"{prefixo}Isso é uma despesa (você pagou pra alugar de alguém) ou "
+        f"receita (você recebeu por alugar algo seu)?\n\n"
+        f"1. Despesa (paguei)\n"
+        f"2. Receita (recebi)"
+    )
+
+
+def _proximo_passo_apos_valor(sess: dict, numero: str) -> str:
+    """Chamado sempre que um lançamento já tem valor definido — verifica
+    primeiro se a direção (receita/despesa) ficou ambígua (ex: aluguel sem
+    dizer quem pagou/recebeu) antes de seguir pro fluxo de compra de animal
+    e a confirmação final."""
+    if sess.get("ambiguo_direcao"):
+        sess["_aguardando_direcao"] = True
+        return _texto_pergunta_direcao()
+    return _proximo_passo_compra_animal(sess, numero)
 
 
 def _proximo_passo_compra_animal(sess: dict, numero: str) -> str:
@@ -473,6 +534,72 @@ def _texto_lista_contas(prefixo: str = "") -> str:
     linhas.append("\n0. Cancelar o lançamento")
     linhas.append("\nResponda com o número da conta.")
     return "\n".join(linhas)
+
+
+STOPWORDS_APRENDIZADO = {
+    "de", "da", "do", "das", "dos", "a", "o", "e", "para", "pra", "pro", "por",
+    "com", "em", "um", "uma", "uns", "umas", "no", "na", "nos", "nas", "ao",
+    "aos", "as", "os", "reais", "real", "rs", "comprei", "compra", "comprar",
+    "vendi", "venda", "vender", "paguei", "recebi", "gastei",
+}
+
+
+def _extrair_termos_significativos(texto: str) -> list:
+    """Extrai palavras que valem a pena aprender de uma frase — remove
+    números, moeda e palavras muito comuns/genéricas."""
+    palavras = re.findall(r"[a-zà-úA-ZÀ-Ú]+", texto.lower())
+    return [p for p in palavras if len(p) >= 4 and p not in STOPWORDS_APRENDIZADO]
+
+
+def _buscar_termos_aprendidos(numero: str) -> dict:
+    """Busca os termos que esse produtor já ensinou antes (correções
+    manuais de lançamentos que o classificador não reconheceu)."""
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    produtor_id = _resolver_produtor_id(numero)
+    if not produtor_id:
+        return {}
+    with engine.connect() as conn:
+        rows = conn.execute(sqlt("""
+            SELECT termo, conta, tipo FROM termos_aprendidos_financeiro
+            WHERE produtor_id = :produtor_id
+        """), {"produtor_id": produtor_id}).fetchall()
+        return {r[0]: (r[1], r[2]) for r in rows}
+
+
+def _resolver_produtor_id(numero: str):
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        row = conn.execute(sqlt(
+            "SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1"
+        ), {"tel": f"%{numero[-8:]}"}).fetchone()
+        return row[0] if row else None
+
+
+def _aprender_termos(numero: str, texto_original: str, conta: str, tipo: str):
+    """Grava os termos significativos da frase como aprendizado — da
+    próxima vez que qualquer uma dessas palavras aparecer, classifica
+    direto sem perguntar de novo."""
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    produtor_id = _resolver_produtor_id(numero)
+    if not produtor_id:
+        return
+    termos = _extrair_termos_significativos(texto_original)
+    if not termos:
+        return
+    with engine.connect() as conn:
+        for termo in termos:
+            conn.execute(sqlt("""
+                INSERT INTO termos_aprendidos_financeiro (termo, conta, tipo, produtor_id)
+                VALUES (:termo, :conta, :tipo, :produtor_id)
+                ON CONFLICT (termo, produtor_id) DO UPDATE SET
+                    conta = EXCLUDED.conta, tipo = EXCLUDED.tipo,
+                    vezes_usado = termos_aprendidos_financeiro.vezes_usado + 1,
+                    atualizado_em = NOW()
+            """), {"termo": termo, "conta": conta, "tipo": tipo, "produtor_id": produtor_id})
+        conn.commit()
 
 
 def _tipo_da_conta(codigo: str) -> str:
