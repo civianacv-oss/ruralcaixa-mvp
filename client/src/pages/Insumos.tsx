@@ -249,6 +249,12 @@ export default function Insumos() {
     { enabled: !!imovelId && !!selectedInsumoId && historyOpen, retry: false }
   );
 
+  // Resumo de compras/consumo do mês (cards do topo da tela)
+  const { data: resumoMovimentacoes } = trpc.railway.resumoMovimentacoesInsumos.useQuery(
+    { imovelId: imovelId! },
+    { enabled: !!imovelId, retry: false }
+  );
+
   // ── Mutations ────────────────────────────────────────────────────────────────
   const createInsumo = trpc.railway.createInsumo.useMutation({
     onSuccess: () => {
@@ -1148,7 +1154,7 @@ export default function Insumos() {
 
       {/* ── Cards de custo ── */}
       {!backendPendente && (valorTotalEstoque > 0 || custoMedioGeral > 0) && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Valor total do estoque */}
           <div className="rounded-lg border bg-emerald-50 border-emerald-200 p-3">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
@@ -1156,6 +1162,24 @@ export default function Insumos() {
             </p>
             <p className="text-xl font-bold text-emerald-700 tabular-nums">{fmtBRL(valorTotalEstoque)}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{insumosComCusto.length} insumos com custo</p>
+          </div>
+
+          {/* Compras do mês */}
+          <div className="rounded-lg border bg-sky-50 border-sky-200 p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <ArrowDownCircle className="h-3 w-3 text-sky-600" /> Compras no mês
+            </p>
+            <p className="text-xl font-bold text-sky-700 tabular-nums">{fmtBRL(resumoMovimentacoes?.compras_mes ?? 0)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{resumoMovimentacoes?.qtd_compras ?? 0} entrada(s)</p>
+          </div>
+
+          {/* Consumo do mês */}
+          <div className="rounded-lg border bg-orange-50 border-orange-200 p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <ArrowUpCircle className="h-3 w-3 text-orange-600" /> Consumo no mês
+            </p>
+            <p className="text-xl font-bold text-orange-700 tabular-nums">{fmtBRL(resumoMovimentacoes?.consumo_mes ?? 0)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{resumoMovimentacoes?.qtd_usos ?? 0} saída(s)</p>
           </div>
 
           {/* Custo médio geral */}
@@ -2462,6 +2486,31 @@ export default function Insumos() {
                   </span>
                 )}
               </div>
+
+              {/* Movimentação do mês: estoque inicial + entradas - saídas = estoque atual */}
+              {(insumoDetalhe.entradas_mes > 0 || insumoDetalhe.saidas_mes > 0) && (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">Movimentação deste mês</p>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Inicial</p>
+                      <p className="text-sm font-bold tabular-nums">{fmtEstoque(insumoDetalhe.estoque_inicial_mes, insumoDetalhe.unidade)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Entradas</p>
+                      <p className="text-sm font-bold text-green-600 tabular-nums">+{fmtEstoque(insumoDetalhe.entradas_mes, insumoDetalhe.unidade)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Saídas</p>
+                      <p className="text-sm font-bold text-red-600 tabular-nums">-{fmtEstoque(insumoDetalhe.saidas_mes, insumoDetalhe.unidade)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Atual</p>
+                      <p className="text-sm font-bold tabular-nums">{fmtEstoque(insumoDetalhe.estoque_atual, insumoDetalhe.unidade)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Button size="sm" className="flex-1" onClick={() => { setMovimInsumoId(selectedInsumoId); setOpenMovim(true); }}>

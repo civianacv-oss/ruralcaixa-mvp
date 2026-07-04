@@ -208,6 +208,36 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
             cur.execute(sql, params)
             return {"data": cur.fetchall()}
 
+@router.get("/insumos/resumo-movimentacoes")
+def resumo_movimentacoes(request: Request, mes: Optional[str] = None):
+    """Resumo do período (mês) pra exibir no topo da tela: total comprado
+    (entradas tipo compra) e total consumido (saídas tipo uso), em R$,
+    somando todos os insumos da fazenda. `mes` no formato YYYY-MM; se
+    omitido, usa o mês corrente."""
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            filtro_mes = "TO_CHAR(m.data_movim, 'YYYY-MM') = %s" if mes else \
+                         "TO_CHAR(m.data_movim, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')"
+            params = [fazenda_id] + ([mes] if mes else [])
+            cur.execute(f"""
+                SELECT
+                    COALESCE(SUM(CASE WHEN m.tipo = 'compra' THEN m.custo_total ELSE 0 END), 0) AS compras_mes,
+                    COALESCE(SUM(CASE WHEN m.tipo = 'uso' THEN m.custo_total ELSE 0 END), 0) AS consumo_mes,
+                    COUNT(DISTINCT CASE WHEN m.tipo = 'compra' THEN m.id END) AS qtd_compras,
+                    COUNT(DISTINCT CASE WHEN m.tipo = 'uso' THEN m.id END) AS qtd_usos
+                FROM movimentacoes_insumo m
+                WHERE m.fazenda_id = %s AND {filtro_mes}
+            """, params)
+            resumo = cur.fetchone()
+            return {
+                "compras_mes": float(resumo["compras_mes"] or 0),
+                "consumo_mes": float(resumo["consumo_mes"] or 0),
+                "qtd_compras": resumo["qtd_compras"] or 0,
+                "qtd_usos": resumo["qtd_usos"] or 0,
+            }
+
+
 @router.get("/insumos/alertas")
 def alertas_estoque(request: Request):
     """Retorna insumos com estoque baixo ou crítico."""
@@ -362,6 +392,29 @@ def obter_insumo(iid: int, request: Request):
                 WHERE insumo_id=%s ORDER BY criado_em DESC LIMIT 20
             """, (iid,))
             row["movimentacoes"] = cur.fetchall()
+
+            # Estoque inicial do mês / entradas / saídas do mês — calculado a
+            # partir de TODAS as movimentações do mês (não só as 20 últimas
+            # acima, que são só pra exibição do histórico recente).
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao','ajuste_positivo')
+                                       THEN quantidade ELSE 0 END), 0) AS entradas_mes,
+                    COALESCE(SUM(CASE WHEN tipo IN ('uso','venda','perda','ajuste_negativo')
+                                       THEN quantidade ELSE 0 END), 0) AS saidas_mes
+                FROM movimentacoes_insumo
+                WHERE insumo_id = %s
+                  AND TO_CHAR(data_movim, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+            """, (iid,))
+            mov_mes = cur.fetchone()
+            entradas_mes = float(mov_mes["entradas_mes"] or 0)
+            saidas_mes = float(mov_mes["saidas_mes"] or 0)
+            estoque_atual = float(row["estoque_atual"] or 0)
+            row["entradas_mes"] = entradas_mes
+            row["saidas_mes"] = saidas_mes
+            # Estoque inicial do mês = estoque atual desfazendo o que entrou/saiu neste mês
+            row["estoque_inicial_mes"] = estoque_atual - entradas_mes + saidas_mes
+
             return {"data": row}
 
 @router.delete("/insumos/{iid}")

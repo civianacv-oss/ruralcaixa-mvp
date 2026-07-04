@@ -131,6 +131,9 @@ interface Insumo {
   preco_estimado?: number;
   custo_medio?: number;
   valor_total_estoque?: number;
+  entradas_mes?: number;
+  saidas_mes?: number;
+  estoque_inicial_mes?: number;
   fornecedor_id?: number;
   fornecedor_nome?: string;
   reposicao_modo: string;
@@ -997,6 +1000,17 @@ export const railwayRouter = router({
       return (data as { data: Insumo }).data ?? data;
     }),
 
+  resumoMovimentacoesInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number(), mes: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const qs = input.mes ? `&mes=${input.mes}` : "";
+      return railwayFetch<{
+        compras_mes: number; consumo_mes: number; qtd_compras: number; qtd_usos: number;
+      }>(`/insumos/resumo-movimentacoes?fazenda_id=${input.imovelId}${qs}`, undefined, claims.produtorId);
+    }),
+
   insumoDetalhe: publicProcedure
     .input(z.object({ imovelId: z.number(), insumoId: z.number() }))
     .query(async ({ ctx, input }) => {
@@ -1368,12 +1382,16 @@ export const railwayRouter = router({
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
 
-      // Detectar linha de cabeçalho real
+      // Detectar linha de cabeçalho real (tolerante a acento e a variações
+      // de nome de coluna — mesma lógica usada no import de animais)
+      const HEADER_HINTS_INSUMO = ["nome", "name", "insumo", "produto", "descricao"];
+      const normHeaderVal = (v: unknown) =>
+        String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", header: 1 }) as unknown[][];
       let headerRowIndex = 0;
       for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
-        const rowVals = rawRows[i].map(v => String(v ?? "").toLowerCase().trim());
-        if (rowVals.some(v => v === "nome" || v === "name" || v === "insumo" || v === "produto")) {
+        const rowVals = (rawRows[i] || []).map(normHeaderVal);
+        if (rowVals.some(v => HEADER_HINTS_INSUMO.some(h => v === h || v.includes(h)))) {
           headerRowIndex = i;
           break;
         }
@@ -1386,9 +1404,22 @@ export const railwayRouter = router({
       const toNum = (v: unknown) => { const n = parseFloat(String(v ?? "0").replace(",", ".")); return isNaN(n) ? 0 : n; };
       // Normaliza chave de coluna: remove acentos (NFD) e caracteres não alfanuméricos
       const normKey = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      // Quebra o nome da coluna em palavras, pra correspondência por palavra
+      // inteira (ex.: "Nome do Insumo" ~ "nome", sem "Sobrenome" casar errado)
+      const colWordsInsumo = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
       const col = (row: Record<string, unknown>, ...keys: string[]) => {
+        const cols = Object.keys(row);
+        // 1ª passada: nome da coluna inteiro bate exatamente com o alias
         for (const k of keys) {
-          const found = Object.keys(row).find(rk => normKey(rk) === normKey(k));
+          const found = cols.find(rk => normKey(rk) === normKey(k));
+          if (found && row[found] !== "") return row[found];
+        }
+        // 2ª passada: alguma palavra do nome da coluna bate com o alias
+        // (cobre "Nome do Insumo", "Preço Unitário", "Estoque Atual (kg)" etc.)
+        for (const k of keys) {
+          const kn = normKey(k);
+          const found = cols.find(rk => colWordsInsumo(rk).includes(kn));
           if (found && row[found] !== "") return row[found];
         }
         return "";
