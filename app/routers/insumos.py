@@ -197,9 +197,21 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
                 WHEN i.estoque_atual <= i.estoque_minimo THEN 'baixo'
                 WHEN i.estoque_atual <= i.estoque_minimo * 1.5 THEN 'atencao'
                 ELSE 'ok'
-            END AS status_estoque
+            END AS status_estoque,
+            COALESCE(mov.entradas_mes, 0) AS entradas_mes,
+            COALESCE(mov.saidas_mes, 0) AS saidas_mes,
+            i.estoque_atual - COALESCE(mov.entradas_mes, 0) + COALESCE(mov.saidas_mes, 0) AS estoque_inicial_mes
         FROM insumos i
         LEFT JOIN fornecedores f ON f.id = i.fornecedor_id
+        LEFT JOIN (
+            SELECT
+                insumo_id,
+                SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao','ajuste_positivo') THEN quantidade ELSE 0 END) AS entradas_mes,
+                SUM(CASE WHEN tipo IN ('uso','venda','perda','ajuste_negativo') THEN quantidade ELSE 0 END) AS saidas_mes
+            FROM movimentacoes_insumo
+            WHERE TO_CHAR(data_movim, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+            GROUP BY insumo_id
+        ) mov ON mov.insumo_id = i.id
         WHERE {" AND ".join(where)}
         ORDER BY i.categoria, i.nome
     """

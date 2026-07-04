@@ -1749,8 +1749,12 @@ export default function Insumos() {
                   <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                     <TableRow>
                       <TableHead className="w-[220px] max-w-[220px]">Nome</TableHead>
+                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Inicial</TableHead>
+                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Entradas</TableHead>
+                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Saídas</TableHead>
                       <TableHead className="w-[100px] text-right">Estoque</TableHead>
                       <TableHead className="w-[80px] text-right hidden sm:table-cell">Mínimo</TableHead>
+                      <TableHead className="w-[100px] text-right hidden xl:table-cell">Valor</TableHead>
                       <TableHead className="w-[90px]">Status</TableHead>
                       <TableHead className="w-[140px] hidden md:table-cell">Fornecedor</TableHead>
                       <TableHead className="w-[120px] text-right">Ação</TableHead>
@@ -1774,7 +1778,7 @@ export default function Insumos() {
                                   return next;
                                 })}
                               >
-                                <TableCell colSpan={7}>
+                                <TableCell colSpan={11}>
                                   <div className="flex items-center gap-2">
                                     {expandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                     <span className="font-semibold capitalize">{cat}</span>
@@ -1804,6 +1808,22 @@ export default function Insumos() {
                                         </span>
                                       </div>
                                     </TableCell>
+                                    {/* Colunas: Inicial / Entradas / Saídas do mês (só telas grandes) */}
+                                    <TableCell className="text-right hidden lg:table-cell">
+                                      <span className="text-xs text-muted-foreground tabular-nums">
+                                        {fmtEstoque(ins.estoque_inicial_mes ?? 0, ins.unidade)}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right hidden lg:table-cell">
+                                      <span className="text-xs text-green-600 font-medium tabular-nums">
+                                        {(ins.entradas_mes ?? 0) > 0 ? `+${fmtEstoque(ins.entradas_mes, ins.unidade)}` : "—"}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right hidden lg:table-cell">
+                                      <span className="text-xs text-red-600 font-medium tabular-nums">
+                                        {(ins.saidas_mes ?? 0) > 0 ? `-${fmtEstoque(ins.saidas_mes, ins.unidade)}` : "—"}
+                                      </span>
+                                    </TableCell>
                                     {/* Coluna 2: Estoque Atual */}
                                     <TableCell className="text-right">
                                       <span className={`font-semibold tabular-nums ${
@@ -1816,6 +1836,14 @@ export default function Insumos() {
                                     <TableCell className="text-right hidden sm:table-cell">
                                       <span className="text-sm text-muted-foreground tabular-nums">
                                         {fmtEstoque(ins.estoque_minimo, ins.unidade)}
+                                      </span>
+                                    </TableCell>
+                                    {/* Coluna: Valor em estoque (custo médio × estoque atual) */}
+                                    <TableCell className="text-right hidden xl:table-cell">
+                                      <span className="text-xs text-muted-foreground tabular-nums">
+                                        {(ins.custo_medio ?? ins.preco_estimado)
+                                          ? fmtBRL(Number(ins.estoque_atual ?? 0) * Number(ins.custo_medio ?? ins.preco_estimado ?? 0))
+                                          : "—"}
                                       </span>
                                     </TableCell>
                                     {/* Coluna 4: Status Real */}
@@ -1913,6 +1941,22 @@ export default function Insumos() {
                                   </span>
                                 </div>
                               </TableCell>
+                              {/* Colunas: Inicial / Entradas / Saídas do mês (só telas grandes) */}
+                              <TableCell className="text-right hidden lg:table-cell">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {fmtEstoque(ins.estoque_inicial_mes ?? 0, ins.unidade)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right hidden lg:table-cell">
+                                <span className="text-xs text-green-600 font-medium tabular-nums">
+                                  {(ins.entradas_mes ?? 0) > 0 ? `+${fmtEstoque(ins.entradas_mes, ins.unidade)}` : "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right hidden lg:table-cell">
+                                <span className="text-xs text-red-600 font-medium tabular-nums">
+                                  {(ins.saidas_mes ?? 0) > 0 ? `-${fmtEstoque(ins.saidas_mes, ins.unidade)}` : "—"}
+                                </span>
+                              </TableCell>
                               {/* Coluna 2: Estoque Atual */}
                               <TableCell className="text-right">
                                 <span className={`font-semibold tabular-nums ${
@@ -1925,6 +1969,14 @@ export default function Insumos() {
                               <TableCell className="text-right hidden sm:table-cell">
                                 <span className="text-sm text-muted-foreground tabular-nums">
                                   {fmtEstoque(ins.estoque_minimo, ins.unidade)}
+                                </span>
+                              </TableCell>
+                              {/* Coluna: Valor em estoque (custo médio × estoque atual) */}
+                              <TableCell className="text-right hidden xl:table-cell">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {(ins.custo_medio ?? ins.preco_estimado)
+                                    ? fmtBRL(Number(ins.estoque_atual ?? 0) * Number(ins.custo_medio ?? ins.preco_estimado ?? 0))
+                                    : "—"}
                                 </span>
                               </TableCell>
                               {/* Coluna 4: Status Real */}
