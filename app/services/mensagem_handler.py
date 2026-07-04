@@ -111,6 +111,26 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
     # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
+
+        # Sub-fluxo: usuário já rejeitou a conta sugerida e está escolhendo a certa
+        if sessoes[key].get("_aguardando_conta"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            escolha = _resolver_escolha_conta(texto)
+            if not escolha:
+                return _texto_lista_contas(prefixo="Não entendi a escolha. ")
+            sess = sessoes[key]
+            sess["conta"] = escolha[0]
+            sess.pop("_aguardando_conta", None)
+            return (
+                f"Conta atualizada para {escolha[0]} — {escolha[1]}.\n\n"
+                f"Confirma o lançamento?\n"
+                f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
+                f"Conta: {escolha[0]} — {escolha[1]}\n\n"
+                f"Responda SIM para confirmar ou NÃO para escolher outra conta."
+            )
+
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
@@ -144,8 +164,12 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 f"Envie a foto ou PDF do comprovante para vincular."
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
-            sessoes.pop(key, None)
-            return "Cancelado. Pode mandar de novo quando quiser."
+            # Em vez de cancelar direto, oferece trocar a conta sugerida —
+            # a maioria dos "não" é sobre a conta estar errada, não sobre
+            # desistir do lançamento inteiro. Cancelamento total continua
+            # disponível a partir da lista (opção 0).
+            sessoes[key]["_aguardando_conta"] = True
+            return _texto_lista_contas()
 
     # Fluxo de cadastro
     from app.services.cadastro_handler import (
@@ -230,6 +254,50 @@ async def processar_mensagem(msg: MsgIn) -> str:
         f"Confiança: {resultado['confianca']}%\n\n"
         f"Responda SIM para confirmar ou NÃO para cancelar."
     )
+
+
+# ── Catálogo de contas (plano de contas simplificado, mesmos códigos de
+# app/services/classifier.py) — usado quando o produtor rejeita a conta
+# sugerida pela IA e precisa escolher a correta numa lista. ──────────────
+CONTAS_DISPONIVEIS = [
+    ("1.1", "Receita geral (venda não especificada)"),
+    ("1.1.1", "Receita — produção agrícola (grãos, café, cana...)"),
+    ("1.1.2", "Receita — produção animal (bovino, suíno, aves, leite...)"),
+    ("3.1.1", "Despesa — insumos agrícolas (semente, adubo, defensivo)"),
+    ("3.1.2", "Despesa — combustível"),
+    ("3.1.3", "Despesa — ração/medicamento animal"),
+    ("3.1.4", "Despesa — mão de obra/salários"),
+    ("3.1.5", "Despesa — manutenção/reparo"),
+    ("3.1.6", "Despesa — energia"),
+    ("3.1.7", "Despesa — arrendamento/aluguel rural"),
+    ("5.1", "Investimento — máquinas/equipamentos"),
+    ("5.2", "Investimento — obras/benfeitorias"),
+    ("5.3", "Investimento — compra de animais (matriz/plantel)"),
+]
+
+
+def _texto_lista_contas(prefixo: str = "") -> str:
+    linhas = [f"{prefixo}Qual é a conta correta?\n"]
+    for i, (codigo, label) in enumerate(CONTAS_DISPONIVEIS, start=1):
+        linhas.append(f"{i}. {codigo} — {label}")
+    linhas.append("\n0. Cancelar o lançamento")
+    linhas.append("\nResponda com o número da conta.")
+    return "\n".join(linhas)
+
+
+def _resolver_escolha_conta(texto: str):
+    """Aceita tanto o número da lista (ex: '3') quanto o código direto
+    (ex: '3.1.2'). Retorna (codigo, label) ou None se não reconhecer."""
+    texto = texto.strip()
+    if texto.isdigit():
+        idx = int(texto)
+        if 1 <= idx <= len(CONTAS_DISPONIVEIS):
+            return CONTAS_DISPONIVEIS[idx - 1]
+        return None
+    for codigo, label in CONTAS_DISPONIVEIS:
+        if texto == codigo:
+            return (codigo, label)
+    return None
 
 
 # ── Comandos de consulta ──────────────────────────────────────────────
