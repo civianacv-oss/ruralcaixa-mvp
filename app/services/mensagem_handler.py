@@ -192,14 +192,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 return _texto_lista_contas(prefixo="Não entendi a escolha. ")
             sess = sessoes[key]
             sess["conta"] = escolha[0]
+            sess["tipo"] = _tipo_da_conta(escolha[0])
             sess.pop("_aguardando_conta", None)
-            return (
-                f"Conta atualizada para {escolha[0]} — {escolha[1]}.\n\n"
-                f"Confirma o lançamento?\n"
-                f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
-                f"Conta: {escolha[0]} — {escolha[1]}\n\n"
-                f"Responda SIM para confirmar ou NÃO para escolher outra conta."
-            )
+            return f"Conta atualizada para {escolha[0]} — {escolha[1]}.\n\n" + _texto_confirmacao(sess)
 
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
@@ -478,6 +473,19 @@ def _texto_lista_contas(prefixo: str = "") -> str:
     linhas.append("\n0. Cancelar o lançamento")
     linhas.append("\nResponda com o número da conta.")
     return "\n".join(linhas)
+
+
+def _tipo_da_conta(codigo: str) -> str:
+    """Deriva receita/despesa/investimento a partir do prefixo do código da
+    conta (1.x = receita, 3.x = despesa, 5.x = investimento) — usado quando
+    o produtor escolhe uma conta diferente da sugerida, pra não deixar o
+    tipo desatualizado (ex: mudar pra uma conta de receita mas continuar
+    mostrando 'DESPESA')."""
+    if codigo.startswith("1."):
+        return "receita"
+    if codigo.startswith("3."):
+        return "despesa"
+    return "investimento"
 
 
 def _resolver_escolha_conta(texto: str):
