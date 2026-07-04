@@ -112,6 +112,76 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
 
+        # Sub-fluxo: valor não veio no texto original, pedimos e aguardamos
+        if sessoes[key].get("_aguardando_valor"):
+            valor_digitado = _parse_valor_simples(texto)
+            if valor_digitado is None:
+                return "Não entendi o valor. Digite só o número, ex: 3500 ou 3500,00"
+            sess = sessoes[key]
+            sess["valor"] = valor_digitado
+            sess.pop("_aguardando_valor", None)
+            return _proximo_passo_compra_animal(sess, msg.numero)
+
+        # Sub-fluxo: compra de animal — produtor já tem cadastro de compra-e-
+        # venda pra essa espécie, confirma se é revenda ou atividade rural
+        if sessoes[key].get("_aguardando_tipo_atividade"):
+            resp = texto_up.strip()
+            sess = sessoes[key]
+            if resp in ("1", "REVENDA"):
+                sess.pop("_aguardando_tipo_atividade", None)
+                sess["_aguardando_regime"] = True
+                return _texto_pergunta_regime()
+            elif resp in ("2", "RURAL", "ATIVIDADE RURAL", "CRIA", "ENGORDA"):
+                sess.pop("_aguardando_tipo_atividade", None)
+                sess.pop("_cv_produto_id", None)
+                sess.pop("_cv_especie", None)
+                return _texto_confirmacao(sess)
+            else:
+                return _texto_pergunta_tipo_atividade(sess.get("_cv_especie", "esse animal"), prefixo="Não entendi. ")
+
+        # Sub-fluxo: regime de criação (define o prazo fiscal — 52 ou 138 dias)
+        if sessoes[key].get("_aguardando_regime"):
+            resp = texto_up.strip()
+            sess = sessoes[key]
+            if resp in ("1", "PASTO"):
+                sess["_cv_regime"] = "pasto"
+            elif resp in ("2", "CONFINAMENTO"):
+                sess["_cv_regime"] = "confinamento"
+            else:
+                return _texto_pergunta_regime(prefixo="Não entendi. ")
+            sess.pop("_aguardando_regime", None)
+            sess["_aguardando_quantidade"] = True
+            return "Quantos animais foram comprados?"
+
+        # Sub-fluxo: quantidade — última pergunta antes de gravar no módulo
+        # de compra-e-venda (não vira lançamento LCDPR normal)
+        if sessoes[key].get("_aguardando_quantidade"):
+            qtd = _parse_quantidade_simples(texto)
+            if qtd is None:
+                return "Não entendi a quantidade. Digite só o número, ex: 10"
+            sess = sessoes.pop(key)
+            try:
+                compra_id = _criar_compra_cv(
+                    imovel_id=_resolver_imovel_id(msg.numero),
+                    produto_id=sess["_cv_produto_id"],
+                    quantidade=qtd,
+                    valor_total=sess["valor"],
+                    regime=sess["_cv_regime"],
+                )
+                prazo = "52 dias (confinamento)" if sess["_cv_regime"] == "confinamento" else "138 dias (pasto)"
+                return (
+                    f"✅ Compra de compra-e-venda #{compra_id} registrada!\n"
+                    f"Produto: {sess.get('_cv_especie','')}\n"
+                    f"Quantidade: {qtd:g}\n"
+                    f"Valor total: R$ {sess['valor']:,.2f}\n"
+                    f"Regime: {sess['_cv_regime']}\n\n"
+                    f"⚠️ Prazo fiscal pra continuar fora do LCDPR: {prazo} a partir de hoje "
+                    f"(Lei 8.023/90 / RIR — Decreto 9.580/2018). Acompanhe em Compra e Venda → Alertas Fiscais."
+                )
+            except Exception as e:
+                logger.error("Erro ao gravar compra CV: %s", e)
+                return "Erro ao gravar a compra. Tente novamente ou lance pelo app."
+
         # Sub-fluxo: usuário já rejeitou a conta sugerida e está escolhendo a certa
         if sessoes[key].get("_aguardando_conta"):
             if texto_up in ("0", "CANCELAR", "CANCELA"):
@@ -242,17 +312,133 @@ async def processar_mensagem(msg: MsgIn) -> str:
         )
 
     sessoes[key] = resultado
+
+    # Sem sinal de valor confiável no texto — pergunta antes de seguir
+    if resultado.get("valor") is None:
+        sessoes[key]["_aguardando_valor"] = True
+        return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
+
+    return _proximo_passo_compra_animal(resultado, msg.numero)
+
+
+def _resolver_imovel_id(numero: str) -> int:
+    """Resolve o imovel_id a partir dos últimos 8 dígitos do telefone.
+    Mesmo padrão já usado nos 4 blocos de _processar_zootecnico — fatorado
+    aqui pra reaproveitar na checagem de compra-e-venda também."""
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        row = conn.execute(sqlt(
+            "SELECT id FROM imoveis_rurais WHERE produtor_id = "
+            "(SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+        ), {"tel": f"%{numero[-8:]}"}).fetchone()
+        return row[0] if row else 1
+
+
+def _produto_compra_venda(imovel_id: int, especie: str):
+    """Verifica se o produtor já tem cadastro de compra-e-venda (cv_produtos)
+    pra essa espécie neste imóvel. Retorna o id do produto se existir, ou
+    None se não tiver — é essa checagem que decide se pergunta a intenção
+    (revenda vs rural) ou classifica automaticamente como rural."""
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        row = conn.execute(sqlt(
+            "SELECT id FROM cv_produtos WHERE imovel_id = :imovel "
+            "AND LOWER(especie) = LOWER(:especie) LIMIT 1"
+        ), {"imovel": imovel_id, "especie": especie}).fetchone()
+        return row[0] if row else None
+
+
+def _criar_compra_cv(imovel_id: int, produto_id: int, quantidade: float,
+                      valor_total: float, regime: str) -> int:
+    """Cria o registro de compra no módulo de compra-e-venda (cv_compras),
+    de onde o alerta de prazo fiscal (52 dias confinamento / 138 dias pasto)
+    já é calculado automaticamente por app/routers/compravenda.py."""
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    valor_unitario = valor_total / quantidade if quantidade else valor_total
+    with engine.connect() as conn:
+        row = conn.execute(sqlt("""
+            INSERT INTO cv_compras
+                (imovel_id, produto_id, data_compra, quantidade, valor_unitario,
+                 valor_total, regime, observacoes)
+            VALUES (:imovel, :produto, CURRENT_DATE, :qtd, :vu, :vt, :regime,
+                    'Lançado via WhatsApp/Telegram')
+            RETURNING id
+        """), {"imovel": imovel_id, "produto": produto_id, "qtd": quantidade,
+               "vu": valor_unitario, "vt": valor_total, "regime": regime}).fetchone()
+        conn.commit()
+        return row[0]
+
+
+def _parse_quantidade_simples(texto: str):
+    texto = texto.strip().replace(",", ".")
+    try:
+        q = float(texto)
+        return q if q > 0 else None
+    except ValueError:
+        return None
+
+
+def _texto_pergunta_tipo_atividade(especie: str, prefixo: str = "") -> str:
+    return (
+        f"{prefixo}Você tem cadastro de compra-e-venda para {especie}. Essa compra é "
+        f"para revenda (entra no controle de compra-e-venda, com alerta de prazo fiscal) "
+        f"ou para manter no rebanho (atividade rural normal, entra no LCDPR)?\n\n"
+        f"1. Revenda (compra-e-venda)\n"
+        f"2. Rural (cria/engorda)"
+    )
+
+
+def _proximo_passo_compra_animal(sess: dict, numero: str) -> str:
+    """Chamado sempre que uma compra de animal (conta 5.3) já tem valor
+    definido — decide se pergunta revenda-vs-rural (produtor já tem cadastro
+    de compra-e-venda pra essa espécie) ou segue direto pra confirmação
+    normal como atividade rural (produtor não tem esse cadastro)."""
+    if sess.get("conta") == "5.3" and sess.get("produto"):
+        imovel_id = _resolver_imovel_id(numero)
+        produto_cv_id = _produto_compra_venda(imovel_id, sess["produto"])
+        if produto_cv_id:
+            sess["_aguardando_tipo_atividade"] = True
+            sess["_cv_produto_id"] = produto_cv_id
+            sess["_cv_especie"] = sess["produto"]
+            return _texto_pergunta_tipo_atividade(sess["produto"])
+    return _texto_confirmacao(sess)
+
+
+def _texto_pergunta_regime(prefixo: str = "") -> str:
+    return (
+        f"{prefixo}Qual o regime de criação?\n\n"
+        f"1. Pasto (prazo fiscal: 138 dias)\n"
+        f"2. Confinamento (prazo fiscal: 52 dias)"
+    )
+
+
+def _parse_valor_simples(texto: str):
+    """Parse direto de um valor digitado em resposta à pergunta 'qual o valor?'
+    Aceita '3500', '3500,00', '3.500,00', 'R$ 3500'."""
+    texto = texto.strip().upper().replace("R$", "").replace(" ", "")
+    texto = texto.replace(".", "").replace(",", ".")
+    try:
+        v = float(texto)
+        return v if v > 0 else None
+    except ValueError:
+        return None
+
+
+def _texto_confirmacao(sess: dict) -> str:
     tipo_label = {"receita": "💰 RECEITA", "despesa": "💸 DESPESA"}.get(
-        resultado["tipo"], "📊 INVESTIMENTO"
+        sess["tipo"], "📊 INVESTIMENTO"
     )
     return (
         f"Recebi! Lançamento sugerido:\n\n"
         f"{tipo_label}\n"
-        f"Valor: R$ {resultado['valor']:,.2f}\n"
-        f"Conta: {resultado['conta']}\n"
-        f"Produto: {resultado.get('produto') or 'N/A'}\n"
-        f"Confiança: {resultado['confianca']}%\n\n"
-        f"Responda SIM para confirmar ou NÃO para cancelar."
+        f"Valor: R$ {sess['valor']:,.2f}\n"
+        f"Conta: {sess['conta']}\n"
+        f"Produto: {sess.get('produto') or 'N/A'}\n"
+        f"Confiança: {sess['confianca']}%\n\n"
+        f"Responda SIM para confirmar ou NÃO para escolher outra conta."
     )
 
 

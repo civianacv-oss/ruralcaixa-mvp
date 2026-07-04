@@ -27,7 +27,13 @@ def gravar_lancamento(dados: dict):
         sub = conn.execute(text('SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) LIMIT 1'), {'nome': f'%{nome_sub[:20]}%'}).fetchone()
         if not sub:
             import uuid as _uuid
-            atividade = 'RURAL' if dados.get('atividade', 'rural').upper() == 'RURAL' else 'INVESTIMENTO'
+            atividade_raw = (dados.get('atividade') or 'rural').upper()
+            if atividade_raw == 'RURAL':
+                atividade = 'RURAL'
+            elif atividade_raw in ('COMERCIO_REVENDA', 'COMERCIO', 'REVENDA'):
+                atividade = 'COMERCIO'
+            else:
+                atividade = 'INVESTIMENTO'
             sub_id = str(_uuid.uuid4())
             conn.execute(text('INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (:id, :nome, :tipo, :atv)'),
                 {'id': sub_id, 'nome': nome_sub[:100], 'tipo': tipo_raw, 'atv': atividade})

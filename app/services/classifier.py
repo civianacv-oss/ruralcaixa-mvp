@@ -48,6 +48,39 @@ PRODUTOS = {
 }
 
 def extrair_valor(texto):
+    """Extrai o valor monetário do texto. Não usa simplesmente 'o maior número
+    encontrado' — isso confundia quantidade com preço (ex: 'comprei 10 porcos'
+    virava R$ 10,00). Prioriza números com sinal explícito de dinheiro (R$,
+    'reais', 'conto') ou no padrão 'por/a X'; sem isso, retorna None em vez
+    de arriscar um valor errado."""
+    texto_limpo = re.sub(r'(\d)\.(\d{3})', r'\1\2', texto)
+    texto_norm = normalizar(texto_limpo)
+
+    # 1) Padrão com sinal explícito de moeda: "R$ 250", "250 reais", "250 conto"
+    candidatos_moeda = []
+    for m in re.finditer(r'r\$\s*(\d+(?:,\d{2})?)', texto_norm):
+        candidatos_moeda.append(float(m.group(1).replace(",", ".")))
+    for m in re.finditer(r'(\d+(?:,\d{2})?)\s*reais', texto_norm):
+        candidatos_moeda.append(float(m.group(1).replace(",", ".")))
+    if candidatos_moeda:
+        return max(candidatos_moeda)
+
+    # 2) Padrão "por/a X" (ex: "vendi 5 bois por 10000", "a 300 a unidade")
+    candidatos_por = []
+    for m in re.finditer(r'\b(?:por|a)\s+(\d+(?:,\d{2})?)\b', texto_norm):
+        candidatos_por.append(float(m.group(1).replace(",", ".")))
+    if candidatos_por:
+        return max(candidatos_por)
+
+    # 3) Sem nenhum sinal de moeda — não arrisca adivinhar (evita pegar
+    # quantidade de animais/sacas como se fosse preço). Retorna None; quem
+    # chama decide se pergunta o valor ou usa 0 como padrão.
+    return None
+
+
+def extrair_valor_legado(texto):
+    """Mantido apenas para referência/comparação — comportamento antigo
+    (pegava o maior número do texto, sem checar se era preço de verdade)."""
     texto_limpo = re.sub(r'(\d)\.(\d{3})', r'\1\2', texto)
     padrao = r'\b(\d+(?:,\d{2})?)\b'
     matches = re.findall(padrao, texto_limpo)
@@ -117,7 +150,7 @@ def classificar(texto):
     return {
         "conta": melhor[0],
         "tipo": melhor[1],
-        "valor": valor,
+        "valor": valor,  # pode vir None se não achou sinal de moeda no texto
         "data": date.today().isoformat(),
         "confianca": confianca,
         "produto": produto,
