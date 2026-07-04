@@ -544,12 +544,17 @@ export const railwayRouter = router({
       const prefix = especiePrefix[input.especie];
 
       let criados = 0, atualizados = 0, ignorados = 0, erros = 0;
+      const erros_detalhe: string[] = [];
 
       for (const row of input.rows_novas) {
         try {
           await railwayMutate<Animal>(`/${prefix}/animais`, "POST", { imovel_id: input.imovelId, ...row }, claims.produtorId);
           criados++;
-        } catch (_) { erros++; }
+        } catch (e) {
+          erros++;
+          const msg = e instanceof Error ? e.message : String(e);
+          if (erros_detalhe.length < 10) erros_detalhe.push(`${row.brinco ?? "?"}: ${msg}`);
+        }
       }
 
       for (const dec of (input.conflitos_decisoes ?? [])) {
@@ -557,13 +562,21 @@ export const railwayRouter = router({
           try {
             await railwayMutate<Animal>(`/${prefix}/animais/${dec.existente_id}`, "PATCH", dec.dados ?? {}, claims.produtorId);
             atualizados++;
-          } catch (_) { erros++; }
+          } catch (e) {
+            erros++;
+            const msg = e instanceof Error ? e.message : String(e);
+            if (erros_detalhe.length < 10) erros_detalhe.push(`${dec.brinco}: ${msg}`);
+          }
         } else {
           ignorados++;
         }
       }
 
-      return { criados, atualizados, ignorados, erros, total: criados + atualizados + ignorados + erros };
+      return {
+        criados, atualizados, ignorados, erros,
+        total: criados + atualizados + ignorados + erros,
+        erros_detalhe: erros_detalhe.length > 0 ? erros_detalhe : undefined,
+      };
     }),
 
   // ── Genealogia (Bovino) ──────────────────────────────────────────────────

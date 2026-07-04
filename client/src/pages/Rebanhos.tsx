@@ -865,6 +865,16 @@ export default function Rebanhos() {
                   </div>
                 ))}
               </div>
+              {importResult.erros_detalhe && importResult.erros_detalhe.length > 0 && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+                  <p className="text-xs font-semibold text-red-700 mb-1">Detalhe dos erros (até 10):</p>
+                  <ul className="text-xs text-red-600 space-y-0.5 max-h-40 overflow-y-auto">
+                    {importResult.erros_detalhe.map((msg: string, i: number) => (
+                      <li key={i} className="font-mono">{msg}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
