@@ -19,6 +19,14 @@ ROTAS_PUBLICAS = {
     "/docs",
     "/openapi.json",
     "/redoc",
+    # Fluxo de login (CPF + OTP) acontece ANTES de existir qualquer token —
+    # essas rotas são chamadas por server/otp.ts pra localizar o produtor e
+    # enviar/validar o código de acesso. Sem isso, ninguém consegue logar
+    # pela primeira vez (é a causa do "Falha ao consultar produtores").
+    "/produtores",       # lista usada pra localizar o CPF antes do login
+    "/imoveis/buscar",   # busca imóveis do produtor durante o login
+    "/auth/solicitar",   # envia o código OTP
+    "/auth/verificar",   # valida o código OTP e emite o token
 }
 
 PREFIXOS_PUBLICOS = (
