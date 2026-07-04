@@ -427,15 +427,24 @@ def _parse_valor_simples(texto: str):
         return None
 
 
+ATIVIDADE_LABELS = {
+    "rural": "Rural (LCDPR)",
+    "intermediacao": "Comercial (intermediação — fora do LCDPR)",
+    "servico": "Serviço prestado (fora do LCDPR)",
+}
+
+
 def _texto_confirmacao(sess: dict) -> str:
     tipo_label = {"receita": "💰 RECEITA", "despesa": "💸 DESPESA"}.get(
         sess["tipo"], "📊 INVESTIMENTO"
     )
+    atividade_label = ATIVIDADE_LABELS.get(sess.get("atividade", "rural"), "Rural (LCDPR)")
     return (
         f"Recebi! Lançamento sugerido:\n\n"
         f"{tipo_label}\n"
         f"Valor: R$ {sess['valor']:,.2f}\n"
         f"Conta: {sess['conta']}\n"
+        f"Atividade: {atividade_label}\n"
         f"Produto: {sess.get('produto') or 'N/A'}\n"
         f"Confiança: {sess['confianca']}%\n\n"
         f"Responda SIM para confirmar ou NÃO para escolher outra conta."
