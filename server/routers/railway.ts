@@ -668,7 +668,7 @@ export const railwayRouter = router({
           registro_mae_externo: findCol(row, COL_REG_MAE),
           categoria: sexoRaw.startsWith("F") ? "matriz" : "reprodutor",
           aptidao_manejo: "leite",
-          origem: "importacao_genealogia",
+          origem: "genealogia",
         };
 
         if (brincoExistente.has(brinco.toLowerCase())) {

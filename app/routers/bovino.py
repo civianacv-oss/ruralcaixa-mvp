@@ -194,7 +194,10 @@ def cadastrar_animal(data: AnimalIn):
     try:
         cur = conn.cursor()
         cur.execute("SELECT id FROM especie WHERE codigo = 'BOVINO'")
-        especie_id = cur.fetchone()['id']
+        especie_row = cur.fetchone()
+        if not especie_row:
+            raise HTTPException(500, "Espécie 'BOVINO' não cadastrada na tabela especie — contate o suporte.")
+        especie_id = especie_row['id']
 
         raca_id = data.raca_id
         if raca_id is None and data.raca_nome:
@@ -208,20 +211,31 @@ def cadastrar_animal(data: AnimalIn):
             # dar palpite errado) — se não achar, composicao_racial guarda o
             # texto original mesmo assim, nada se perde.
 
-        cur.execute("""
-            INSERT INTO bovino_animais
-            (imovel_id, especie_id, brinco, nome, raca_id, sexo, aptidao_manejo,
-             categoria, data_nascimento, peso_nascimento, mae_id, pai_id, lote_id,
-             data_entrada, origem, valor_aquisicao, observacoes,
-             nome_pai, nome_mae, registro_pai_externo, registro_mae_externo, composicao_racial)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
-        """, (data.imovel_id, especie_id, data.brinco, data.nome, raca_id,
-              data.sexo, data.aptidao_manejo, data.categoria, data.data_nascimento,
-              data.peso_nascimento, data.mae_id, data.pai_id, data.lote_id,
-              data.data_entrada or date.today(), data.origem,
-              data.valor_aquisicao, data.observacoes,
-              data.nome_pai, data.nome_mae, data.registro_pai_externo,
-              data.registro_mae_externo, data.composicao_racial))
+        try:
+            cur.execute("""
+                INSERT INTO bovino_animais
+                (imovel_id, especie_id, brinco, nome, raca_id, sexo, aptidao_manejo,
+                 categoria, data_nascimento, peso_nascimento, mae_id, pai_id, lote_id,
+                 data_entrada, origem, valor_aquisicao, observacoes,
+                 nome_pai, nome_mae, registro_pai_externo, registro_mae_externo, composicao_racial)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
+            """, (data.imovel_id, especie_id, data.brinco, data.nome, raca_id,
+                  data.sexo, data.aptidao_manejo, data.categoria, data.data_nascimento,
+                  data.peso_nascimento, data.mae_id, data.pai_id, data.lote_id,
+                  data.data_entrada or date.today(), data.origem,
+                  data.valor_aquisicao, data.observacoes,
+                  data.nome_pai, data.nome_mae, data.registro_pai_externo,
+                  data.registro_mae_externo, data.composicao_racial))
+        except psycopg2.errors.UniqueViolation as e:
+            conn.rollback()
+            raise HTTPException(409, f"Brinco '{data.brinco}' já cadastrado neste imóvel.")
+        except psycopg2.errors.StringDataRightTruncation as e:
+            conn.rollback()
+            raise HTTPException(400, f"Um dos campos enviados é maior do que o banco aceita: {str(e).splitlines()[0]}")
+        except psycopg2.Error as e:
+            conn.rollback()
+            raise HTTPException(400, f"Erro ao gravar animal (brinco {data.brinco}): {str(e).splitlines()[0]}")
+
         conn.commit()
         return dict(cur.fetchone())
     finally:
