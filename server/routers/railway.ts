@@ -212,6 +212,22 @@ async function requireClaims(req: Parameters<typeof getClaimsFromRequest>[0]) {
 }
 
 // ─── Generic Railway mutation helper ─────────────────────────────────────────
+// Extrai uma mensagem legível de qualquer formato de erro (Error, TRPCError,
+// objeto de erro do fetch, string, objeto arbitrário) — nunca retorna
+// "[object Object]", que era o que aparecia antes na importação.
+function msgDeErro(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e instanceof Error && e.message) return e.message;
+  if (e && typeof e === "object") {
+    const obj = e as Record<string, unknown>;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.detail === "string") return obj.detail;
+    if (obj.cause) return msgDeErro(obj.cause);
+    try { return JSON.stringify(obj); } catch { return "erro desconhecido"; }
+  }
+  return String(e);
+}
+
 async function railwayMutate<T>(
   path: string,
   method: "POST" | "PATCH" | "PUT" | "DELETE",
@@ -232,9 +248,13 @@ async function railwayMutate<T>(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = (err as { detail?: unknown }).detail;
+    const detailStr = typeof detail === "string" ? detail
+      : detail != null ? (() => { try { return JSON.stringify(detail); } catch { return String(detail); } })()
+      : `Railway API error ${res.status}`;
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: (err as { detail?: string }).detail ?? `Railway API error ${res.status}`,
+      message: detailStr,
     });
   }
   // Some DELETE endpoints return 204 No Content
@@ -552,7 +572,7 @@ export const railwayRouter = router({
           criados++;
         } catch (e) {
           erros++;
-          const msg = e instanceof Error ? e.message : String(e);
+          const msg = msgDeErro(e);
           if (erros_detalhe.length < 10) erros_detalhe.push(`${row.brinco ?? "?"}: ${msg}`);
         }
       }
@@ -564,7 +584,7 @@ export const railwayRouter = router({
             atualizados++;
           } catch (e) {
             erros++;
-            const msg = e instanceof Error ? e.message : String(e);
+            const msg = msgDeErro(e);
             if (erros_detalhe.length < 10) erros_detalhe.push(`${dec.brinco}: ${msg}`);
           }
         } else {
