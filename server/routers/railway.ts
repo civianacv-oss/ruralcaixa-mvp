@@ -513,6 +513,37 @@ export const railwayRouter = router({
       const conflitos: any[] = [];
       let ignoradas_count = 0;
 
+      // Colunas de data partida em Dia/Mês/Ano (planilhas GISleite e afins).
+      // Sem tratar isso, o alias "nascimento" casaria com "Data Nascimento
+      // Dia" e o dia solto ("28") vazaria como se fosse a data inteira.
+      const COL_NASC_DIA = ["datanascimentodia", "dianascimento"];
+      const COL_NASC_MES = ["datanascimentomes", "mesnascimento"];
+      const COL_NASC_ANO = ["datanascimentoano", "anonascimento"];
+
+      // Só aceita como data um valor no formato completo (YYYY-MM-DD ou
+      // DD/MM/YYYY) — um número solto tipo "28" (dia) é rejeitado.
+      const dataCompletaOuNada = (v: string | undefined): string | undefined => {
+        if (!v) return undefined;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+        return undefined; // valor não é data completa (ex: "28" sozinho)
+      };
+
+      const montarData = (row: Record<string, any>): string | undefined => {
+        const dia = findCol(row, COL_NASC_DIA);
+        const mes = findCol(row, COL_NASC_MES);
+        const ano = findCol(row, COL_NASC_ANO);
+        if (dia && mes && ano) {
+          const d = parseInt(dia, 10), m = parseInt(mes, 10), a = parseInt(ano, 10);
+          if (!isNaN(d) && !isNaN(m) && !isNaN(a) && a > 1900)
+            return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        }
+        // Sem Dia/Mês/Ano separados: tenta a coluna única, mas só se for data completa
+        return dataCompletaOuNada(findCol(row, COL_NASC));
+      };
+
       for (const row of input.rows) {
         const brinco = findCol(row, COL_BRINCO);
         if (!brinco) { ignoradas_count++; continue; }
@@ -522,7 +553,7 @@ export const railwayRouter = router({
           nome:            findCol(row, COL_NOME),
           raca:            findCol(row, COL_RACA),
           sexo:            (findCol(row, COL_SEXO) ?? "M").toUpperCase().startsWith("F") ? "F" : "M",
-          data_nascimento: findCol(row, COL_NASC),
+          data_nascimento: montarData(row),
           peso_nascimento: findCol(row, COL_PESO) ? Number(findCol(row, COL_PESO)) : undefined,
           categoria:       findCol(row, COL_CAT),
           aptidao_manejo:  findCol(row, COL_APT) ?? "corte",
