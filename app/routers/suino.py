@@ -149,6 +149,15 @@ def atualizar_animal(animal_id: int, dados: AnimalUpdate):
         conn.close()
 
 
+def _limpar_unicode(valor):
+    """Remove surrogates soltos e outros caracteres inválidos que às vezes
+    sobrevivem de exports de planilha/HTML malformados — sem isso, o
+    psycopg2 quebra com UnicodeEncodeError ao gravar no Postgres."""
+    if valor is None or not isinstance(valor, str):
+        return valor
+    return valor.encode("utf-8", errors="replace").decode("utf-8")
+
+
 @router.post("/animais", status_code=201)
 def cadastrar_animal(dados: AnimalCreate):
     conn = get_db()
@@ -160,9 +169,10 @@ def cadastrar_animal(dados: AnimalCreate):
                  data_nascimento, peso_nascimento, mae_id, pai_id, lote_id, observacoes)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
-        """, (dados.imovel_id, dados.brinco, dados.nome, dados.raca, dados.sexo,
-              dados.categoria, dados.data_nascimento, dados.peso_nascimento,
-              dados.mae_id, dados.pai_id, dados.lote_id, dados.observacoes))
+        """, (dados.imovel_id, _limpar_unicode(dados.brinco), _limpar_unicode(dados.nome),
+              _limpar_unicode(dados.raca), _limpar_unicode(dados.sexo),
+              _limpar_unicode(dados.categoria), dados.data_nascimento, dados.peso_nascimento,
+              dados.mae_id, dados.pai_id, dados.lote_id, _limpar_unicode(dados.observacoes)))
         animal_id = cur.fetchone()["id"]
 
         if dados.peso_nascimento:
@@ -173,6 +183,12 @@ def cadastrar_animal(dados: AnimalCreate):
 
         conn.commit()
         return {"id": animal_id}
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(409, f"Brinco '{dados.brinco}' já cadastrado neste imóvel.")
+    except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError) as e:
+        conn.rollback()
+        raise HTTPException(400, f"Caractere inválido em algum campo de texto do animal '{dados.brinco}': {e}")
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

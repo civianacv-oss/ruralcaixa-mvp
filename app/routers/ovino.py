@@ -150,6 +150,19 @@ def editar_animal(animal_id: int, payload: dict):
         conn.close()
 
 
+def _limpar_unicode(valor):
+    """Remove surrogates soltos e outros caracteres inválidos que às vezes
+    sobrevivem de exports de planilha/HTML malformados — sem isso, o
+    psycopg2 quebra com UnicodeEncodeError ao gravar no Postgres."""
+    if valor is None or not isinstance(valor, str):
+        return valor
+    return valor.encode("utf-8", errors="replace").decode("utf-8")
+
+
+def _limpar_unicode_dict(d: dict) -> dict:
+    return {k: _limpar_unicode(v) for k, v in d.items()}
+
+
 @router.post("/animais", status_code=201)
 def criar_animal(payload: AnimalCreate):
     conn = get_db()
@@ -164,13 +177,16 @@ def criar_animal(payload: AnimalCreate):
                  %(data_nascimento)s, %(peso_nascimento)s, %(mae_id)s,
                  %(pai_id)s, %(lote_id)s, %(observacoes)s)
             RETURNING id, brinco, status, created_at
-        """, payload.model_dump())
+        """, _limpar_unicode_dict(payload.model_dump()))
         row = dict(cur.fetchone())
         conn.commit()
         return row
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
         raise HTTPException(409, f"Brinco '{payload.brinco}' já cadastrado neste imóvel.")
+    except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError) as e:
+        conn.rollback()
+        raise HTTPException(400, f"Caractere inválido em algum campo de texto do animal '{payload.brinco}': {e}")
     except Exception as e:
         conn.rollback()
         raise HTTPException(500, str(e))
