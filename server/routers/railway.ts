@@ -686,7 +686,12 @@ export const railwayRouter = router({
           registro_pai_externo: findCol(row, COL_REG_PAI),
           nome_mae: findCol(row, COL_NOME_MAE),
           registro_mae_externo: findCol(row, COL_REG_MAE),
-          categoria: sexoRaw.startsWith("F") ? "matriz" : "reprodutor",
+          // Constraint do banco (bovino_animais_categoria_check) só aceita:
+          // bezerro/bezerra/novilho/novilha/garrote/garrotas/touro/vaca/boi.
+          // Genealogia não informa idade, só sexo — usamos o valor adulto
+          // genérico (vaca/touro), já que animais de pedigree/reprodução são
+          // tipicamente adultos. Produtor pode ajustar depois na tela.
+          categoria: sexoRaw.startsWith("F") ? "vaca" : "touro",
           aptidao_manejo: "leite",
           origem: "genealogia",
         };
