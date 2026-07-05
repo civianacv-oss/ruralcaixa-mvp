@@ -188,7 +188,6 @@ def listar_animais(
     finally:
         conn.close()
 
-@router.post("/animais")
 def _limpar_unicode(valor):
     """Remove surrogates soltos e outros caracteres inválidos que às vezes
     sobrevivem de exports de planilha/HTML malformados (emoji cortado ao
@@ -199,6 +198,7 @@ def _limpar_unicode(valor):
     return valor.encode("utf-8", errors="replace").decode("utf-8")
 
 
+@router.post("/animais")
 def cadastrar_animal(data: AnimalIn):
     conn = get_db()
     try:
