@@ -724,7 +724,11 @@ export const railwayRouter = router({
           // tipicamente adultos. Produtor pode ajustar depois na tela.
           categoria: sexoRaw.startsWith("F") ? "vaca" : "touro",
           aptidao_manejo: "leite",
-          origem: "genealogia",
+          // Constraint do banco (bovino_animais_origem_check) só aceita:
+          // nascimento / compra / transferencia. Animais importados via
+          // genealogia vieram de fora do sistema (aquisição/registro
+          // externo), então "compra" é o valor apropriado.
+          origem: "compra",
         };
 
         if (brincoExistente.has(brinco.toLowerCase())) {
