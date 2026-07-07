@@ -210,25 +210,10 @@ export default function Rebanhos() {
 
   const HEADER_HINTS = ["brinco", "id", "identificacao", "numero", "tag"];
 
-  // Sinais de coluna que só existem em exports de genealogia — se a
-  // planilha tiver pelo menos um desses (além da coluna de identificação
-  // padrão), tratamos como genealogia em vez de import genérico.
-  const GENEALOGIA_HINTS = [
-    "registropai", "registromae", "nomepai", "nomemae",
-    "composicaoracial", "datanascimentodia", "datanascimentomes", "datanascimentoano",
-  ];
-
-  const detectarGenealogia = (rows: any[]): boolean => {
-    if (rows.length === 0) return false;
-    const normalize = (s: string) =>
-      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-    const colunas = Object.keys(rows[0]).map(normalize);
-    return GENEALOGIA_HINTS.some((hint) => colunas.some((c) => c.includes(hint)));
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !imovelId) return;
+    setImportIsGenealogia(false);
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
@@ -250,19 +235,45 @@ export default function Rebanhos() {
         }
 
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
-        if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna de identificação reconhecível.'); return; }
-
-        const ehGenealogia = especie === "bovino" && detectarGenealogia(rows);
-        setImportIsGenealogia(ehGenealogia);
-
-        if (ehGenealogia) {
-          toast.info("Planilha de genealogia detectada — usando importador de pedigree.");
-          analisarGenealogia.mutate({ imovelId: imovelId!, rows });
-        } else {
-          analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
-        }
+        if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna "Brinco" reconhecível.'); return; }
+        analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
       } catch {
         toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
+  const fileInputGenealogiaRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChangeGenealogia = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !imovelId) return;
+    setImportIsGenealogia(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target?.result, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+
+        const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+          const rowVals = (rawRows[i] || []).map((v) =>
+            String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          );
+          if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
+        if (rows.length === 0) { toast.error("Planilha vazia ou sem coluna de identificação reconhecível."); return; }
+        analisarGenealogia.mutate({ imovelId: imovelId!, rows });
+      } catch {
+        toast.error("Erro ao ler o arquivo. Verifique se é um Excel/HTML de genealogia válido.");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -322,6 +333,12 @@ export default function Rebanhos() {
             <Upload className="w-4 h-4 mr-2" />
             Importar Planilha
           </Button>
+          {especie === "bovino" && (
+            <Button variant="outline" size="sm" onClick={() => { setImportIsGenealogia(true); setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Importar Genealogia
+            </Button>
+          )}
           <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Animal
@@ -742,17 +759,17 @@ export default function Rebanhos() {
               <div
                 className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 transition-colors"
                 style={{ borderColor: "oklch(0.80 0.04 145)" }}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => (importIsGenealogia ? fileInputGenealogiaRef : fileInputRef).current?.click()}
               >
                 <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
                 <p className="font-medium text-sm">Clique para selecionar o arquivo</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Formatos aceitos: .xlsx, .xls, .csv — inclusive .xls que na
-                  verdade é tabela HTML (comum em exports de sistemas de genealogia).
-                  {especie === "bovino" && " Planilhas de genealogia são detectadas automaticamente."}
+                  verdade é tabela HTML (comum em exports de sistemas de genealogia)
                 </p>
               </div>
-              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.html" className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
+              <input ref={fileInputGenealogiaRef} type="file" accept=".xlsx,.xls,.csv,.html" className="hidden" onChange={handleFileChangeGenealogia} />
 
               <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
                 {importIsGenealogia ? (
@@ -865,16 +882,6 @@ export default function Rebanhos() {
                   </div>
                 ))}
               </div>
-              {importResult.erros_detalhe && importResult.erros_detalhe.length > 0 && (
-                <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-                  <p className="text-xs font-semibold text-red-700 mb-1">Detalhe dos erros (até 10):</p>
-                  <ul className="text-xs text-red-600 space-y-0.5 max-h-40 overflow-y-auto">
-                    {importResult.erros_detalhe.map((msg: string, i: number) => (
-                      <li key={i} className="font-mono">{msg}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
 

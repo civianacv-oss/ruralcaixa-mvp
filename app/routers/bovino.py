@@ -188,32 +188,19 @@ def listar_animais(
     finally:
         conn.close()
 
-def _limpar_unicode(valor):
-    """Remove surrogates soltos e outros caracteres inválidos que às vezes
-    sobrevivem de exports de planilha/HTML malformados (emoji cortado ao
-    meio, encoding quebrado) — sem isso, o psycopg2 quebra com
-    UnicodeEncodeError ao tentar mandar pro Postgres."""
-    if valor is None or not isinstance(valor, str):
-        return valor
-    return valor.encode("utf-8", errors="replace").decode("utf-8")
-
-
 @router.post("/animais")
 def cadastrar_animal(data: AnimalIn):
     conn = get_db()
     try:
         cur = conn.cursor()
         cur.execute("SELECT id FROM especie WHERE codigo = 'BOVINO'")
-        especie_row = cur.fetchone()
-        if not especie_row:
-            raise HTTPException(500, "Espécie 'BOVINO' não cadastrada na tabela especie — contate o suporte.")
-        especie_id = especie_row['id']
+        especie_id = cur.fetchone()['id']
 
         raca_id = data.raca_id
         if raca_id is None and data.raca_nome:
             cur.execute(
                 "SELECT id FROM bovino_racas WHERE LOWER(nome) = LOWER(%s) LIMIT 1",
-                (_limpar_unicode(data.raca_nome),)
+                (data.raca_nome,)
             )
             row = cur.fetchone()
             raca_id = row["id"] if row else None
@@ -221,50 +208,20 @@ def cadastrar_animal(data: AnimalIn):
             # dar palpite errado) — se não achar, composicao_racial guarda o
             # texto original mesmo assim, nada se perde.
 
-        # Sanitiza todos os campos de texto antes de gravar — planilhas
-        # importadas às vezes trazem caracteres Unicode corrompidos
-        # (surrogates soltos) que quebram a codificação UTF-8 no banco.
-        brinco = _limpar_unicode(data.brinco)
-        nome = _limpar_unicode(data.nome)
-        sexo = _limpar_unicode(data.sexo)
-        aptidao_manejo = _limpar_unicode(data.aptidao_manejo)
-        categoria = _limpar_unicode(data.categoria)
-        origem = _limpar_unicode(data.origem)
-        observacoes = _limpar_unicode(data.observacoes)
-        nome_pai = _limpar_unicode(data.nome_pai)
-        nome_mae = _limpar_unicode(data.nome_mae)
-        registro_pai_externo = _limpar_unicode(data.registro_pai_externo)
-        registro_mae_externo = _limpar_unicode(data.registro_mae_externo)
-        composicao_racial = _limpar_unicode(data.composicao_racial)
-
-        try:
-            cur.execute("""
-                INSERT INTO bovino_animais
-                (imovel_id, especie_id, brinco, nome, raca_id, sexo, aptidao_manejo,
-                 categoria, data_nascimento, peso_nascimento, mae_id, pai_id, lote_id,
-                 data_entrada, origem, valor_aquisicao, observacoes,
-                 nome_pai, nome_mae, registro_pai_externo, registro_mae_externo, composicao_racial)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
-            """, (data.imovel_id, especie_id, brinco, nome, raca_id,
-                  sexo, aptidao_manejo, categoria, data.data_nascimento,
-                  data.peso_nascimento, data.mae_id, data.pai_id, data.lote_id,
-                  data.data_entrada or date.today(), origem,
-                  data.valor_aquisicao, observacoes,
-                  nome_pai, nome_mae, registro_pai_externo,
-                  registro_mae_externo, composicao_racial))
-        except psycopg2.errors.UniqueViolation as e:
-            conn.rollback()
-            raise HTTPException(409, f"Brinco '{data.brinco}' já cadastrado neste imóvel.")
-        except psycopg2.errors.StringDataRightTruncation as e:
-            conn.rollback()
-            raise HTTPException(400, f"Um dos campos enviados é maior do que o banco aceita: {str(e).splitlines()[0]}")
-        except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError) as e:
-            conn.rollback()
-            raise HTTPException(400, f"Caractere inválido em algum campo de texto do animal '{data.brinco}': {e}")
-        except psycopg2.Error as e:
-            conn.rollback()
-            raise HTTPException(400, f"Erro ao gravar animal (brinco {data.brinco}): {str(e).splitlines()[0]}")
-
+        cur.execute("""
+            INSERT INTO bovino_animais
+            (imovel_id, especie_id, brinco, nome, raca_id, sexo, aptidao_manejo,
+             categoria, data_nascimento, peso_nascimento, mae_id, pai_id, lote_id,
+             data_entrada, origem, valor_aquisicao, observacoes,
+             nome_pai, nome_mae, registro_pai_externo, registro_mae_externo, composicao_racial)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
+        """, (data.imovel_id, especie_id, data.brinco, data.nome, raca_id,
+              data.sexo, data.aptidao_manejo, data.categoria, data.data_nascimento,
+              data.peso_nascimento, data.mae_id, data.pai_id, data.lote_id,
+              data.data_entrada or date.today(), data.origem,
+              data.valor_aquisicao, data.observacoes,
+              data.nome_pai, data.nome_mae, data.registro_pai_externo,
+              data.registro_mae_externo, data.composicao_racial))
         conn.commit()
         return dict(cur.fetchone())
     finally:

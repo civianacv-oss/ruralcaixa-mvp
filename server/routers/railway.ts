@@ -772,6 +772,250 @@ export const railwayRouter = router({
       return railwayMutate(`/bovino/animais/relink-genealogia/${input.imovelId}`, "POST", {}, claims.produtorId);
     }),
 
+  // ── Produção Leiteira (Bovino) ───────────────────────────────────────────────
+  // Importa exportações de controle leiteiro oficial (ex.: GISleite), que vêm
+  // em dois níveis: resumo por lactação ("producao") e controle dia a dia
+  // ("controle" / "controle_todas_lactacoes"). Ambos usam "Identificador
+  // Animal" para casar com o brinco já cadastrado no rebanho — igual à
+  // genealogia.
+  analisarPlanilhaLactacoesBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), rows: z.array(z.record(z.string(), z.any())) }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      let existentes: Animal[] = [];
+      try {
+        existentes = await railwayFetch<Animal[]>(`/bovino/animais/${input.imovelId}`, undefined, claims.produtorId);
+      } catch { existentes = []; }
+      const brincoParaId = new Map<string, number>();
+      for (const a of existentes) {
+        if (a.brinco) brincoParaId.set(String(a.brinco).toLowerCase().trim(), a.id);
+      }
+
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        for (const k of keys) {
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+      const dataBr = (v?: string): string | undefined => {
+        if (!v) return undefined;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const br = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+        return undefined;
+      };
+
+      const COL_BRINCO = ["identificadoranimal", "identificador", "brinco"];
+      const COL_DATA_PARTO = ["dataparto"];
+      const COL_ORDEM_PARTO = ["ordemdeparto", "ordemparto"];
+      const COL_DURACAO = ["duracaolactacao"];
+      const COL_PROD_TOTAL = ["producaototalleite"];
+      const COL_PROD_305 = ["producao305d"];
+      const COL_PROD_GORD = ["producaoacumuladagordura"];
+      const COL_PROD_PROT = ["producaoacumuladaproteina"];
+      const COL_ESCORE = ["escorecorporal"];
+      const COL_RACA = ["raca"];
+      const COL_CCS = ["ccs"];
+      const COL_DATA_ENC = ["dataencerramentolactacao"];
+      const COL_CAUSA_ENC = ["causaencerramentolactacao"];
+
+      const itens: any[] = [];
+      const nao_encontrados: { brinco: string }[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        const dataParto = dataBr(findCol(row, COL_DATA_PARTO));
+        if (!brinco || !dataParto) { ignoradas_count++; continue; }
+
+        const animalId = brincoParaId.get(brinco.toLowerCase());
+        if (!animalId) { nao_encontrados.push({ brinco }); continue; }
+
+        const n = (v?: string) => (v !== undefined ? Number(v.replace(",", ".")) : undefined);
+        itens.push({
+          animal_id: animalId,
+          brinco,
+          ordem_parto: n(findCol(row, COL_ORDEM_PARTO)),
+          data_parto: dataParto,
+          duracao_lactacao_dias: n(findCol(row, COL_DURACAO)),
+          producao_total_litros: n(findCol(row, COL_PROD_TOTAL)),
+          producao_305d_litros: n(findCol(row, COL_PROD_305)),
+          producao_acumulada_gordura: n(findCol(row, COL_PROD_GORD)),
+          producao_acumulada_proteina: n(findCol(row, COL_PROD_PROT)),
+          escore_corporal: n(findCol(row, COL_ESCORE)),
+          raca_registro: findCol(row, COL_RACA),
+          ccs_media: n(findCol(row, COL_CCS)),
+          data_encerramento: dataBr(findCol(row, COL_DATA_ENC)),
+          causa_encerramento: findCol(row, COL_CAUSA_ENC),
+        });
+      }
+
+      if (itens.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nenhuma linha reconhecida. Verifique se a planilha tem 'Identificador Animal' e 'Data Parto', e se os animais já estão cadastrados no rebanho.",
+        });
+      }
+
+      return { itens, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  confirmarImportacaoLactacoesBovino: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      itens: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const itens = input.itens.map(({ brinco, ...rest }) => rest);
+      return railwayMutate(`/bovino/leiteiro/lactacoes/importar`, "POST", {
+        imovel_id: input.imovelId, itens,
+      }, claims.produtorId);
+    }),
+
+  analisarPlanilhaControleLeiteiroBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), rows: z.array(z.record(z.string(), z.any())) }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      let existentes: Animal[] = [];
+      try {
+        existentes = await railwayFetch<Animal[]>(`/bovino/animais/${input.imovelId}`, undefined, claims.produtorId);
+      } catch { existentes = []; }
+      const brincoParaId = new Map<string, number>();
+      for (const a of existentes) {
+        if (a.brinco) brincoParaId.set(String(a.brinco).toLowerCase().trim(), a.id);
+      }
+
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        for (const k of keys) {
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+      const dataBr = (v?: string): string | undefined => {
+        if (!v) return undefined;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const br = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+        return undefined;
+      };
+
+      const COL_BRINCO = ["identificadoranimal", "identificador", "brinco"];
+      const COL_DATA_CONTROLE = ["datacontrole"];
+      const COL_NUM_CONTROLE = ["numerocontrole"];
+      const COL_NUM_ORDENHAS = ["numerodeordenhasnocontrole", "numeroordenhas"];
+      const COL_PROD_CONTROLE = ["producaoleitecontrole"];
+      const COL_GORDURA = ["percentualgordura"];
+      const COL_PROTEINA = ["percentualproteina"];
+      const COL_LACTOSE = ["percentuallactose"];
+      const COL_ES = ["es"];
+      const COL_CCS = ["ccs"];
+
+      const itens: any[] = [];
+      const nao_encontrados: { brinco: string }[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        const dataControle = dataBr(findCol(row, COL_DATA_CONTROLE));
+        const producaoControle = findCol(row, COL_PROD_CONTROLE);
+        if (!brinco || !dataControle || !producaoControle) { ignoradas_count++; continue; }
+
+        const animalId = brincoParaId.get(brinco.toLowerCase());
+        if (!animalId) { nao_encontrados.push({ brinco }); continue; }
+
+        const n = (v?: string) => (v !== undefined ? Number(v.replace(",", ".")) : undefined);
+        itens.push({
+          animal_id: animalId,
+          brinco,
+          data: dataControle,
+          volume_l: n(producaoControle),
+          gordura_pct: n(findCol(row, COL_GORDURA)),
+          proteina_pct: n(findCol(row, COL_PROTEINA)),
+          lactose_pct: n(findCol(row, COL_LACTOSE)),
+          es_pct: n(findCol(row, COL_ES)),
+          ccs: n(findCol(row, COL_CCS)),
+          numero_ordenhas_dia: n(findCol(row, COL_NUM_ORDENHAS)),
+          numero_controle_externo: n(findCol(row, COL_NUM_CONTROLE)),
+        });
+      }
+
+      if (itens.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nenhuma linha reconhecida. Verifique se a planilha tem 'Identificador Animal', 'Data Controle' e 'Producao Leite Controle', e se os animais já estão cadastrados no rebanho.",
+        });
+      }
+
+      return { itens, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  confirmarImportacaoControleLeiteiroBovino: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      itens: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const itens = input.itens.map(({ brinco, ...rest }) => rest);
+      return railwayMutate(`/bovino/leiteiro/ordenha/importar`, "POST", {
+        imovel_id: input.imovelId, itens,
+      }, claims.produtorId);
+    }),
+
+  lactacoesBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), animalId: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const qs = input.animalId ? `?animal_id=${input.animalId}` : "";
+      return railwayFetch<any[]>(`/bovino/leiteiro/lactacoes/${input.imovelId}${qs}`, undefined, claims.produtorId);
+    }),
+
+  controleLeiteiroBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), animalId: z.number().optional(), dias: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const params = new URLSearchParams();
+      params.set("dias", String(input.dias ?? 3650));
+      params.set("fonte", "gisleite");
+      if (input.animalId) params.set("animal_id", String(input.animalId));
+      return railwayFetch<any[]>(`/bovino/leiteiro/ordenha/${input.imovelId}?${params.toString()}`, undefined, claims.produtorId);
+    }),
+
   // ── Dashboard ──────────────────────────────────────────────────────────────
   ovinoDashboard: publicProcedure
     .input(z.object({ imovelId: z.number() }))
