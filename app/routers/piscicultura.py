@@ -1007,6 +1007,19 @@ def dashboard_ciclo(ciclo_id: int):
             alertas.append(f"⚠️ ICA alto = {ciclo.ica_atual} — revisar manejo alimentar")
         if ciclo.data_despesca_prevista and date.today() > ciclo.data_despesca_prevista:
             alertas.append("📅 Prazo de despesca prevista já ultrapassado")
+        if biomassa_atual_kg and biomassa_atual_kg > 0 and custo_racao > 0 and ciclo.meta_preco_venda_kg:
+            custo_racao_kg = (custo_racao / biomassa_atual_kg).quantize(Decimal("0.01"))
+            if custo_racao_kg > 0:
+                relacao_peixe_racao = (ciclo.meta_preco_venda_kg / custo_racao_kg).quantize(Decimal("0.01"))
+                if relacao_peixe_racao < Decimal("1.25"):
+                    alertas.append(
+                        f"💰 Relação peixe-ração inviável = {relacao_peixe_racao} "
+                        f"(1 kg vendido paga só {relacao_peixe_racao} kg de ração) — revisar preço ou custo de ração"
+                    )
+                elif relacao_peixe_racao < Decimal("1.50"):
+                    alertas.append(
+                        f"💰 Relação peixe-ração abaixo do satisfatório = {relacao_peixe_racao} — margem apertada"
+                    )
 
         racao_ultimo_dia = float(registros_recentes[0].racao_kg) if registros_recentes and registros_recentes[0].racao_kg else None
         aeracao = _calcular_aeracao_recomendada(

@@ -353,6 +353,17 @@ export const railwayRouter = router({
       );
     }),
 
+  // ── Excluir Imóvel ───────────────────────────────────────────────────────────
+  excluirImovel: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayMutate(
+        `/imoveis-rurais/${input.imovelId}`, "DELETE", undefined, claims.produtorId
+      );
+    }),
+
   racas: publicProcedure
     .input(z.object({ especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
     .query(async ({ ctx, input }) => {
@@ -1073,6 +1084,31 @@ export const railwayRouter = router({
       return (data as { data: Insumo }).data ?? data;
     }),
 
+  // ── Editar Insumo (inclui vincular/trocar fornecedor) ────────────────────────
+  atualizarInsumo: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      insumoId: z.number(),
+      nome: z.string().min(1),
+      descricao: z.string().optional(),
+      categoria: z.string(),
+      unidade: z.string(),
+      origem: z.enum(["comprado", "proprio", "doacao"]),
+      estoque_minimo: z.number(),
+      estoque_ideal: z.number(),
+      preco_estimado: z.number().optional(),
+      fornecedor_id: z.number().optional(),
+      reposicao_modo: z.enum(["automatico", "manual"]),
+      lead_time_dias: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, insumoId, ...fields } = input;
+      const data = await railwayMutate<{ data: Insumo } | Insumo>(`/insumos/${insumoId}`, "PUT", fields, claims.produtorId);
+      return (data as { data: Insumo }).data ?? data;
+    }),
+
   resumoMovimentacoesInsumos: publicProcedure
     .input(z.object({ imovelId: z.number(), mes: z.string().optional() }))
     .query(async ({ ctx, input }) => {
@@ -1242,6 +1278,37 @@ export const railwayRouter = router({
       const { imovelId, ...fields } = input;
       const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/`, "POST", { fazenda_id: imovelId, ...fields }, claims.produtorId);
       return (data as { data: Fornecedor }).data ?? data;
+    }),
+
+  updateFornecedor: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      fornecedorId: z.number(),
+      nome: z.string().min(1),
+      cnpj_cpf: z.string().optional(),
+      whatsapp: z.string().optional(),
+      telegram: z.string().optional(),
+      email: z.string().optional(),
+      endereco: z.string().optional(),
+      prazo_entrega_dias: z.number().default(7),
+      forma_pagamento: z.string().default("a_vista"),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, fornecedorId, ...fields } = input;
+      const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/${fornecedorId}`, "PUT", { fazenda_id: imovelId, ...fields }, claims.produtorId);
+      return (data as { data: Fornecedor }).data ?? data;
+    }),
+
+  deleteFornecedor: publicProcedure
+    .input(z.object({ imovelId: z.number(), fornecedorId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayMutate<{ ok: boolean }>(`/fornecedores/${input.fornecedorId}`, "DELETE", undefined, claims.produtorId);
+      return data;
     }),
 
   // ── Pedidos de Compra ────────────────────────────────────────────────────────
@@ -1511,6 +1578,7 @@ export const railwayRouter = router({
         preco_estimado: toNum(col(row, "precoestimado", "preco", "price", "valor", "valorunitariodaultimacompra", "valorunitario")) || 0,
         reposicao_modo: normalize(col(row, "reposicaomodo", "reposicao")) === "automatico" ? "automatico" : "manual",
         lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
+        fornecedor_nome: normalize(col(row, "fornecedor", "fornecedornome", "supplier", "fabricante", "vendor")),
       }));
 
       // ── VALIDAÇÃO 1: Normalização de nomes para deduplicação ──────────────────
@@ -1630,6 +1698,7 @@ export const railwayRouter = router({
         preco_estimado: z.number(),
         reposicao_modo: z.string(),
         lead_time_dias: z.number(),
+        fornecedor_nome: z.string().optional(),
       })),
       mappings: z.record(z.string(), z.string()), // { nomePlanilha: nomeDestino }
       // Decisões do usuário para insumos já existentes: "adicionar" = soma estoque | "ignorar" = pula
@@ -1665,6 +1734,42 @@ export const railwayRouter = router({
       const mapaExistentesConf = new Map<string, Insumo>();
       for (const ins of insumosExistentes) {
         mapaExistentesConf.set(normalizeNomeConf(ins.nome), ins);
+      }
+
+      // ── FORNECEDORES: buscar existentes e preparar resolução por nome ───────────────
+      // A planilha pode trazer uma coluna "fornecedor" com o nome do fornecedor.
+      // Resolvemos para o fornecedor_id existente (por nome normalizado) ou criamos
+      // um novo fornecedor (apenas com o nome) na primeira ocorrência dentro do lote.
+      let fornecedoresExistentes: Fornecedor[] = [];
+      try {
+        const fornRes = await railwayFetch<{ data: Fornecedor[] } | Fornecedor[]>(
+          `/fornecedores/?fazenda_id=${input.imovelId}`, undefined, claims.produtorId
+        );
+        fornecedoresExistentes = Array.isArray(fornRes) ? fornRes : (fornRes as { data: Fornecedor[] }).data ?? [];
+      } catch {
+        // Railway indisponível — segue sem resolução de fornecedor
+      }
+      const mapaFornecedores = new Map<string, number>();
+      for (const f of fornecedoresExistentes) {
+        mapaFornecedores.set(normalizeNomeConf(f.nome), f.id);
+      }
+      async function resolverFornecedorId(nomeFornecedor?: string): Promise<number | undefined> {
+        const nome = (nomeFornecedor ?? "").trim();
+        if (!nome) return undefined;
+        const key = normalizeNomeConf(nome);
+        const existente = mapaFornecedores.get(key);
+        if (existente) return existente;
+        try {
+          const novo = await railwayMutate<{ data: Fornecedor } | Fornecedor>(
+            `/fornecedores/`, "POST", { fazenda_id: input.imovelId, nome }, claims.produtorId
+          );
+          const fornecedorCriado = (novo as { data: Fornecedor }).data ?? (novo as Fornecedor);
+          mapaFornecedores.set(key, fornecedorCriado.id);
+          return fornecedorCriado.id;
+        } catch {
+          // Não bloqueia a importação do insumo se a criação do fornecedor falhar
+          return undefined;
+        }
       }
 
       // Decisões do usuário: { nomePlanilha: "adicionar" | "ignorar" }
@@ -1732,12 +1837,36 @@ export const railwayRouter = router({
               // Ignorar: não altera o estoque existente
               results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "ignorado" });
             }
+            // Se o insumo já existe mas ainda não tem fornecedor, e a planilha trouxe um,
+            // vincula o fornecedor (resolvendo ou criando pelo nome) sem mexer em mais nada.
+            if (!insumoExistente.fornecedor_id && row.fornecedor_nome) {
+              const fornecedorId = await resolverFornecedorId(row.fornecedor_nome);
+              if (fornecedorId) {
+                try {
+                  await railwayMutate(`/insumos/${insumoExistente.id}`, "PUT", {
+                    nome: insumoExistente.nome,
+                    categoria: insumoExistente.categoria,
+                    unidade: insumoExistente.unidade,
+                    origem: insumoExistente.origem,
+                    estoque_minimo: insumoExistente.estoque_minimo,
+                    estoque_ideal: insumoExistente.estoque_ideal,
+                    preco_estimado: insumoExistente.preco_estimado,
+                    fornecedor_id: fornecedorId,
+                    reposicao_modo: insumoExistente.reposicao_modo,
+                    lead_time_dias: insumoExistente.lead_time_dias,
+                  }, claims.produtorId);
+                } catch {
+                  // Não bloqueia a importação se a vinculação do fornecedor falhar
+                }
+              }
+            }
             continue;
           }
 
           // Insumo não existe: criar novo no Railway
           let actionFinal: "criado" | "atualizado" = "criado";
           try {
+            const fornecedorId = await resolverFornecedorId(row.fornecedor_nome);
             const payload = {
               fazenda_id: input.imovelId,
               nome: nomeDestino,
@@ -1748,6 +1877,7 @@ export const railwayRouter = router({
               estoque_minimo: row.estoque_minimo,
               estoque_ideal: row.estoque_ideal,
               preco_estimado: row.preco_estimado || undefined,
+              fornecedor_id: fornecedorId,
               reposicao_modo: row.reposicao_modo,
               lead_time_dias: row.lead_time_dias,
             };

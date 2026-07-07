@@ -539,7 +539,7 @@ def deletar_imovel_rural(imovel_id: int):
     from sqlalchemy import text
     with engine.connect() as conn:
         total = conn.execute(text(
-            "SELECT COUNT(*) FROM lancamentos WHERE empreendimento_id=:id"
+            "SELECT COUNT(*) FROM lancamentos WHERE imovel_id=:id"
         ), {"id": imovel_id}).fetchone()[0]
         if total > 0:
             raise HTTPException(status_code=400,

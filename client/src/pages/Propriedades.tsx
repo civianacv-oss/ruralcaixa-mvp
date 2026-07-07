@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, MapPin, Search, RefreshCw, Pencil, Building2, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, MapPin, Search, RefreshCw, Pencil, Trash2, Building2, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +29,7 @@ export default function Propriedades() {
   const [search, setSearch]     = useState("");
   const [showNew, setShowNew]   = useState(false);
   const [editItem, setEditItem] = useState<Imovel | null>(null);
+  const [deleteItem, setDeleteItem] = useState<Imovel | null>(null);
   const [form, setForm]         = useState({ ...FORM_EMPTY });
 
   const { data: imoveis = [], isLoading, error, refetch } = trpc.railway.imoveis.useQuery(undefined, {
@@ -53,6 +54,15 @@ export default function Propriedades() {
       setEditItem(null);
     },
     onError: (e) => toast.error(e.message ?? "Erro ao atualizar propriedade"),
+  });
+
+  const excluirMutation = trpc.railway.excluirImovel.useMutation({
+    onSuccess: () => {
+      toast.success("Propriedade excluída com sucesso!");
+      utils.railway.imoveis.invalidate();
+      setDeleteItem(null);
+    },
+    onError: (e) => toast.error(e.message ?? "Erro ao excluir propriedade"),
   });
 
   const handleCreate = () => {
@@ -248,9 +258,14 @@ export default function Propriedades() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50 shrink-0" title="Editar" onClick={() => handleEdit(im)}>
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar" onClick={() => handleEdit(im)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="w-8 h-8 text-red-500 hover:text-red-700 hover:bg-red-50" title="Excluir" onClick={() => setDeleteItem(im)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -289,6 +304,31 @@ export default function Propriedades() {
             <Button variant="outline" onClick={() => setEditItem(null)}>Cancelar</Button>
             <Button onClick={handleUpdate} disabled={editarMutation.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
               {editarMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : "Salvar Alteracoes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteItem} onOpenChange={(o) => { if (!o) setDeleteItem(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Excluir Propriedade
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Tem certeza que deseja excluir <strong>{deleteItem?.nome}</strong>? Essa ação não pode ser desfeita.
+            Se houver lançamentos vinculados a essa propriedade, a exclusão será bloqueada.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteItem(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={excluirMutation.isPending}
+              onClick={() => deleteItem && excluirMutation.mutate({ imovelId: deleteItem.id })}
+            >
+              {excluirMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Excluindo...</> : "Sim, excluir"}
             </Button>
           </DialogFooter>
         </DialogContent>
