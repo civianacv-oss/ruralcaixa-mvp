@@ -39,6 +39,7 @@ const TIPO_LABELS: Record<string, string> = {
   comodato: "Comodato",
   prestacao_servico: "Prestação de Serviço",
   compra_venda: "Compra e Venda",
+  condominio: "Condomínio Rural",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -203,7 +204,6 @@ export default function ContratosRurais() {
           ))}
         </div>
       )}
-
       <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Novo Contrato Rural</DialogTitle></DialogHeader>
