@@ -4,7 +4,8 @@ Servico de autenticacao por CPF + codigo OTP (One-Time Password).
 
 Fluxo:
   1. solicitar_codigo(cpf) - localiza produtor, gera codigo de 6 digitos,
-     salva em auth_codigos, envia via Telegram (ou WhatsApp como fallback).
+     salva em auth_codigos, envia via Telegram direto (chat_id do produtor),
+     ou Telegram grupo (fallback), ou WhatsApp (ultimo fallback).
   2. verificar_codigo(cpf, codigo) - valida codigo, marca como usado,
      retorna o api_token do produtor para uso nas proximas requisicoes.
 """
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+TELEGRAM_GROUP_CHAT_ID = os.getenv("TELEGRAM_GROUP_CHAT_ID", "")
 
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "")
@@ -57,6 +59,13 @@ def _enviar_telegram(chat_id: str, texto: str) -> bool:
         return False
 
 
+def _enviar_telegram_grupo(texto: str) -> bool:
+    if not TELEGRAM_GROUP_CHAT_ID:
+        logger.warning("[auth_service] TELEGRAM_GROUP_CHAT_ID nao configurado.")
+        return False
+    return _enviar_telegram(TELEGRAM_GROUP_CHAT_ID, texto)
+
+
 def _enviar_whatsapp_texto(telefone: str, texto: str) -> bool:
     if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
         logger.warning("[auth_service] WHATSAPP_TOKEN/PHONE_ID nao configurado.")
@@ -83,7 +92,7 @@ def _enviar_whatsapp_texto(telefone: str, texto: str) -> bool:
 
 def solicitar_codigo(cpf: str) -> dict:
     """Localiza o produtor pelo CPF, gera um codigo OTP e envia via Telegram
-    (ou WhatsApp como fallback)."""
+    direto (chat_id do produtor), ou Telegram grupo, ou WhatsApp (fallbacks)."""
     cpf_limpo = _limpar_cpf(cpf)
     if not cpf_limpo:
         return {"erro": "CPF invalido."}
@@ -116,21 +125,32 @@ def solicitar_codigo(cpf: str) -> dict:
         logger.error(f"[auth_service] Erro ao gerar codigo: {e}")
         return {"erro": "Erro interno ao gerar codigo. Tente novamente."}
 
-    texto = (
+    nome = produtor.get("nome", "Produtor")
+
+    texto_direto = (
         f"RuralCaixa - Codigo de acesso\n\n"
         f"Seu codigo: {codigo}\n"
         f"Valido por {CODIGO_VALIDADE_MINUTOS} minutos."
+    )
+    texto_grupo = (
+        f"Codigo de Acesso RuralCaixa\n\n"
+        f"Ola, {nome}!\n\n"
+        f"Seu codigo de acesso e: {codigo}\n"
+        f"Valido por {CODIGO_VALIDADE_MINUTOS} minutos. Nao compartilhe com ninguem."
     )
 
     canal_usado = None
 
     telegram_chat_id = produtor.get("telegram_chat_id")
     if telegram_chat_id:
-        if _enviar_telegram(telegram_chat_id, texto):
+        if _enviar_telegram(telegram_chat_id, texto_direto):
             canal_usado = "telegram"
 
+    if not canal_usado and _enviar_telegram_grupo(texto_grupo):
+        canal_usado = "telegram_grupo"
+
     if not canal_usado and produtor.get("telefone"):
-        if _enviar_whatsapp_texto(produtor["telefone"], texto):
+        if _enviar_whatsapp_texto(produtor["telefone"], texto_direto):
             canal_usado = "whatsapp"
 
     if not canal_usado:
