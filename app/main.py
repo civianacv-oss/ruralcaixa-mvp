@@ -219,6 +219,15 @@ try:
 except Exception as e:
     print(f"INSUMOS ROUTER FAILED: {e}")
 
+producao_insumos_router = None
+try:
+    from app.routers.producao_insumos import router as producao_insumos_router
+    app.include_router(producao_insumos_router)
+    print("PRODUCAO_INSUMOS ROUTER LOADED OK")
+except Exception as e:
+    print(f"PRODUCAO_INSUMOS ROUTER FAILED: {e}")
+
+
 # Cron alertas insumos
 try:
     from app.services.insumo_cron import verificar_alertas_insumo
