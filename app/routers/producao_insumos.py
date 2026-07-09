@@ -1,14 +1,16 @@
 """
 GET /producao/insumos-animal?animal_id=963&especie=bovinos&dias=30
 
-Design generico: um mapa de configuracao por especie define onde buscar
-producao (leite/ganho de peso/outro) e consumo (individual/lote), para que
-o algoritmo de rateio (individual -> lote -> igual) seja reaproveitado por
-todas as especies (bovinos, equinos, caprinos, ovinos, suinos, ...).
+Versao final com schema real confirmado:
+- bovino_animais / bovino_lotes / bovino_pesagens / bovino_ordenha
+- caprino_animais / caprino_lotes / caprino_pesagens
+- ovino_animais   / ovino_lotes   / ovino_pesagens
+- suino_animais   / suino_lotes   / suino_pesagens
+- movimentacoes_insumo (com especie/lote_id/animal_id, migration 013)
 
-AJUSTAR: preencher ESPECIE_CONFIG com os nomes reais de tabela/coluna de
-cada especie. O que estiver como None indica "essa especie nao rastreia
-essa granularidade ainda" -- o algoritmo pula essa etapa automaticamente.
+Nota: bovino_pesagens usa coluna 'data'; caprino/ovino/suino_pesagens usam
+'data_pesagem'. Todos usam 'peso_kg' (nao 'peso'). Documentado explicitamente
+na config abaixo para nao reintroduzir o erro.
 """
 from fastapi import APIRouter, Query, HTTPException
 from datetime import date, timedelta
@@ -20,28 +22,21 @@ router = APIRouter()
 DB_URL = os.getenv("DATABASE_URL")
 
 
-# --------------------------------------------------------------------------
-# CONFIGURACAO POR ESPECIE -- AJUSTAR nomes reais de tabela/coluna
-# --------------------------------------------------------------------------
-# tabela_animal: tabela com os individuos dessa especie (deve ter id, lote_id)
-# campo_finalidade: coluna que diz se o individuo eh "leiteiro"/produtivo por
-#                   producao continua (leite, ovos, la) ou por ganho de peso
-# producao_continua: {tabela, coluna_producao, coluna_animal_id, coluna_data}
-#                     usado quando finalidade = producao continua (ex: leite)
-# usa_pesagem: True se a producao dessa especie/finalidade eh medida por
-#              ganho de peso (usa tabela `pesagens` generica, ja existente
-#              para todas as especies conforme os 4 roteadores de rebanho)
-# consumo_individual / consumo_lote: {tabela, coluna_animal_ou_lote, coluna_qtd, coluna_data}
-#                                     None se essa granularidade nao existir
 ESPECIE_CONFIG = {
     "bovinos": {
-        "tabela_animal": "bovinos",
-        "campo_finalidade": "finalidade",  # 'leiteiro' | 'corte'
+        "tabela_animal": "bovino_animais",
+        "campo_finalidade": "aptidao_manejo",  # valores reais: 'leite' | 'corte'
+        "valor_finalidade_continua": "leite",
         "producao_continua": {
-            "tabela": "bovino_lactacoes",
-            "coluna_producao": "producao_leite_controle",
-            "coluna_animal_id": "identificador_animal",
-            "coluna_data": "data_controle",
+            "tabela": "bovino_ordenha",
+            "coluna_producao": "volume_l",
+            "coluna_animal_id": "animal_id",
+            "coluna_data": "data",
+        },
+        "pesagens": {
+            "tabela": "bovino_pesagens",
+            "coluna_peso": "peso_kg",
+            "coluna_data": "data",
         },
         "consumo_individual": {
             "tabela": "movimentacoes_insumo",
@@ -59,9 +54,15 @@ ESPECIE_CONFIG = {
         },
     },
     "caprinos": {
-        "tabela_animal": "caprinos",
-        "campo_finalidade": None,      # sempre ganho de peso, sem bifurcacao
+        "tabela_animal": "caprino_animais",
+        "campo_finalidade": None,   # sempre ganho de peso
+        "valor_finalidade_continua": None,
         "producao_continua": None,
+        "pesagens": {
+            "tabela": "caprino_pesagens",
+            "coluna_peso": "peso_kg",
+            "coluna_data": "data_pesagem",
+        },
         "consumo_individual": {
             "tabela": "movimentacoes_insumo",
             "coluna_animal_ou_lote": "animal_id",
@@ -78,9 +79,15 @@ ESPECIE_CONFIG = {
         },
     },
     "ovinos": {
-        "tabela_animal": "ovinos",
+        "tabela_animal": "ovino_animais",
         "campo_finalidade": None,
+        "valor_finalidade_continua": None,
         "producao_continua": None,
+        "pesagens": {
+            "tabela": "ovino_pesagens",
+            "coluna_peso": "peso_kg",
+            "coluna_data": "data_pesagem",
+        },
         "consumo_individual": {
             "tabela": "movimentacoes_insumo",
             "coluna_animal_ou_lote": "animal_id",
@@ -97,9 +104,15 @@ ESPECIE_CONFIG = {
         },
     },
     "suinos": {
-        "tabela_animal": "suinos",
+        "tabela_animal": "suino_animais",
         "campo_finalidade": None,
+        "valor_finalidade_continua": None,
         "producao_continua": None,
+        "pesagens": {
+            "tabela": "suino_pesagens",
+            "coluna_peso": "peso_kg",
+            "coluna_data": "data_pesagem",
+        },
         "consumo_individual": {
             "tabela": "movimentacoes_insumo",
             "coluna_animal_ou_lote": "animal_id",
@@ -136,11 +149,11 @@ def producao_insumos_animal(
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            # 1) Animal + lote
+            # 1) Animal + lote + finalidade (se aplicavel)
+            campos_extra = f", {cfg['campo_finalidade']}" if cfg["campo_finalidade"] else ""
             cur.execute(
                 f"""
-                SELECT id, lote_id
-                       {', ' + cfg['campo_finalidade'] if cfg['campo_finalidade'] else ''}
+                SELECT id, lote_id{campos_extra}
                 FROM {cfg['tabela_animal']}
                 WHERE id = %s
                 """,
@@ -151,12 +164,13 @@ def producao_insumos_animal(
                 raise HTTPException(404, "Animal nao encontrado")
 
             finalidade = animal.get(cfg["campo_finalidade"]) if cfg["campo_finalidade"] else None
-            usa_producao_continua = cfg["producao_continua"] is not None and finalidade not in (
-                "corte",
-                None,
+            usa_producao_continua = (
+                cfg["producao_continua"] is not None
+                and finalidade == cfg["valor_finalidade_continua"]
             )
 
-            # 2) Producao do periodo: continua (leite/ovos/la) OU ganho de peso
+            # 2) Producao do periodo: continua (leite) OU ganho de peso
+            pesagens = []
             if usa_producao_continua:
                 pc = cfg["producao_continua"]
                 cur.execute(
@@ -168,17 +182,17 @@ def producao_insumos_animal(
                     (animal_id, data_inicio),
                 )
                 producao = float(cur.fetchone()["total"])
-                tipo_producao = "continua"
-                pesagens = []
+                tipo_producao = "leite"
             else:
+                pg = cfg["pesagens"]
                 cur.execute(
-                    """
-                    SELECT peso, data_pesagem
-                    FROM pesagens
-                    WHERE animal_id = %s AND especie = %s AND data_pesagem >= %s
-                    ORDER BY data_pesagem ASC
+                    f"""
+                    SELECT {pg['coluna_peso']} AS peso, {pg['coluna_data']} AS data_p
+                    FROM {pg['tabela']}
+                    WHERE animal_id = %s AND {pg['coluna_data']} >= %s
+                    ORDER BY {pg['coluna_data']} ASC
                     """,
-                    (animal_id, especie, data_inicio),
+                    (animal_id, data_inicio),
                 )
                 pesagens = cur.fetchall()
                 producao = (
@@ -188,28 +202,25 @@ def producao_insumos_animal(
                 )
                 tipo_producao = "ganho_peso"
 
-            # 3) Consumo individual, se essa especie rastreia
-            consumo_individual = 0.0
-            if cfg["consumo_individual"]:
-                ci = cfg["consumo_individual"]
-                cur.execute(
-                    f"""
-                    SELECT COALESCE(SUM({ci['coluna_qtd']}), 0) AS total
-                    FROM {ci['tabela']}
-                    WHERE {ci['coluna_animal_ou_lote']} = %s AND {ci['coluna_data']} >= %s
-                    {ci.get('filtro_extra', '')}
-                    """,
-                    (animal_id, data_inicio),
-                )
-                consumo_individual = float(cur.fetchone()["total"])
+            # 3) Consumo individual
+            ci = cfg["consumo_individual"]
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM({ci['coluna_qtd']}), 0) AS total
+                FROM {ci['tabela']}
+                WHERE {ci['coluna_animal_ou_lote']} = %s AND {ci['coluna_data']} >= %s
+                {ci.get('filtro_extra', '')}
+                """,
+                (animal_id, data_inicio),
+            )
+            consumo_individual = float(cur.fetchone()["total"])
 
             if consumo_individual > 0:
                 insumo_kg = consumo_individual
                 origem_consumo = "individual"
                 criterio_rateio = None
                 confiabilidade = "alta"
-
-            elif cfg["consumo_lote"]:
+            else:
                 cl = cfg["consumo_lote"]
                 lote_id = animal["lote_id"]
                 cur.execute(
@@ -223,18 +234,16 @@ def producao_insumos_animal(
                 )
                 consumo_lote = float(cur.fetchone()["total"])
 
-                if consumo_lote == 0:
+                if consumo_lote == 0 or lote_id is None:
                     return _sem_dado(animal_id, especie, dias, tipo_producao, producao)
 
                 proporcao, criterio_rateio = _calcular_rateio(
-                    cur, cfg, especie, lote_id, animal_id, data_inicio,
+                    cur, cfg, lote_id, animal_id, data_inicio,
                     tipo_producao, producao, pesagens,
                 )
                 insumo_kg = consumo_lote * proporcao
                 origem_consumo = "lote_rateado"
                 confiabilidade = "media" if criterio_rateio != "igual" else "baixa"
-            else:
-                return _sem_dado(animal_id, especie, dias, tipo_producao, producao)
 
             eficiencia = producao / insumo_kg if insumo_kg else None
             return {
@@ -270,9 +279,9 @@ def _sem_dado(animal_id, especie, dias, tipo_producao, producao):
     }
 
 
-def _calcular_rateio(cur, cfg, especie, lote_id, animal_id, data_inicio, tipo_producao, producao, pesagens):
+def _calcular_rateio(cur, cfg, lote_id, animal_id, data_inicio, tipo_producao, producao, pesagens):
     """Retorna (proporcao, criterio) para dividir o consumo do lote entre os animais."""
-    if tipo_producao == "continua":
+    if tipo_producao == "leite":
         pc = cfg["producao_continua"]
         cur.execute(
             f"""
@@ -291,21 +300,22 @@ def _calcular_rateio(cur, cfg, especie, lote_id, animal_id, data_inicio, tipo_pr
         n = len(linhas) or 1
         return 1 / n, "igual"
 
-    # ganho de peso -> pondera por peso metabolico (peso^0.75)
+    # ganho de peso -> pondera por peso metabolico (peso_kg^0.75) do peso mais recente
+    pg = cfg["pesagens"]
     cur.execute(
         f"""
-        SELECT b.id, p.peso
+        SELECT b.id, p.peso_kg
         FROM {cfg['tabela_animal']} b
         LEFT JOIN LATERAL (
-            SELECT peso FROM pesagens
-            WHERE animal_id = b.id AND especie = %s AND data_pesagem >= %s
-            ORDER BY data_pesagem DESC LIMIT 1
+            SELECT peso_kg FROM {pg['tabela']}
+            WHERE animal_id = b.id AND {pg['coluna_data']} >= %s
+            ORDER BY {pg['coluna_data']} DESC LIMIT 1
         ) p ON true
         WHERE b.lote_id = %s
         """,
-        (especie, data_inicio, lote_id),
+        (data_inicio, lote_id),
     )
-    pesos_lote = [float(r["peso"]) for r in cur.fetchall() if r["peso"] is not None]
+    pesos_lote = [float(r["peso_kg"]) for r in cur.fetchall() if r["peso_kg"] is not None]
     total_metabolico = sum(p ** 0.75 for p in pesos_lote)
     peso_atual = pesagens[-1]["peso"] if pesagens else None
     if total_metabolico > 0 and peso_atual:
