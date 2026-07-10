@@ -691,6 +691,126 @@ def listar_ordenha(imovel_id: int, dias: int = Query(30, ge=1, le=365)):
     finally:
         conn.close()
 
+from typing import List, Optional
+from datetime import date
+from pydantic import BaseModel
+
+
+class OrdenhaImportItem(BaseModel):
+    animal_id: int
+    data: date
+    volume_l: Optional[float] = None
+    gordura_pct: Optional[float] = None
+    proteina_pct: Optional[float] = None
+    lactose_pct: Optional[float] = None
+    es_pct: Optional[float] = None
+    ccs: Optional[int] = None
+    numero_ordenhas_dia: Optional[int] = None
+    numero_controle_externo: Optional[int] = None
+
+
+class OrdenhaImportIn(BaseModel):
+    imovel_id: int
+    itens: List[OrdenhaImportItem]
+
+
+@router.post("/leiteiro/ordenha/importar")
+def importar_ordenha(data: OrdenhaImportIn):
+    conn = get_db()
+    criados = 0
+    erros = []
+    try:
+        cur = conn.cursor()
+        for item in data.itens:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO bovino_ordenha
+                        (imovel_id, animal_id, data, volume_l, gordura_pct,
+                         proteina_pct, lactose_pct, es_pct, ccs,
+                         numero_ordenhas_dia, numero_controle_externo,
+                         turno, destinacao, fonte)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'total','venda','gisleite')
+                    """,
+                    (
+                        data.imovel_id, item.animal_id, item.data, item.volume_l,
+                        item.gordura_pct, item.proteina_pct, item.lactose_pct,
+                        item.es_pct, item.ccs, item.numero_ordenhas_dia,
+                        item.numero_controle_externo,
+                    ),
+                )
+                criados += 1
+            except Exception as e:
+                conn.rollback()
+                erros.append({"animal_id": item.animal_id, "data": str(item.data), "erro": str(e)})
+                continue
+        conn.commit()
+        return {"ok": True, "criados": criados, "total": len(data.itens), "erros": erros}
+    finally:
+        conn.close()
+
+
+class LactacaoImportItem(BaseModel):
+    animal_id: int
+    ordem_parto: Optional[int] = None
+    data_parto: date
+    duracao_lactacao_dias: Optional[int] = None
+    producao_total_litros: Optional[float] = None
+    producao_305d_litros: Optional[float] = None
+    producao_acumulada_gordura: Optional[float] = None
+    producao_acumulada_proteina: Optional[float] = None
+    escore_corporal: Optional[float] = None
+    raca_registro: Optional[str] = None
+    ccs_media: Optional[int] = None
+    data_encerramento: Optional[date] = None
+    causa_encerramento: Optional[str] = None
+
+
+class LactacaoImportIn(BaseModel):
+    imovel_id: int
+    itens: List[LactacaoImportItem]
+
+
+@router.post("/leiteiro/lactacoes/importar")
+def importar_lactacoes(data: LactacaoImportIn):
+    conn = get_db()
+    criados = 0
+    erros = []
+    try:
+        cur = conn.cursor()
+        for item in data.itens:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO bovino_lactacoes
+                        (imovel_id, animal_id, ordem_parto, data_parto,
+                         duracao_lactacao_dias, producao_total_litros,
+                         producao_305d_litros, producao_acumulada_gordura,
+                         producao_acumulada_proteina, escore_corporal,
+                         raca_registro, ccs_media, data_encerramento,
+                         causa_encerramento, fonte)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'gisleite')
+                    """,
+                    (
+                        data.imovel_id, item.animal_id, item.ordem_parto, item.data_parto,
+                        item.duracao_lactacao_dias, item.producao_total_litros,
+                        item.producao_305d_litros, item.producao_acumulada_gordura,
+                        item.producao_acumulada_proteina, item.escore_corporal,
+                        item.raca_registro, item.ccs_media, item.data_encerramento,
+                        item.causa_encerramento,
+                    ),
+                )
+                criados += 1
+            except Exception as e:
+                conn.rollback()
+                erros.append({"animal_id": item.animal_id, "data_parto": str(item.data_parto), "erro": str(e)})
+                continue
+        conn.commit()
+        return {"ok": True, "criados": criados, "total": len(data.itens), "erros": erros}
+    finally:
+        conn.close()
+
+
 @router.get("/leiteiro/ordenha/resumo/{imovel_id}")
 def resumo_ordenha(imovel_id: int, meses: int = Query(6, ge=1, le=24)):
     """Resumo mensal de produção de leite por ordenha."""
