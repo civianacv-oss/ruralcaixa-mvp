@@ -152,14 +152,14 @@ def _calcular_producao_e_custo(cur, especie: str, animal_id: int, dias: Optional
 
     # Custo individual
     filtro_data_mov = "AND data_movim >= %s" if data_inicio else ""
-    params_ci = (animal_id, data_inicio) if data_inicio else (animal_id,)
+    params_ci = (animal_id, data_inicio, especie) if data_inicio else (animal_id, especie)
     cur.execute(
         f"""
         SELECT COALESCE(SUM(custo_total), 0) AS total
         FROM movimentacoes_insumo
-        WHERE animal_id = %s AND tipo = 'uso' AND especie = %s {filtro_data_mov}
+        WHERE animal_id = %s {filtro_data_mov} AND especie = %s AND tipo = 'uso'
         """,
-        params_ci + (especie,) if data_inicio else (animal_id, especie),
+        params_ci,
     )
     custo_individual = float(cur.fetchone()["total"])
 
@@ -176,7 +176,7 @@ def _calcular_producao_e_custo(cur, especie: str, animal_id: int, dias: Optional
             f"""
             SELECT COALESCE(SUM(custo_total), 0) AS total
             FROM movimentacoes_insumo
-            WHERE lote_id = %s {filtro_data_mov} AND especie = %s
+            WHERE lote_id = %s {filtro_data_mov} AND especie = %s AND tipo = 'uso'
             """,
             params_cl,
         )
