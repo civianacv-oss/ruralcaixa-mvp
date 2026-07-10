@@ -162,6 +162,63 @@ export default function Rebanhos() {
     },
   });
 
+  // ── Lactações / Controle leiteiro (Bovino) — sem etapa de conflito, ──────
+  // já que cada linha é um registro histórico aditivo, não um "animal" que
+  // possa colidir por brinco.
+  const confirmarLactacoes = trpc.railway.confirmarImportacaoLactacoesBovino.useMutation({
+    onSuccess: (data) => {
+      setImportResult({ tipo: "lactacoes", ...data });
+      setImportStep("resultado");
+      utils.railway.lactacoesBovino?.invalidate?.();
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao importar lactações"),
+  });
+
+  const analisarLactacoes = trpc.railway.analisarPlanilhaLactacoesBovino.useMutation({
+    onSuccess: (data) => {
+      if (data.itens.length === 0) {
+        setImportResult({ tipo: "lactacoes", criados: 0, ...data });
+        setImportStep("resultado");
+        return;
+      }
+      confirmarLactacoes.mutate({ imovelId: imovelId!, itens: data.itens });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha de lactações"),
+  });
+
+  const confirmarControle = trpc.railway.confirmarImportacaoControleLeiteiroBovino.useMutation({
+    onSuccess: (data) => {
+      setImportResult({ tipo: "controle", ...data });
+      setImportStep("resultado");
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao importar controle leiteiro"),
+  });
+
+  const analisarControle = trpc.railway.analisarPlanilhaControleLeiteiroBovino.useMutation({
+    onSuccess: (data) => {
+      if (data.itens.length === 0) {
+        setImportResult({ tipo: "controle", criados: 0, ...data });
+        setImportStep("resultado");
+        return;
+      }
+      confirmarControle.mutate({ imovelId: imovelId!, itens: data.itens });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha de controle leiteiro"),
+  });
+
+  // ── Auto-detecção de tipo de planilha por assinatura de coluna ───────────
+  const detectarTipoPlanilha = (headerRow: unknown[]): "genealogia" | "controle" | "lactacoes" | "animais" => {
+    const norm = (s: unknown) =>
+      String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    const cols = headerRow.map(norm);
+    const has = (...keys: string[]) => keys.some((k) => cols.some((c) => c.includes(k)));
+
+    if (has("registropai", "nomepai", "registromae", "nomemae")) return "genealogia";
+    if (has("numerocontrole", "ordenha1", "ordenha2")) return "controle";
+    if (has("producaototalleite", "duracaolactacao", "producao305d")) return "lactacoes";
+    return "animais";
+  };
+
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleCreate = () => {
     if (!form.brinco.trim()) { toast.error("Informe o brinco/identificação"); return; }
@@ -213,7 +270,6 @@ export default function Rebanhos() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !imovelId) return;
-    setImportIsGenealogia(false);
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
@@ -235,45 +291,27 @@ export default function Rebanhos() {
         }
 
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
-        if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna "Brinco" reconhecível.'); return; }
-        analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+        if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna de identificação reconhecível.'); return; }
+
+        // Auto-detecta o tipo (só relevante pra bovino; outras espécies só têm
+        // o import genérico de animais por enquanto).
+        const tipo = especie === "bovino" ? detectarTipoPlanilha(rawRows[headerRowIndex] || []) : "animais";
+
+        if (tipo === "genealogia") {
+          setImportIsGenealogia(true);
+          analisarGenealogia.mutate({ imovelId: imovelId!, rows });
+        } else if (tipo === "lactacoes") {
+          setImportIsGenealogia(false);
+          analisarLactacoes.mutate({ imovelId: imovelId!, rows });
+        } else if (tipo === "controle") {
+          setImportIsGenealogia(false);
+          analisarControle.mutate({ imovelId: imovelId!, rows });
+        } else {
+          setImportIsGenealogia(false);
+          analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+        }
       } catch {
         toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
-      }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = "";
-  };
-
-  const fileInputGenealogiaRef = useRef<HTMLInputElement>(null);
-
-  const handleFileChangeGenealogia = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !imovelId) return;
-    setImportIsGenealogia(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const wb = XLSX.read(ev.target?.result, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-
-        const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
-        let headerRowIndex = 0;
-        for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
-          const rowVals = (rawRows[i] || []).map((v) =>
-            String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-          );
-          if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
-            headerRowIndex = i;
-            break;
-          }
-        }
-
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
-        if (rows.length === 0) { toast.error("Planilha vazia ou sem coluna de identificação reconhecível."); return; }
-        analisarGenealogia.mutate({ imovelId: imovelId!, rows });
-      } catch {
-        toast.error("Erro ao ler o arquivo. Verifique se é um Excel/HTML de genealogia válido.");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -333,12 +371,6 @@ export default function Rebanhos() {
             <Upload className="w-4 h-4 mr-2" />
             Importar Planilha
           </Button>
-          {especie === "bovino" && (
-            <Button variant="outline" size="sm" onClick={() => { setImportIsGenealogia(true); setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
-              <FileSpreadsheet className="w-4 h-4 mr-2" />
-              Importar Genealogia
-            </Button>
-          )}
           <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Animal
@@ -759,7 +791,7 @@ export default function Rebanhos() {
               <div
                 className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-emerald-400 transition-colors"
                 style={{ borderColor: "oklch(0.80 0.04 145)" }}
-                onClick={() => (importIsGenealogia ? fileInputGenealogiaRef : fileInputRef).current?.click()}
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
                 <p className="font-medium text-sm">Clique para selecionar o arquivo</p>
@@ -769,7 +801,7 @@ export default function Rebanhos() {
                 </p>
               </div>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
-              <input ref={fileInputGenealogiaRef} type="file" accept=".xlsx,.xls,.csv,.html" className="hidden" onChange={handleFileChangeGenealogia} />
+              
 
               <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
                 {importIsGenealogia ? (
