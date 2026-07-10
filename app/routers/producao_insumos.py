@@ -293,38 +293,7 @@ def suino_producao_insumos(animal_id: int, dias: int = Query(30)):
         conn.close()
 
 
-def _indicadores_sem_periodo(especie: str, animal_id: int):
-    conn = get_conn()
-    try:
-        with conn.cursor() as cur:
-            producao, _, custo, aviso = _calcular_producao_e_custo(cur, especie, animal_id, None)
-            # GMD geral: precisa do periodo real entre 1a e ultima pesagem
-            cfg = ESPECIE_CONFIG[especie]
-            pg = cfg["pesagens"]
-            cur.execute(
-                f"""
-                SELECT MIN({pg['coluna_data']}) AS inicio, MAX({pg['coluna_data']}) AS fim
-                FROM {pg['tabela']} WHERE animal_id = %s
-                """,
-                (animal_id,),
-            )
-            row = cur.fetchone()
-            dias_reais = (row["fim"] - row["inicio"]).days if row["inicio"] and row["fim"] and row["fim"] != row["inicio"] else None
-            return {
-                "gmd_geral": round(producao / dias_reais, 3) if dias_reais else None,
-                "ganho_total_kg": round(producao, 2),
-                "custo_insumos_periodo": round(custo, 2) if custo is not None else 0.0,
-                "custo_por_kg_ganho": round(custo / producao, 2) if custo and producao else None,
-            }
-    finally:
-        conn.close()
-
-
-@router.get("/ovino/indicadores/animal/{animal_id}")
-def ovino_indicadores_animal(animal_id: int):
-    return _indicadores_sem_periodo("ovinos", animal_id)
-
-
-@router.get("/caprino/indicadores/animal/{animal_id}")
-def caprino_indicadores_animal(animal_id: int):
-    return _indicadores_sem_periodo("caprinos", animal_id)
+# NOTA: rotas /ovino/indicadores/animal/{id} e /caprino/indicadores/animal/{id}
+# ja existem, de forma mais completa (pesagens, movimentacao_atual, projecao_abate),
+# em app/routers/ovino.py e app/routers/caprino.py -- corrigidas separadamente
+# com o filtro de especie que faltava. Nao duplicar aqui.

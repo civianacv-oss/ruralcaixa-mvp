@@ -1555,7 +1555,7 @@ def indicadores_animal(animal_id: int):
         cur.execute("""
             SELECT COALESCE(SUM(custo_total), 0) AS custo_direto
             FROM movimentacoes_insumo
-            WHERE animal_id = %s AND tipo = 'uso'
+            WHERE animal_id = %s AND tipo = 'uso' AND especie = 'ovinos'
               AND data_movim >= CURRENT_DATE - 30
         """, (animal_id,))
         custo_direto = float(cur.fetchone()["custo_direto"] or 0)
@@ -1567,7 +1567,7 @@ def indicadores_animal(animal_id: int):
             cur.execute("""
                 SELECT COALESCE(SUM(custo_total), 0) AS custo_lote
                 FROM movimentacoes_insumo
-                WHERE lote_id = %s AND tipo = 'uso' AND data_movim >= CURRENT_DATE - 30
+                WHERE lote_id = %s AND tipo = 'uso' AND especie = 'ovinos' AND data_movim >= CURRENT_DATE - 30
             """, (movim_atual["lote_id"],))
             custo_lote_rateado = float(cur.fetchone()["custo_lote"] or 0) / qtd_lote
 
