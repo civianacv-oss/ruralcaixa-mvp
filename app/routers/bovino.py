@@ -722,6 +722,7 @@ def importar_ordenha(data: OrdenhaImportIn):
     try:
         cur = conn.cursor()
         for item in data.itens:
+            cur.execute("SAVEPOINT sp_item")
             try:
                 cur.execute(
                     """
@@ -739,9 +740,10 @@ def importar_ordenha(data: OrdenhaImportIn):
                         item.numero_controle_externo,
                     ),
                 )
+                cur.execute("RELEASE SAVEPOINT sp_item")
                 criados += 1
             except Exception as e:
-                conn.rollback()
+                cur.execute("ROLLBACK TO SAVEPOINT sp_item")
                 erros.append({"animal_id": item.animal_id, "data": str(item.data), "erro": str(e)})
                 continue
         conn.commit()
@@ -779,6 +781,7 @@ def importar_lactacoes(data: LactacaoImportIn):
     try:
         cur = conn.cursor()
         for item in data.itens:
+            cur.execute("SAVEPOINT sp_item")
             try:
                 cur.execute(
                     """
@@ -800,9 +803,10 @@ def importar_lactacoes(data: LactacaoImportIn):
                         item.causa_encerramento,
                     ),
                 )
+                cur.execute("RELEASE SAVEPOINT sp_item")
                 criados += 1
             except Exception as e:
-                conn.rollback()
+                cur.execute("ROLLBACK TO SAVEPOINT sp_item")
                 erros.append({"animal_id": item.animal_id, "data_parto": str(item.data_parto), "erro": str(e)})
                 continue
         conn.commit()
