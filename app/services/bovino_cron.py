@@ -188,14 +188,14 @@ def _gerar_alertas_leite(cur, imovel_id: Optional[int]) -> list[dict]:
     cur.execute(
         f"""
         WITH media_hist AS (
-            SELECT animal_id, AVG(litros) AS media_litros
+            SELECT animal_id, AVG(volume_l) AS media_litros
             FROM bovino_producao_leite
             WHERE data >= CURRENT_DATE - 90
             GROUP BY animal_id
         ),
         ultima_prod AS (
             SELECT DISTINCT ON (animal_id)
-                animal_id, litros, data
+                animal_id, volume_l, data
             FROM bovino_producao_leite
             ORDER BY animal_id, data DESC
         )
@@ -203,14 +203,14 @@ def _gerar_alertas_leite(cur, imovel_id: Optional[int]) -> list[dict]:
             pl.imovel_id,
             up.animal_id,
             a.brinco,
-            up.litros AS litros_hoje,
+            up.volume_l AS litros_hoje,
             mh.media_litros,
             up.data AS data_registro
         FROM ultima_prod up
         JOIN media_hist mh ON mh.animal_id = up.animal_id
         JOIN bovino_producao_leite pl ON pl.animal_id = up.animal_id AND pl.data = up.data
         JOIN bovino_animais a ON a.id = up.animal_id
-        WHERE up.litros < mh.media_litros * 0.5
+        WHERE up.volume_l < mh.media_litros * 0.5
           AND up.data >= CURRENT_DATE - 3
           {filtro}
         """,

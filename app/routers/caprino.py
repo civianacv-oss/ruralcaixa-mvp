@@ -79,6 +79,34 @@ class ReproducaoCreate(BaseModel):
     observacoes: Optional[str] = None
     registrado_por: Optional[str] = None
 
+class RegistrarPesagemIn(BaseModel):
+    animal_id: int
+    data_pesagem: date = Field(default_factory=date.today)
+    peso_kg: float
+    motivo: str = "rotina"
+    registrado_por: Optional[str] = None
+
+
+@router.post("/pesagens")
+def registrar_pesagem(data: RegistrarPesagemIn):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO caprino_pesagens (animal_id, data_pesagem, peso_kg, motivo, registrado_por)
+            VALUES (%s,%s,%s,%s,%s)
+            RETURNING id, animal_id, data_pesagem, peso_kg, motivo
+            """,
+            (data.animal_id, data.data_pesagem, data.peso_kg, data.motivo, data.registrado_por),
+        )
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+
 class AbateCreate(BaseModel):
     animal_id: int
     data_abate: date = Field(default_factory=date.today)

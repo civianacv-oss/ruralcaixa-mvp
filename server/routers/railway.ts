@@ -428,6 +428,39 @@ export const railwayRouter = router({
       return railwayMutate(`/${prefix}/abates`, "POST", body, claims.produtorId);
     }),
 
+  // ── Registrar pesagem (kg canonico; conversao de arroba feita no cliente) ─
+  registrarPesagemAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      animalId: z.number(),
+      data: z.string(),
+      pesoKg: z.number(),
+      motivo: z.string().default("rotina"),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const body: Record<string, unknown> =
+        input.especie === "bovinos"
+          ? {
+              animal_id: input.animalId,
+              data: input.data,
+              peso_kg: input.pesoKg,
+              motivo: input.motivo,
+              observacoes: input.observacoes,
+            }
+          : {
+              animal_id: input.animalId,
+              data_pesagem: input.data,
+              peso_kg: input.pesoKg,
+              motivo: input.motivo,
+            };
+      return railwayMutate(`/${prefix}/pesagens`, "POST", body, claims.produtorId);
+    }),
+
   createAnimal: publicProcedure
     .input(z.object({
       imovelId: z.number(),

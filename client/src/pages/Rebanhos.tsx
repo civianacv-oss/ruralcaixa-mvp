@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, LogOut } from "lucide-react";
+import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, LogOut, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -156,6 +156,53 @@ export default function Rebanhos() {
       valorTotal: baixaForm.valorTotal ? Number(baixaForm.valorTotal) : undefined,
       comprador: baixaForm.comprador || undefined,
       observacoes: baixaForm.observacoes || undefined,
+    });
+  };
+
+  // ── Registrar Pesagem (kg / arroba) ───────────────────────────────────
+  const KG_POR_ARROBA = 15;
+  const [pesagemAnimal, setPesagemAnimal] = useState<any | null>(null);
+  const [pesagemForm, setPesagemForm] = useState({
+    peso: "",
+    unidade: "kg" as "kg" | "arroba",
+    data: new Date().toISOString().slice(0, 10),
+    motivo: "rotina",
+    observacoes: "",
+  });
+
+  const registrarPesagem = trpc.railway.registrarPesagemAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Pesagem registrada com sucesso");
+      utils.railway.animais.invalidate();
+      setPesagemAnimal(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao registrar pesagem"),
+  });
+
+  const abrirDialogPesagem = (a: any) => {
+    setPesagemAnimal(a);
+    setPesagemForm({
+      peso: "",
+      unidade: "kg",
+      data: new Date().toISOString().slice(0, 10),
+      motivo: "rotina",
+      observacoes: "",
+    });
+  };
+
+  const handleRegistrarPesagem = () => {
+    if (!pesagemAnimal || !imovelId) return;
+    const pesoNum = Number(pesagemForm.peso);
+    if (!pesoNum || pesoNum <= 0) { toast.error("Informe um peso válido"); return; }
+    const pesoKg = pesagemForm.unidade === "arroba" ? pesoNum * KG_POR_ARROBA : pesoNum;
+    registrarPesagem.mutate({
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      animalId: pesagemAnimal.id,
+      data: pesagemForm.data,
+      pesoKg,
+      motivo: pesagemForm.motivo,
+      observacoes: pesagemForm.observacoes || undefined,
     });
   };
 
@@ -561,6 +608,16 @@ export default function Rebanhos() {
                         <LogOut className="w-3.5 h-3.5" />
                       </Button>
                     )}
+                    {a.status === "ativo" && (
+                      <Button
+                        variant="ghost" size="icon"
+                        className="w-8 h-8 text-purple-600 hover:text-purple-800 hover:bg-purple-50"
+                        title="Registrar pesagem"
+                        onClick={() => abrirDialogPesagem(a)}
+                      >
+                        <Scale className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost" size="icon"
                       className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
@@ -832,6 +889,83 @@ export default function Rebanhos() {
               style={{ background: "oklch(0.42 0.14 145)" }}
             >
               {registrarBaixa.isPending ? "Registrando..." : "Confirmar Baixa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Registrar Pesagem ────────────────────────────────────────── */}
+      <Dialog open={pesagemAnimal !== null} onOpenChange={(o) => { if (!o) setPesagemAnimal(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-700">
+              <Scale className="w-5 h-5" /> Registrar Pesagem — #{pesagemAnimal?.brinco}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium block mb-1">Peso *</label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={pesagemForm.peso}
+                  onChange={(e) => setPesagemForm({ ...pesagemForm, peso: e.target.value })}
+                  className="flex-1"
+                />
+                <select
+                  className="border rounded-md px-2 text-sm"
+                  value={pesagemForm.unidade}
+                  onChange={(e) => setPesagemForm({ ...pesagemForm, unidade: e.target.value as "kg" | "arroba" })}
+                >
+                  <option value="kg">kg</option>
+                  <option value="arroba">@ (arroba)</option>
+                </select>
+              </div>
+              {pesagemForm.unidade === "arroba" && pesagemForm.peso && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  = {(Number(pesagemForm.peso) * 15).toFixed(1)} kg (1 @ = 15 kg)
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Data *</label>
+              <Input
+                type="date"
+                value={pesagemForm.data}
+                onChange={(e) => setPesagemForm({ ...pesagemForm, data: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Motivo</label>
+              <select
+                className="w-full border rounded-md p-2 text-sm"
+                value={pesagemForm.motivo}
+                onChange={(e) => setPesagemForm({ ...pesagemForm, motivo: e.target.value })}
+              >
+                <option value="rotina">Rotina</option>
+                <option value="entrada_lote">Entrada de lote</option>
+                <option value="nascimento">Nascimento</option>
+                <option value="desmame">Desmame</option>
+                <option value="pre_abate">Pré-abate</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Observações</label>
+              <Input
+                value={pesagemForm.observacoes}
+                onChange={(e) => setPesagemForm({ ...pesagemForm, observacoes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPesagemAnimal(null)}>Cancelar</Button>
+            <Button
+              onClick={handleRegistrarPesagem}
+              disabled={registrarPesagem.isPending}
+              style={{ background: "oklch(0.42 0.14 145)" }}
+            >
+              {registrarPesagem.isPending ? "Registrando..." : "Salvar Pesagem"}
             </Button>
           </DialogFooter>
         </DialogContent>
