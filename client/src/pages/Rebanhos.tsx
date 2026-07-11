@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -108,6 +108,56 @@ export default function Rebanhos() {
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao remover animal"),
   });
+
+  // ── Dar Baixa (venda / morte / abate / doacao / permuta) ─────────────────
+  const [baixaAnimal, setBaixaAnimal] = useState<any | null>(null);
+  const [baixaForm, setBaixaForm] = useState({
+    tipo: "venda",
+    data: new Date().toISOString().slice(0, 10),
+    pesoVivoKg: "",
+    pesoCarcacaKg: "",
+    valorTotal: "",
+    comprador: "",
+    observacoes: "",
+  });
+
+  const registrarBaixa = trpc.railway.registrarBaixaAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Baixa registrada com sucesso");
+      utils.railway.animais.invalidate();
+      setBaixaAnimal(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao registrar baixa"),
+  });
+
+  const abrirDialogBaixa = (a: any) => {
+    setBaixaAnimal(a);
+    setBaixaForm({
+      tipo: "venda",
+      data: new Date().toISOString().slice(0, 10),
+      pesoVivoKg: "",
+      pesoCarcacaKg: "",
+      valorTotal: "",
+      comprador: "",
+      observacoes: "",
+    });
+  };
+
+  const handleRegistrarBaixa = () => {
+    if (!baixaAnimal || !imovelId) return;
+    registrarBaixa.mutate({
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      animalId: baixaAnimal.id,
+      tipo: baixaForm.tipo as any,
+      data: baixaForm.data,
+      pesoVivoKg: baixaForm.pesoVivoKg ? Number(baixaForm.pesoVivoKg) : undefined,
+      pesoCarcacaKg: baixaForm.pesoCarcacaKg ? Number(baixaForm.pesoCarcacaKg) : undefined,
+      valorTotal: baixaForm.valorTotal ? Number(baixaForm.valorTotal) : undefined,
+      comprador: baixaForm.comprador || undefined,
+      observacoes: baixaForm.observacoes || undefined,
+    });
+  };
 
   // Produção integrada com Insumos (GMD/custo por kg, ou litros/dia e custo/litro) — todas as espécies
   const { data: producaoInsumos, isLoading: loadingProducao } = trpc.railway.producaoInsumosAnimal.useQuery(
@@ -501,6 +551,16 @@ export default function Rebanhos() {
                     >
                       📈
                     </Button>
+                    {a.status === "ativo" && (
+                      <Button
+                        variant="ghost" size="icon"
+                        className="w-8 h-8 text-orange-600 hover:text-orange-800 hover:bg-orange-50"
+                        title="Dar baixa (venda, morte, abate, doação, permuta)"
+                        onClick={() => abrirDialogBaixa(a)}
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost" size="icon"
                       className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
@@ -682,6 +742,96 @@ export default function Rebanhos() {
             <Button variant="outline" onClick={() => setEditAnimal(null)}>Cancelar</Button>
             <Button onClick={handleUpdate} disabled={updateAnimal.isPending} style={{ background: "oklch(0.42 0.14 145)" }}>
               {updateAnimal.isPending ? "Salvando..." : "Salvar Alterações"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Dar Baixa ──────────────────────────────────────────────── */}
+      <Dialog open={baixaAnimal !== null} onOpenChange={(o) => { if (!o) setBaixaAnimal(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-700">
+              <LogOut className="w-5 h-5" /> Dar Baixa — #{baixaAnimal?.brinco}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium block mb-1">Tipo de baixa *</label>
+              <select
+                className="w-full border rounded-md p-2 text-sm"
+                value={baixaForm.tipo}
+                onChange={(e) => setBaixaForm({ ...baixaForm, tipo: e.target.value })}
+              >
+                <option value="venda">Venda</option>
+                <option value="abate_proprio">Abate próprio (consumo)</option>
+                <option value="abate_frigorif">Abate frigorífico</option>
+                <option value="morte">Morte</option>
+                <option value="doacao">Doação</option>
+                <option value="permuta">Permuta / Troca</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Data *</label>
+              <Input
+                type="date"
+                value={baixaForm.data}
+                onChange={(e) => setBaixaForm({ ...baixaForm, data: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-sm font-medium block mb-1">Peso vivo (kg)</label>
+                <Input
+                  type="number"
+                  value={baixaForm.pesoVivoKg}
+                  onChange={(e) => setBaixaForm({ ...baixaForm, pesoVivoKg: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Peso carcaça (kg)</label>
+                <Input
+                  type="number"
+                  value={baixaForm.pesoCarcacaKg}
+                  onChange={(e) => setBaixaForm({ ...baixaForm, pesoCarcacaKg: e.target.value })}
+                />
+              </div>
+            </div>
+            {(baixaForm.tipo === "venda" || baixaForm.tipo === "abate_frigorif") && (
+              <div>
+                <label className="text-sm font-medium block mb-1">Valor total (R$)</label>
+                <Input
+                  type="number"
+                  value={baixaForm.valorTotal}
+                  onChange={(e) => setBaixaForm({ ...baixaForm, valorTotal: e.target.value })}
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-medium block mb-1">
+                {baixaForm.tipo === "doacao" ? "Destinatário" : baixaForm.tipo === "permuta" ? "Trocado com" : "Comprador"}
+              </label>
+              <Input
+                value={baixaForm.comprador}
+                onChange={(e) => setBaixaForm({ ...baixaForm, comprador: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Observações</label>
+              <Input
+                value={baixaForm.observacoes}
+                onChange={(e) => setBaixaForm({ ...baixaForm, observacoes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBaixaAnimal(null)}>Cancelar</Button>
+            <Button
+              onClick={handleRegistrarBaixa}
+              disabled={registrarBaixa.isPending}
+              style={{ background: "oklch(0.42 0.14 145)" }}
+            >
+              {registrarBaixa.isPending ? "Registrando..." : "Confirmar Baixa"}
             </Button>
           </DialogFooter>
         </DialogContent>

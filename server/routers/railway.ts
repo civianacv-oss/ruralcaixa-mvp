@@ -386,6 +386,48 @@ export const railwayRouter = router({
       return railwayFetch<Animal[]>(`/${prefix}/animais?imovel_id=${input.imovelId}`, undefined, claims.produtorId);
     }),
 
+  // ── Dar baixa no rebanho (venda / morte / abate / doacao / permuta) ──────
+  registrarBaixaAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      animalId: z.number(),
+      tipo: z.enum(["abate_proprio", "abate_frigorif", "venda", "morte", "doacao", "permuta"]),
+      data: z.string(),
+      pesoVivoKg: z.number().optional(),
+      pesoCarcacaKg: z.number().optional(),
+      valorTotal: z.number().optional(),
+      comprador: z.string().optional(),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const body: Record<string, unknown> =
+        input.especie === "bovinos"
+          ? {
+              animal_id: input.animalId,
+              data: input.data,
+              tipo: input.tipo,
+              peso_vivo_kg: input.pesoVivoKg,
+              peso_carcaca_kg: input.pesoCarcacaKg,
+              valor_total: input.valorTotal,
+              comprador: input.comprador,
+              observacoes: input.observacoes,
+            }
+          : {
+              animal_id: input.animalId,
+              data_abate: input.data,
+              peso_vivo_kg: input.pesoVivoKg,
+              peso_carcaca_kg: input.pesoCarcacaKg,
+              destino: input.tipo,
+              valor_total_rs: input.valorTotal,
+              comprador: input.comprador,
+            };
+      return railwayMutate(`/${prefix}/abates`, "POST", body, claims.produtorId);
+    }),
+
   createAnimal: publicProcedure
     .input(z.object({
       imovelId: z.number(),
