@@ -451,7 +451,16 @@ def registrar_abate(dados: AbateCreate):
               dados.classificacao, dados.destino, dados.valor_total_rs,
               dados.comprador, dados.registrado_por))
         abate_id = cur.fetchone()["id"]
-        cur.execute("UPDATE suino_animais SET status = 'abatido' WHERE id = %s", (dados.animal_id,))
+        MAPA_STATUS_BAIXA = {
+            "abate_proprio": "abatido",
+            "abate_frigorif": "abatido",
+            "venda": "vendido",
+            "morte": "morto",
+            "doacao": "descartado",
+            "permuta": "descartado",
+        }
+        novo_status = MAPA_STATUS_BAIXA.get(dados.destino, "abatido")
+        cur.execute("UPDATE suino_animais SET status = %s WHERE id = %s", (novo_status, dados.animal_id))
         conn.commit()
         return {"id": abate_id}
     except Exception as e:

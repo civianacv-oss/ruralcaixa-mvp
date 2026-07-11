@@ -377,7 +377,15 @@ def registrar_abate(data: AbateIn):
         """, (data.animal_id, data.data, data.tipo, data.peso_vivo_kg,
               data.peso_carcaca_kg, data.preco_arroba, data.valor_total,
               data.comprador, data.nota_fiscal, data.observacoes))
-        novo_status = "abatido" if data.tipo in ("abate_proprio", "abate_frigorif") else "vendido"
+        MAPA_STATUS_BAIXA = {
+            "abate_proprio": "abatido",
+            "abate_frigorif": "abatido",
+            "venda": "vendido",
+            "morte": "morto",
+            "doacao": "descartado",
+            "permuta": "descartado",
+        }
+        novo_status = MAPA_STATUS_BAIXA.get(data.tipo, "descartado")
         cur.execute("UPDATE bovino_animais SET status=%s, updated_at=NOW() WHERE id=%s", (novo_status, data.animal_id))
         conn.commit()
         return dict(cur.fetchone()) if cur.rowcount else {}

@@ -557,9 +557,18 @@ def registrar_abate(payload: AbateCreate):
             RETURNING id, animal_id, data_abate, peso_vivo_kg, peso_carcaca_kg, rendimento_pct
         """, payload.model_dump())
         row = dict(cur.fetchone())
+        MAPA_STATUS_BAIXA = {
+            "abate_proprio": "abatido",
+            "abate_frigorif": "abatido",
+            "venda": "vendido",
+            "morte": "morto",
+            "doacao": "descartado",
+            "permuta": "descartado",
+        }
+        novo_status = MAPA_STATUS_BAIXA.get(payload.destino, "abatido")
         cur.execute(
-            "UPDATE caprino_animais SET status='abatido', updated_at=NOW() WHERE id=%s",
-            (payload.animal_id,)
+            "UPDATE caprino_animais SET status=%s, updated_at=NOW() WHERE id=%s",
+            (novo_status, payload.animal_id)
         )
         conn.commit()
         return row
