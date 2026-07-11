@@ -906,7 +906,11 @@ export default function Rebanhos() {
                   { label: "Criados",   value: importResult.criados,    color: "text-emerald-700" },
                   { label: "Atualizados", value: importResult.atualizados, color: "text-blue-700" },
                   { label: "Ignorados", value: importResult.ignorados,  color: "text-amber-700" },
-                  { label: "Erros",     value: importResult.erros,      color: "text-red-700" },
+                  {
+                    label: "Erros",
+                    value: Array.isArray(importResult.erros) ? importResult.erros.length : importResult.erros,
+                    color: "text-red-700",
+                  },
                 ].map((s) => (
                   <div key={s.label} className="border rounded-lg p-3">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
@@ -914,6 +918,29 @@ export default function Rebanhos() {
                   </div>
                 ))}
               </div>
+
+              {Array.isArray(importResult.erros) && importResult.erros.length > 0 && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-800 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="font-semibold mb-1">Detalhes dos erros:</p>
+                  {importResult.erros.map((e: any, i: number) => (
+                    <p key={i}>
+                      Animal #{e.animal_id ?? e.brinco ?? "?"}
+                      {e.data ? ` (${e.data})` : ""}
+                      {e.data_parto ? ` (${e.data_parto})` : ""}
+                      : {e.erro ?? JSON.stringify(e)}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {Array.isArray(importResult.nao_encontrados) && importResult.nao_encontrados.length > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="font-semibold mb-1">
+                    {importResult.nao_encontrados.length} animal(is) da planilha não encontrado(s) no rebanho (brinco não cadastrado):
+                  </p>
+                  <p>{importResult.nao_encontrados.map((n: any) => n.brinco).join(", ")}</p>
+                </div>
+              )}
             </div>
           )}
 
