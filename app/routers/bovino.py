@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
 import os
 import json
@@ -718,6 +719,7 @@ class OrdenhaImportIn(BaseModel):
 def importar_ordenha(data: OrdenhaImportIn):
     conn = get_db()
     criados = 0
+    duplicados = []
     erros = []
     try:
         cur = conn.cursor()
@@ -742,12 +744,26 @@ def importar_ordenha(data: OrdenhaImportIn):
                 )
                 cur.execute("RELEASE SAVEPOINT sp_item")
                 criados += 1
+            except psycopg2.errors.UniqueViolation:
+                cur.execute("ROLLBACK TO SAVEPOINT sp_item")
+                duplicados.append({
+                    "animal_id": item.animal_id,
+                    "data": str(item.data),
+                    "motivo": "Ja existe um registro de ordenha para este animal nesta data.",
+                })
+                continue
             except Exception as e:
                 cur.execute("ROLLBACK TO SAVEPOINT sp_item")
                 erros.append({"animal_id": item.animal_id, "data": str(item.data), "erro": str(e)})
                 continue
         conn.commit()
-        return {"ok": True, "criados": criados, "total": len(data.itens), "erros": erros}
+        return {
+            "ok": True,
+            "criados": criados,
+            "duplicados": duplicados,
+            "erros": erros,
+            "total": len(data.itens),
+        }
     finally:
         conn.close()
 
@@ -777,6 +793,7 @@ class LactacaoImportIn(BaseModel):
 def importar_lactacoes(data: LactacaoImportIn):
     conn = get_db()
     criados = 0
+    duplicados = []
     erros = []
     try:
         cur = conn.cursor()
@@ -805,12 +822,26 @@ def importar_lactacoes(data: LactacaoImportIn):
                 )
                 cur.execute("RELEASE SAVEPOINT sp_item")
                 criados += 1
+            except psycopg2.errors.UniqueViolation:
+                cur.execute("ROLLBACK TO SAVEPOINT sp_item")
+                duplicados.append({
+                    "animal_id": item.animal_id,
+                    "data_parto": str(item.data_parto),
+                    "motivo": "Ja existe um registro de lactacao para este animal com essa data de parto.",
+                })
+                continue
             except Exception as e:
                 cur.execute("ROLLBACK TO SAVEPOINT sp_item")
                 erros.append({"animal_id": item.animal_id, "data_parto": str(item.data_parto), "erro": str(e)})
                 continue
         conn.commit()
-        return {"ok": True, "criados": criados, "total": len(data.itens), "erros": erros}
+        return {
+            "ok": True,
+            "criados": criados,
+            "duplicados": duplicados,
+            "erros": erros,
+            "total": len(data.itens),
+        }
     finally:
         conn.close()
 

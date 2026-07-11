@@ -165,9 +165,17 @@ export default function Rebanhos() {
   // ── Lactações / Controle leiteiro (Bovino) — sem etapa de conflito, ──────
   // já que cada linha é um registro histórico aditivo, não um "animal" que
   // possa colidir por brinco.
+  // Info da fase de analise (linhas ignoradas / brincos nao encontrados)
+  // que precisa sobreviver ate a tela de resultado, apos a confirmacao.
+  const [analisePreviaExtra, setAnalisePreviaExtra] = useState<{
+    nao_encontrados?: { brinco: string }[];
+    ignoradas_count?: number;
+    total_planilha?: number;
+  } | null>(null);
+
   const confirmarLactacoes = trpc.railway.confirmarImportacaoLactacoesBovino.useMutation({
     onSuccess: (data) => {
-      setImportResult({ tipo: "lactacoes", ...data });
+      setImportResult({ tipo: "lactacoes", ...data, ...(analisePreviaExtra ?? {}) });
       setImportStep("resultado");
       utils.railway.lactacoesBovino?.invalidate?.();
     },
@@ -176,8 +184,13 @@ export default function Rebanhos() {
 
   const analisarLactacoes = trpc.railway.analisarPlanilhaLactacoesBovino.useMutation({
     onSuccess: (data) => {
+      setAnalisePreviaExtra({
+        nao_encontrados: data.nao_encontrados,
+        ignoradas_count: data.ignoradas_count,
+        total_planilha: data.total_planilha,
+      });
       if (data.itens.length === 0) {
-        setImportResult({ tipo: "lactacoes", criados: 0, ...data });
+        setImportResult({ tipo: "lactacoes", criados: 0, duplicados: [], erros: [], ...data });
         setImportStep("resultado");
         return;
       }
@@ -188,7 +201,7 @@ export default function Rebanhos() {
 
   const confirmarControle = trpc.railway.confirmarImportacaoControleLeiteiroBovino.useMutation({
     onSuccess: (data) => {
-      setImportResult({ tipo: "controle", ...data });
+      setImportResult({ tipo: "controle", ...data, ...(analisePreviaExtra ?? {}) });
       setImportStep("resultado");
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao importar controle leiteiro"),
@@ -196,8 +209,13 @@ export default function Rebanhos() {
 
   const analisarControle = trpc.railway.analisarPlanilhaControleLeiteiroBovino.useMutation({
     onSuccess: (data) => {
+      setAnalisePreviaExtra({
+        nao_encontrados: data.nao_encontrados,
+        ignoradas_count: data.ignoradas_count,
+        total_planilha: data.total_planilha,
+      });
       if (data.itens.length === 0) {
-        setImportResult({ tipo: "controle", criados: 0, ...data });
+        setImportResult({ tipo: "controle", criados: 0, duplicados: [], erros: [], ...data });
         setImportStep("resultado");
         return;
       }
@@ -341,6 +359,7 @@ export default function Rebanhos() {
     setImportResult(null);
     setShowImport(false);
     setImportIsGenealogia(false);
+    setAnalisePreviaExtra(null);
   };
 
   const filtered = (animais as any[]).filter((a) =>
@@ -893,8 +912,8 @@ export default function Rebanhos() {
             </div>
           )}
 
-          {/* ETAPA 3: Resultado */}
-          {importStep === "resultado" && importResult && (
+          {/* ETAPA 3: Resultado (animais / genealogia) */}
+          {importStep === "resultado" && importResult && importResult.tipo !== "lactacoes" && importResult.tipo !== "controle" && (
             <div className="space-y-4 py-2">
               <div className="flex items-center gap-2 text-emerald-700">
                 <CheckCircle2 className="w-5 h-5" />
@@ -939,6 +958,98 @@ export default function Rebanhos() {
                     {importResult.nao_encontrados.length} animal(is) da planilha não encontrado(s) no rebanho (brinco não cadastrado):
                   </p>
                   <p>{importResult.nao_encontrados.map((n: any) => n.brinco).join(", ")}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ETAPA 3 (variante): Resultado de Ordenha / Lactações — categorias claras */}
+          {importStep === "resultado" && importResult && (importResult.tipo === "lactacoes" || importResult.tipo === "controle") && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center gap-2 text-emerald-700">
+                <CheckCircle2 className="w-5 h-5" />
+                <p className="font-semibold">
+                  Importação de {importResult.tipo === "lactacoes" ? "lactações" : "controle leiteiro"} concluída!
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: "Linhas na planilha",
+                    value: importResult.total_planilha ?? importResult.total ?? "—",
+                    color: "text-gray-700",
+                    hint: "Total de linhas do arquivo original",
+                  },
+                  {
+                    label: "Criados",
+                    value: importResult.criados ?? 0,
+                    color: "text-emerald-700",
+                    hint: "Novos registros salvos com sucesso",
+                  },
+                  {
+                    label: "Já existiam",
+                    value: Array.isArray(importResult.duplicados) ? importResult.duplicados.length : 0,
+                    color: "text-blue-700",
+                    hint: "Duplicados — mesmo animal e data já importados antes",
+                  },
+                  {
+                    label: "Não encontrados",
+                    value: Array.isArray(importResult.nao_encontrados) ? importResult.nao_encontrados.length : 0,
+                    color: "text-amber-700",
+                    hint: "Brinco da planilha não existe no rebanho",
+                  },
+                  {
+                    label: "Ignorados",
+                    value: importResult.ignoradas_count ?? 0,
+                    color: "text-amber-700",
+                    hint: "Linha sem data ou identificação válida",
+                  },
+                  {
+                    label: "Erros inesperados",
+                    value: Array.isArray(importResult.erros) ? importResult.erros.length : 0,
+                    color: "text-red-700",
+                    hint: "Problema técnico — vale revisar",
+                  },
+                ].map((s) => (
+                  <div key={s.label} className="border rounded-lg p-3" title={s.hint}>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
+                    <p className={`text-xl font-bold mt-0.5 ${s.color}`}>{s.value}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{s.hint}</p>
+                  </div>
+                ))}
+              </div>
+
+              {Array.isArray(importResult.duplicados) && importResult.duplicados.length > 0 && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1 max-h-32 overflow-y-auto">
+                  <p className="font-semibold mb-1">
+                    {importResult.duplicados.length} registro(s) já existente(s) (não é erro, só não duplicamos):
+                  </p>
+                  {importResult.duplicados.map((d: any, i: number) => (
+                    <p key={i}>
+                      Animal #{d.animal_id} — {d.data ?? d.data_parto} — {d.motivo}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {Array.isArray(importResult.nao_encontrados) && importResult.nao_encontrados.length > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1 max-h-32 overflow-y-auto">
+                  <p className="font-semibold mb-1">
+                    Brinco(s) da planilha sem cadastro no rebanho (importe/cadastre o animal antes):
+                  </p>
+                  <p>{importResult.nao_encontrados.map((n: any) => n.brinco).join(", ")}</p>
+                </div>
+              )}
+
+              {Array.isArray(importResult.erros) && importResult.erros.length > 0 && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-800 space-y-1 max-h-32 overflow-y-auto">
+                  <p className="font-semibold mb-1">Erros inesperados (não são duplicatas — vale investigar):</p>
+                  {importResult.erros.map((e: any, i: number) => (
+                    <p key={i}>
+                      Animal #{e.animal_id ?? "?"} ({e.data ?? e.data_parto ?? "—"}): {e.erro ?? JSON.stringify(e)}
+                    </p>
+                  ))}
                 </div>
               )}
             </div>
