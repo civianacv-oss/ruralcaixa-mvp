@@ -5,7 +5,7 @@ Compatível com o padrão do ovino.py existente.
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
+from datetime import date, timedelta
 import psycopg2
 import psycopg2.errors
 import psycopg2.extras
