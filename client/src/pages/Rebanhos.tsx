@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, LogOut, Scale } from "lucide-react";
+import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, LogOut, Scale, BarChart3, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -205,6 +205,47 @@ export default function Rebanhos() {
       observacoes: pesagemForm.observacoes || undefined,
     });
   };
+
+  // ── Desempenho do Rebanho (bovino) ────────────────────────────────────────
+  const [showDesempenho, setShowDesempenho] = useState(false);
+  const [desempFiltroTipo, setDesempFiltroTipo] = useState<"todos" | "leite" | "corte">("todos");
+  const [desempFiltroLote, setDesempFiltroLote] = useState<string>("todos");
+  const [desempOrdem, setDesempOrdem] = useState<"score_desc" | "score_asc" | "brinco">("score_desc");
+  const [desempView, setDesempView] = useState<"grade" | "cubos">("grade");
+  const [desempSelecionado, setDesempSelecionado] = useState<any | null>(null);
+
+  const { data: desempenhoData, isLoading: loadingDesempenho } = trpc.railway.desempenhoRebanho.useQuery(
+    { imovelId: imovelId!, dias: 30 },
+    { enabled: showDesempenho && !!imovelId }
+  );
+
+  const desempStatusOf = (score: number | null) => {
+    if (score === null) return { bg: "#9ca3af", label: "Sem dado" };
+    if (score >= 75) return { bg: "#0ca30c", label: "Excelente" };
+    if (score >= 50) return { bg: "#fab219", label: "Bom" };
+    if (score >= 30) return { bg: "#ec835a", label: "Regular" };
+    return { bg: "#d03b3b", label: "Crítico" };
+  };
+
+  const desempLotes = Array.from(
+    new Set((desempenhoData ?? []).map((a: any) => a.lote_nome).filter(Boolean))
+  ) as string[];
+
+  const desempFiltrado = (desempenhoData ?? [])
+    .filter((a: any) => desempFiltroTipo === "todos" || a.tipo === desempFiltroTipo)
+    .filter((a: any) => desempFiltroLote === "todos" || a.lote_nome === desempFiltroLote)
+    .slice()
+    .sort((a: any, b: any) => {
+      if (desempOrdem === "score_desc") return (b.score ?? -1) - (a.score ?? -1);
+      if (desempOrdem === "score_asc") return (a.score ?? 999) - (b.score ?? 999);
+      return String(a.brinco).localeCompare(String(b.brinco), undefined, { numeric: true });
+    });
+
+  const desempContagem = { Excelente: 0, Bom: 0, Regular: 0, "Crítico": 0, "Sem dado": 0 };
+  desempFiltrado.forEach((a: any) => {
+    const label = desempStatusOf(a.score).label as keyof typeof desempContagem;
+    desempContagem[label]++;
+  });
 
   // Produção integrada com Insumos (GMD/custo por kg, ou litros/dia e custo/litro) — todas as espécies
   const { data: producaoInsumos, isLoading: loadingProducao } = trpc.railway.producaoInsumosAnimal.useQuery(
@@ -487,6 +528,12 @@ export default function Rebanhos() {
             <Upload className="w-4 h-4 mr-2" />
             Importar Planilha
           </Button>
+          {especie === "bovino" && (
+            <Button variant="outline" size="sm" onClick={() => setShowDesempenho(true)}>
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Desempenho
+            </Button>
+          )}
           <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Animal
@@ -967,6 +1014,124 @@ export default function Rebanhos() {
             >
               {registrarPesagem.isPending ? "Registrando..." : "Salvar Pesagem"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Desempenho do Rebanho ─────────────────────────────────────── */}
+      <Dialog open={showDesempenho} onOpenChange={(o) => { if (!o) { setShowDesempenho(false); setDesempSelecionado(null); } }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-emerald-600" />
+              Desempenho do Rebanho — últimos 30 dias
+            </DialogTitle>
+          </DialogHeader>
+
+          {loadingDesempenho && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <RefreshCw className="w-4 h-4 animate-spin" /> Calculando desempenho...
+            </div>
+          )}
+
+          {!loadingDesempenho && desempenhoData && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-5 gap-2">
+                {(["Excelente", "Bom", "Regular", "Crítico", "Sem dado"] as const).map((label) => (
+                  <div key={label} className="border rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
+                    <p className="text-lg font-bold" style={{ color: desempStatusOf(label === "Excelente" ? 100 : label === "Bom" ? 60 : label === "Regular" ? 40 : label === "Crítico" ? 10 : null).bg }}>
+                      {desempContagem[label]}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 flex-wrap items-center">
+                <select className="border rounded-md p-2 text-sm" value={desempFiltroTipo} onChange={(e) => setDesempFiltroTipo(e.target.value as any)}>
+                  <option value="todos">Todos os tipos</option>
+                  <option value="leite">Leite</option>
+                  <option value="corte">Corte</option>
+                </select>
+                <select className="border rounded-md p-2 text-sm" value={desempFiltroLote} onChange={(e) => setDesempFiltroLote(e.target.value)}>
+                  <option value="todos">Todos os lotes</option>
+                  {desempLotes.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <select className="border rounded-md p-2 text-sm" value={desempOrdem} onChange={(e) => setDesempOrdem(e.target.value as any)}>
+                  <option value="score_desc">Maior desempenho</option>
+                  <option value="score_asc">Menor desempenho</option>
+                  <option value="brinco">Brinco</option>
+                </select>
+                <div className="flex gap-1 ml-auto">
+                  <Button size="sm" variant={desempView === "grade" ? "default" : "outline"} onClick={() => setDesempView("grade")}>Grade</Button>
+                  <Button size="sm" variant={desempView === "cubos" ? "default" : "outline"} onClick={() => setDesempView("cubos")}>Cubos</Button>
+                </div>
+              </div>
+
+              {desempView === "grade" && (
+                <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))" }}>
+                  {desempFiltrado.map((a: any) => {
+                    const s = desempStatusOf(a.score);
+                    return (
+                      <div
+                        key={a.animal_id}
+                        onClick={() => setDesempSelecionado(a)}
+                        className="rounded-lg p-2 cursor-pointer border"
+                        style={{ background: `${s.bg}22`, borderColor: `${s.bg}66` }}
+                      >
+                        <p className="text-xs font-medium">#{a.brinco}</p>
+                        <p className="text-[10px] text-muted-foreground">{a.tipo}</p>
+                        <p className="text-lg font-bold" style={{ color: s.bg }}>{a.score ?? "—"}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {desempView === "cubos" && (
+                <div className="flex gap-3 flex-wrap items-end py-2">
+                  {desempFiltrado.map((a: any) => {
+                    const s = desempStatusOf(a.score);
+                    const h = 20 + (a.score ?? 0) * 0.8;
+                    return (
+                      <div key={a.animal_id} onClick={() => setDesempSelecionado(a)} className="flex flex-col items-center cursor-pointer" style={{ width: 42 }}>
+                        <div style={{ position: "relative", width: 42, height: h }}>
+                          <div style={{ position: "absolute", width: 42, height: h, background: s.bg, opacity: 0.9, borderRadius: 2 }} />
+                          <div style={{ position: "absolute", top: -8, left: 4, width: 34, height: 12, background: s.bg, opacity: 0.6, transform: "skewX(-40deg) scaleY(0.6)" }} />
+                          <div style={{ position: "absolute", top: 0, right: -8, width: 10, height: h, background: s.bg, opacity: 0.45, transform: "skewY(-40deg) scaleX(0.6)" }} />
+                        </div>
+                        <p className="text-[10px] mt-1 text-muted-foreground">#{a.brinco}</p>
+                        <p className="text-xs font-bold" style={{ color: s.bg }}>{a.score ?? "—"}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {desempSelecionado && (
+                <div className="border rounded-lg p-3 bg-gray-50 relative">
+                  <button className="absolute top-2 right-2" onClick={() => setDesempSelecionado(null)}>
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                  <p className="font-semibold text-sm">#{desempSelecionado.brinco} {desempSelecionado.nome}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tipo: {desempSelecionado.tipo} · Lote: {desempSelecionado.lote_nome ?? "sem lote"} · Score: {desempSelecionado.score ?? "sem dado"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Produção no período: {desempSelecionado.producao_periodo ?? "—"} {desempSelecionado.tipo === "leite" ? "L" : "kg"} ·{" "}
+                    {desempSelecionado.tipo === "leite" ? "Litros/dia" : "GMD"}: {desempSelecionado.metrica_dia ?? "—"} {desempSelecionado.tipo === "leite" ? "L/dia" : "kg/dia"}
+                  </p>
+                </div>
+              )}
+
+              {desempFiltrado.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum animal encontrado com esses filtros.</p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDesempenho(false); setDesempSelecionado(null); }}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

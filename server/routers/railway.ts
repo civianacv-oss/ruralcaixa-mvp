@@ -461,6 +461,26 @@ export const railwayRouter = router({
       return railwayMutate(`/${prefix}/pesagens`, "POST", body, claims.produtorId);
     }),
 
+  // ── Desempenho do rebanho (score por percentil de GMD/litros-dia) ────────
+  desempenhoRebanho: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      dias: z.number().min(7).max(180).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayFetch<{
+        animal_id: number; brinco: string; nome: string | null;
+        tipo: "leite" | "corte"; lote_id: number | null; lote_nome: string | null;
+        producao_periodo: number | null; metrica_dia: number | null; score: number | null;
+      }[]>(
+        `/bovino/desempenho?imovel_id=${input.imovelId}&dias=${input.dias}`,
+        undefined,
+        claims.produtorId
+      );
+    }),
+
   createAnimal: publicProcedure
     .input(z.object({
       imovelId: z.number(),
