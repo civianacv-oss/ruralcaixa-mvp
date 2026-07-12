@@ -34,6 +34,7 @@ PREFIXOS_PUBLICOS = (
     "/whatsapp/",       # webhook do WhatsApp
     "/assinar/",        # página de assinatura (OTP próprio)
     "/contratos/assinar/",  # endpoint de assinatura via OTP
+    "/contratos-rurais",    # modulo de contratos rurais
     "/static/",
 )
 
