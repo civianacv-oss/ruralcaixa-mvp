@@ -73,13 +73,14 @@ def desempenho_rebanho(imovel_id: int, dias: int = Query(30, ge=7, le=180)):
             if tipo == "leite":
                 cur.execute(
                     """
-                    SELECT COALESCE(SUM(volume_l), 0) AS total
+                    SELECT COUNT(*) AS n, COALESCE(SUM(volume_l), 0) AS total
                     FROM bovino_ordenha
                     WHERE animal_id = %s AND data >= %s
                     """,
                     (a["id"], data_inicio),
                 )
-                producao = float(cur.fetchone()["total"])
+                row_leite = cur.fetchone()
+                producao = float(row_leite["total"]) if row_leite["n"] > 0 else None
             else:
                 cur.execute(
                     """
