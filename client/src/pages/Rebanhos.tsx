@@ -211,6 +211,7 @@ export default function Rebanhos() {
   const [desempFiltroTipo, setDesempFiltroTipo] = useState<"todos" | "leite" | "corte">("todos");
   const [desempFiltroLote, setDesempFiltroLote] = useState<string>("todos");
   const [desempOrdem, setDesempOrdem] = useState<"score_desc" | "score_asc" | "brinco">("score_desc");
+  const [desempFiltroStatus, setDesempFiltroStatus] = useState<string | null>(null);
   const [desempView, setDesempView] = useState<"grade" | "cubos">("grade");
   const [desempSelecionado, setDesempSelecionado] = useState<any | null>(null);
 
@@ -234,6 +235,7 @@ export default function Rebanhos() {
   const desempFiltrado = (desempenhoData ?? [])
     .filter((a: any) => desempFiltroTipo === "todos" || a.tipo === desempFiltroTipo)
     .filter((a: any) => desempFiltroLote === "todos" || a.lote_nome === desempFiltroLote)
+    .filter((a: any) => !desempFiltroStatus || desempStatusOf(a.score).label === desempFiltroStatus)
     .slice()
     .sort((a: any, b: any) => {
       if (desempOrdem === "score_desc") return (b.score ?? -1) - (a.score ?? -1);
@@ -1019,7 +1021,7 @@ export default function Rebanhos() {
       </Dialog>
 
       {/* ── Dialog: Desempenho do Rebanho ─────────────────────────────────────── */}
-      <Dialog open={showDesempenho} onOpenChange={(o) => { if (!o) { setShowDesempenho(false); setDesempSelecionado(null); } }}>
+      <Dialog open={showDesempenho} onOpenChange={(o) => { if (!o) { setShowDesempenho(false); setDesempSelecionado(null); setDesempFiltroStatus(null); } }}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1037,15 +1039,33 @@ export default function Rebanhos() {
           {!loadingDesempenho && desempenhoData && (
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-5 gap-2">
-                {(["Excelente", "Bom", "Regular", "Crítico", "Sem dado"] as const).map((label) => (
-                  <div key={label} className="border rounded-lg p-2 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
-                    <p className="text-lg font-bold" style={{ color: desempStatusOf(label === "Excelente" ? 100 : label === "Bom" ? 60 : label === "Regular" ? 40 : label === "Crítico" ? 10 : null).bg }}>
-                      {desempContagem[label]}
-                    </p>
-                  </div>
-                ))}
+                {(["Excelente", "Bom", "Regular", "Crítico", "Sem dado"] as const).map((label) => {
+                  const ativo = desempFiltroStatus === label;
+                  const cor = desempStatusOf(label === "Excelente" ? 100 : label === "Bom" ? 60 : label === "Regular" ? 40 : label === "Crítico" ? 10 : null).bg;
+                  return (
+                    <div
+                      key={label}
+                      onClick={() => setDesempFiltroStatus(ativo ? null : label)}
+                      className="border rounded-lg p-2 text-center cursor-pointer transition-colors"
+                      style={{ borderColor: ativo ? cor : undefined, background: ativo ? `${cor}18` : undefined, borderWidth: ativo ? 2 : 1 }}
+                      title={`Filtrar por ${label}`}
+                    >
+                      <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
+                      <p className="text-lg font-bold" style={{ color: cor }}>
+                        {desempContagem[label]}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
+              {desempFiltroStatus && (
+                <button
+                  onClick={() => setDesempFiltroStatus(null)}
+                  className="text-xs text-muted-foreground underline -mt-2 text-left"
+                >
+                  Limpar filtro de status ({desempFiltroStatus})
+                </button>
+              )}
 
               <div className="flex gap-2 flex-wrap items-center">
                 <select className="border rounded-md p-2 text-sm" value={desempFiltroTipo} onChange={(e) => setDesempFiltroTipo(e.target.value as any)}>
