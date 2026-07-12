@@ -301,17 +301,19 @@ export default function ContratosRurais() {
               <Input placeholder="Descrição do contrato" value={form.descricao}
                 onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>% Outorgante</Label>
-                <Input type="number" min={0} max={100} value={form.percentual_outorgante}
-                  onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
+            {form.tipo !== "condominio" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>% Outorgante</Label>
+                  <Input type="number" min={0} max={100} value={form.percentual_outorgante}
+                    onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>% Outorgado</Label>
+                  <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>% Outorgado</Label>
-                <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
-              </div>
-            </div>
+            )}
             <div className="space-y-1.5">
               <Label>Área (hectares)</Label>
               <Input type="number" placeholder="0,00" value={form.valor}
@@ -342,3 +344,5 @@ export default function ContratosRurais() {
     </div>
   );
 }
+// fix-modal-cond-20260712125711
+// fix-modal-cond-20260712125827
