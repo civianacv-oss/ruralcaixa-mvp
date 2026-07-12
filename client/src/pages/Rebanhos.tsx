@@ -216,7 +216,7 @@ export default function Rebanhos() {
   const [desempSelecionado, setDesempSelecionado] = useState<any | null>(null);
 
   const { data: desempenhoData, isLoading: loadingDesempenho } = trpc.railway.desempenhoRebanho.useQuery(
-    { imovelId: imovelId!, dias: 30 },
+    { imovelId: imovelId!, especie: especieAtual.trpc, dias: 30 },
     { enabled: showDesempenho && !!imovelId }
   );
 
@@ -530,12 +530,10 @@ export default function Rebanhos() {
             <Upload className="w-4 h-4 mr-2" />
             Importar Planilha
           </Button>
-          {especie === "bovino" && (
-            <Button variant="outline" size="sm" onClick={() => setShowDesempenho(true)}>
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Desempenho
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={() => setShowDesempenho(true)}>
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Desempenho
+          </Button>
           <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Animal

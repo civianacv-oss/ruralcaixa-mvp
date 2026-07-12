@@ -465,17 +465,19 @@ export const railwayRouter = router({
   desempenhoRebanho: publicProcedure
     .input(z.object({
       imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
       dias: z.number().min(7).max(180).default(30),
     }))
     .query(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
       return railwayFetch<{
         animal_id: number; brinco: string; nome: string | null;
         tipo: "leite" | "corte"; lote_id: number | null; lote_nome: string | null;
         producao_periodo: number | null; metrica_dia: number | null; score: number | null;
       }[]>(
-        `/bovino/desempenho?imovel_id=${input.imovelId}&dias=${input.dias}`,
+        `/${prefix}/desempenho?imovel_id=${input.imovelId}&dias=${input.dias}`,
         undefined,
         claims.produtorId
       );

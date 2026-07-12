@@ -2743,3 +2743,63 @@ def _buscar_animal(cur, brinco: Optional[str], imovel_id: int) -> Optional[dict]
     )
     row = cur.fetchone()
     return dict(row) if row else None
+
+
+@router.get("/desempenho")
+def desempenho_rebanho(imovel_id: int, dias: int = Query(30, ge=7, le=180)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        data_inicio = date.today() - timedelta(days=dias)
+
+        cur.execute(
+            """
+            SELECT a.id, a.brinco, a.nome, a.lote_id, l.nome AS lote_nome
+            FROM ovino_animais a
+            LEFT JOIN ovino_lotes l ON l.id = a.lote_id
+            WHERE a.imovel_id = %s AND a.status = 'ativo'
+            """,
+            (imovel_id,),
+        )
+        animais = cur.fetchall()
+
+        resultados = []
+        for a in animais:
+            cur.execute(
+                """
+                SELECT peso_kg FROM ovino_pesagens
+                WHERE animal_id = %s AND data_pesagem >= %s
+                ORDER BY data_pesagem ASC
+                """,
+                (a["id"], data_inicio),
+            )
+            pesagens = cur.fetchall()
+            producao = (
+                float(pesagens[-1]["peso_kg"]) - float(pesagens[0]["peso_kg"])
+                if len(pesagens) >= 2
+                else None
+            )
+            metrica_dia = round(producao / dias, 3) if producao is not None else None
+            resultados.append(
+                {
+                    "animal_id": a["id"],
+                    "brinco": a["brinco"],
+                    "nome": a["nome"],
+                    "tipo": "corte",
+                    "lote_id": a["lote_id"],
+                    "lote_nome": a["lote_nome"],
+                    "producao_periodo": round(producao, 2) if producao is not None else None,
+                    "metrica_dia": metrica_dia,
+                    "score": None,
+                }
+            )
+
+        grupo = [r for r in resultados if r["metrica_dia"] is not None]
+        grupo.sort(key=lambda r: r["metrica_dia"])
+        n = len(grupo)
+        for i, r in enumerate(grupo):
+            r["score"] = round((i / (n - 1)) * 100) if n > 1 else 50
+
+        return resultados
+    finally:
+        conn.close()
