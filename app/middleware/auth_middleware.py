@@ -6,7 +6,7 @@ Todas as demais exigem Bearer token válido.
 """
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 
@@ -49,6 +49,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if any(path.startswith(p) for p in PREFIXOS_PUBLICOS):
             return await call_next(request)
+
+        # Preflight CORS — responde 200 com headers CORS explícitos
+        if request.method == "OPTIONS":
+            origin = request.headers.get("origin", "*")
+            return Response(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Accept, Accept-Language, Authorization, Content-Language, Content-Type",
+                    "Access-Control-Max-Age": "86400",
+                },
+            )
 
         # Verifica Bearer token
         auth_header = request.headers.get("Authorization", "")
