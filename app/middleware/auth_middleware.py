@@ -73,7 +73,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "error": "Token de autenticação não fornecido.",
                     "detail": "Use o header: Authorization: Bearer {seu_token}",
                 },
-                headers={"WWW-Authenticate": "Bearer"},
+                headers={"WWW-Authenticate": "Bearer", **self._cors_headers(request)},
             )
 
         token = auth_header.split(" ", 1)[1].strip()
@@ -81,6 +81,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"error": "Token vazio."},
+                headers=cors,
             )
 
         # Valida token no banco
@@ -89,7 +90,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"error": "Token inválido ou expirado."},
-                headers={"WWW-Authenticate": "Bearer"},
+                headers={"WWW-Authenticate": "Bearer", **self._cors_headers(request)},
             )
 
         # Injeta produtor no request state para uso nos endpoints
