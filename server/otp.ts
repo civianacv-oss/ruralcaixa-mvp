@@ -320,6 +320,7 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
     success: true,
     produtorId: data.produtor_id,
     produtorNome: data.nome,
+    rcClaimsToken: data.token,
     imovelId,
     imovelCount,
     role,
