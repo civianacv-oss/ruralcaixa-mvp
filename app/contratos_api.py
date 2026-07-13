@@ -71,7 +71,7 @@ class ContratoCreate(BaseModel):
 
     @validator("tipo")
     def tipo_valido(cls, v):
-        validos = ["agricola", "pecuaria", "agroindustrial", "extrativa"]
+        validos = ["agricola", "pecuaria", "agroindustrial", "extrativa", "condominio", "arrendamento", "comodato", "compra_venda"]
         if v not in validos:
             raise ValueError(f"tipo deve ser um de: {validos}")
         return v
