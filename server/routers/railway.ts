@@ -519,7 +519,12 @@ export const railwayRouter = router({
       raca: z.string().optional(),
       sexo: z.enum(["M", "F"]).optional(),
       observacoes: z.string().optional(),
+      data_nascimento: z.string().optional(),
+      peso_nascimento: z.number().optional(),
+      categoria: z.string().optional(),
+      aptidao_manejo: z.string().optional(),
     }))
+
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
@@ -529,6 +534,7 @@ export const railwayRouter = router({
     }),
 
   updateAnimalStatus: publicProcedure
+
     .input(z.object({
       animalId: z.number(),
       imovelId: z.number(),
