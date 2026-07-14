@@ -295,6 +295,20 @@ CORS_ORIGINS = [
     "http://localhost:8000",  # testes locais
 ]
 
+
+# Auth middleware (executa depois do CORS)
+# Auth executa por ULTIMO (adicionado primeiro)
+try:
+    from app.routers.condominio import router as condominio_router
+    app.include_router(condominio_router)
+    print('CONDOMINIO ROUTER LOADED OK')
+except Exception as _e:
+    print(f'CONDOMINIO ROUTER FAILED: {_e}')
+
+from app.middleware.auth_middleware import AuthMiddleware
+app.add_middleware(AuthMiddleware)
+
+# CORS executa PRIMEIRO (adicionado por ultimo) — intercepta OPTIONS antes do Auth
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -304,10 +318,6 @@ app.add_middleware(
     expose_headers=["Content-Type", "Authorization"],
     max_age=86400,  # 24 horas de cache para preflight
 )
-
-# Auth middleware (executa depois do CORS)
-from app.middleware.auth_middleware import AuthMiddleware
-app.add_middleware(AuthMiddleware)
 app.include_router(contratos_router)
 app.include_router(lanc_router)
 from app.propriedades import router as propriedades_router
