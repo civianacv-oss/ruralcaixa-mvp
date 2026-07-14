@@ -242,7 +242,7 @@ def criar_condominio(body: CondominioCriar, request: Request):
         # Calcular percentuais para retorno
         for cond in condominos_inseridos:
             cond["percentual_participacao"] = round(
-                (cond["area_ha"] / body.area_total_ha) * 100, 4
+                (float(cond["area_ha"]) / float(body.area_total_ha)) * 100, 4
             ) if body.area_total_ha > 0 else None
 
         return {
