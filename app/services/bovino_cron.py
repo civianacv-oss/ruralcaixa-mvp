@@ -21,6 +21,8 @@ import psycopg2
 import psycopg2.extras
 
 from app.services.alerta_service import AlertaService
+from app.services.cotacoes_service import garantir_cotacoes_atualizadas
+from app.routers.producao_insumos import _calcular_producao_e_custo
 
 logger = logging.getLogger(__name__)
 DB_URL = os.environ.get("DATABASE_URL", "")
@@ -186,14 +188,14 @@ def _gerar_alertas_leite(cur, imovel_id: Optional[int]) -> list[dict]:
     cur.execute(
         f"""
         WITH media_hist AS (
-            SELECT animal_id, AVG(litros) AS media_litros
+            SELECT animal_id, AVG(volume_l) AS media_litros
             FROM bovino_producao_leite
             WHERE data >= CURRENT_DATE - 90
             GROUP BY animal_id
         ),
         ultima_prod AS (
             SELECT DISTINCT ON (animal_id)
-                animal_id, litros, data
+                animal_id, volume_l, data
             FROM bovino_producao_leite
             ORDER BY animal_id, data DESC
         )
@@ -201,14 +203,14 @@ def _gerar_alertas_leite(cur, imovel_id: Optional[int]) -> list[dict]:
             pl.imovel_id,
             up.animal_id,
             a.brinco,
-            up.litros AS litros_hoje,
+            up.volume_l AS litros_hoje,
             mh.media_litros,
             up.data AS data_registro
         FROM ultima_prod up
         JOIN media_hist mh ON mh.animal_id = up.animal_id
         JOIN bovino_producao_leite pl ON pl.animal_id = up.animal_id AND pl.data = up.data
         JOIN bovino_animais a ON a.id = up.animal_id
-        WHERE up.litros < mh.media_litros * 0.5
+        WHERE up.volume_l < mh.media_litros * 0.5
           AND up.data >= CURRENT_DATE - 3
           {filtro}
         """,
@@ -238,6 +240,58 @@ def _gerar_alertas_leite(cur, imovel_id: Optional[int]) -> list[dict]:
     return alertas
 
 
+def _gerar_alertas_engorda(cur, imovel_id: Optional[int], preco_arroba: float) -> list[dict]:
+    """Animais de corte cujo custo de engorda (R$/kg de ganho) supera o
+    valor de mercado do kg de boi gordo (arroba CEPEA / 15). Reaproveita
+    o mesmo calculo de custo usado no endpoint producao-insumos."""
+    filtro = "AND imovel_id = %s" if imovel_id else ""
+    params = [] if not imovel_id else [imovel_id]
+    cur.execute(
+        f"""
+        SELECT id, imovel_id, brinco, nome
+        FROM bovino_animais
+        WHERE status = \'ativo\' AND aptidao_manejo = \'corte\' {filtro}
+        """,
+        params,
+    )
+    animais = cur.fetchall()
+    alertas = []
+    valor_por_kg_mercado = float(preco_arroba) / 15.0
+
+    for a in animais:
+        try:
+            producao, tipo_producao, custo, aviso = _calcular_producao_e_custo(
+                cur, "bovinos", a["id"], 30
+            )
+        except Exception:
+            continue
+        if custo is None or not producao or producao <= 0:
+            continue
+        custo_por_kg = custo / producao
+        if custo_por_kg > valor_por_kg_mercado:
+            diferenca = custo_por_kg - valor_por_kg_mercado
+            ref = a.get("brinco") or a.get("nome") or str(a["id"])
+            alertas.append(
+                dict(
+                    imovel_id=a["imovel_id"],
+                    ref_id=a["id"],
+                    tipo_alerta="engorda_antieconomica",
+                    titulo=f"\U0001F4C9 Engorda antieconomica: {ref}",
+                    descricao=(
+                        f"Custo de R$ {custo_por_kg:.2f}/kg de ganho supera o valor de "
+                        f"mercado (R$ {valor_por_kg_mercado:.2f}/kg, arroba CEPEA "
+                        f"R$ {preco_arroba:.2f}). Diferenca: R$ {diferenca:.2f}/kg. "
+                        f"Considere vender. (Fonte: CEPEA)"
+                    ),
+                    nivel="aviso",
+                    prioridade="media",
+                    data_vencimento=date.today() + timedelta(days=7),
+                    origem_evento="cron_bovino",
+                )
+            )
+    return alertas
+
+
 def processar_alertas_bovinos(imovel_id: Optional[int] = None, dias: int = 1) -> dict:
     """
     Ponto de entrada do cron.
@@ -253,6 +307,10 @@ def processar_alertas_bovinos(imovel_id: Optional[int] = None, dias: int = 1) ->
         alertas += _gerar_alertas_parto(cur, imovel_id)
         alertas += _gerar_alertas_sem_pesagem(cur, imovel_id)
         alertas += _gerar_alertas_leite(cur, imovel_id)
+
+        preco_arroba = garantir_cotacoes_atualizadas(conn)
+        if preco_arroba:
+            alertas += _gerar_alertas_engorda(cur, imovel_id, preco_arroba)
 
         criados = svc.upsert(alertas)
         resultado = svc.processar_e_enviar(dias=dias, imovel_id=imovel_id)

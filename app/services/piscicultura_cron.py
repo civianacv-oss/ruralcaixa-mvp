@@ -5,7 +5,7 @@ Cron de geração e envio de alertas de piscicultura.
 Responsabilidade deste módulo: apenas gerar a lista de alertas.
 Envio, deduplicação e marcação ficam no AlertaService.
 
-Alertas gerados (8 tipos):
+Alertas gerados (9 tipos):
   1. ph_faixa_critica       : pH fora da faixa ideal no último registro diário
   2. oxigenio_critico       : O₂ dissolvido < 2 mg/L no último registro diário
   3. temperatura_fora_range : temperatura fora do range por espécie
@@ -15,13 +15,16 @@ Alertas gerados (8 tipos):
   6. ica_elevado            : ICA acumulado > 2.5 na última biometria
   7. mortalidade_elevada    : mortalidade acumulada > 10% do plantel inicial
   8. biometria_atrasada     : última biometria há ≥ 30 dias (ou nenhuma registrada)
+  9. relacao_peixe_racao_baixa : meta_preco_venda_kg / custo de ração por kg de
+                              biomassa produzida < 1.50 (viabilidade econômica)
 
-Limites de referência (EMBRAPA / SEBRAE Aquicultura):
+Limites de referência (EMBRAPA / SEBRAE Aquicultura / Projeto Campo Futuro CNA-Senar):
   pH ideal: 6.5–8.5  |  crítico: < 6.0 ou > 9.0
   O₂: ideal > 3 mg/L |  crítico: < 2 mg/L
   ICA limite: 2.5 kg ração / kg ganho de peso
   Mortalidade crítica: > 10% do plantel inicial
   Biometria: recomendada a cada 15–30 dias
+  Relação peixe-ração: < 1.25 inviável | 1.25–1.50 abaixo do satisfatório | >= 1.50 ok
 """
 
 import logging
@@ -47,6 +50,12 @@ O2_AVISO         = 3.0
 ICA_LIMITE       = 2.5
 MORTALIDADE_PERC = 10.0   # %
 BIOMETRIA_DIAS   = 30     # dias sem biometria = alerta
+
+# Indicador de equivalência peixe-ração (Projeto Campo Futuro, CNA/Senar):
+# quantos kg de ração 1 kg de peixe vendido consegue custear.
+# < 1.25 = inviável | 1.25–1.50 = abaixo do satisfatório | >= 1.50 = satisfatório (sem alerta)
+RELACAO_PEIXE_RACAO_CRITICA = 1.25
+RELACAO_PEIXE_RACAO_AVISO   = 1.50
 
 # Ranges de temperatura por espécie (°C): (min_aviso, max_aviso, min_critico, max_critico)
 TEMP_RANGES: dict[str, tuple[float, float, float, float]] = {
@@ -439,6 +448,73 @@ def _gerar_alertas_biometria_atrasada(cur, imovel_id: Optional[int]) -> list[dic
     return alertas
 
 
+# ── 9: Relação peixe-ração baixa (viabilidade econômica) ─────────────────────
+def _gerar_alertas_economia(cur, imovel_id: Optional[int]) -> list[dict]:
+    """
+    Indicador de equivalência peixe-ração: meta_preco_venda_kg / custo de ração
+    por kg de biomassa produzida. Mede quantos kg de ração 1 kg de peixe vendido
+    consegue custear — referência: Projeto Campo Futuro (CNA/Senar).
+    """
+    filtro = "AND c.imovel_id = %s" if imovel_id else ""
+    params = [] if not imovel_id else [imovel_id]
+
+    cur.execute(
+        f"""
+        SELECT
+            c.id AS ciclo_id, c.imovel_id, c.nome_ciclo, c.especie,
+            c.meta_preco_venda_kg,
+            COALESCE(SUM(r.custo_racao_dia), 0) AS custo_racao_total,
+            (SELECT b.biomassa_estimada_kg FROM biometrias_piscicultura b
+               WHERE b.ciclo_id = c.id ORDER BY b.data_biometria DESC LIMIT 1) AS biomassa_kg
+        FROM ciclos_piscicultura c
+        LEFT JOIN registros_diarios_piscicultura r ON r.ciclo_id = c.id
+        WHERE c.status = 'ativo'
+          AND c.meta_preco_venda_kg IS NOT NULL
+          {filtro}
+        GROUP BY c.id, c.imovel_id, c.nome_ciclo, c.especie, c.meta_preco_venda_kg
+        """,
+        params,
+    )
+    rows = cur.fetchall()
+    alertas: list[dict] = []
+
+    for r in rows:
+        biomassa_kg = float(r["biomassa_kg"]) if r["biomassa_kg"] else 0.0
+        custo_racao_total = float(r["custo_racao_total"] or 0)
+        if biomassa_kg <= 0 or custo_racao_total <= 0:
+            continue  # sem biometria ou sem consumo de ração registrado ainda
+
+        custo_racao_kg = custo_racao_total / biomassa_kg
+        preco_venda = float(r["meta_preco_venda_kg"])
+        if custo_racao_kg <= 0:
+            continue
+        relacao = preco_venda / custo_racao_kg
+
+        if relacao >= RELACAO_PEIXE_RACAO_AVISO:
+            continue  # satisfatório, sem alerta
+
+        nivel = "critico" if relacao < RELACAO_PEIXE_RACAO_CRITICA else "aviso"
+        situacao = "inviável" if nivel == "critico" else "abaixo do satisfatório"
+        alertas.append(dict(
+            imovel_id=r["imovel_id"], ref_id=r["ciclo_id"],
+            tipo_alerta="relacao_peixe_racao_baixa",
+            titulo=f"💰 Relação peixe-ração {situacao}: {r['nome_ciclo']} ({relacao:.2f})",
+            descricao=(
+                f"Ciclo {r['nome_ciclo']} ({r['especie']}): a venda de 1 kg a "
+                f"R$ {preco_venda:.2f} custeia a ração de apenas {relacao:.2f} kg de peixe "
+                f"(custo de ração R$ {custo_racao_kg:.2f}/kg de biomassa produzida). "
+                f"Referência: abaixo de {RELACAO_PEIXE_RACAO_CRITICA} é inviável, entre "
+                f"{RELACAO_PEIXE_RACAO_CRITICA} e {RELACAO_PEIXE_RACAO_AVISO} fica aquém do "
+                f"satisfatório. Revisar preço de venda esperado ou custo/qualidade da ração."
+            ),
+            nivel=nivel, prioridade="alta" if nivel == "critico" else "media",
+            data_vencimento=date.today() + timedelta(days=3),
+            origem_evento="cron_piscicultura",
+        ))
+
+    return alertas
+
+
 # ── Ponto de entrada ──────────────────────────────────────────────────────────
 def processar_alertas_piscicultura(imovel_id: Optional[int] = None, dias: int = 1) -> dict:
     """
@@ -456,6 +532,7 @@ def processar_alertas_piscicultura(imovel_id: Optional[int] = None, dias: int = 
         alertas += _gerar_alertas_ica(cur, imovel_id)                   # 6
         alertas += _gerar_alertas_mortalidade(cur, imovel_id)           # 7
         alertas += _gerar_alertas_biometria_atrasada(cur, imovel_id)    # 8
+        alertas += _gerar_alertas_economia(cur, imovel_id)              # 9
 
         criados = svc.upsert(alertas)
         resultado = svc.processar_e_enviar(dias=dias, imovel_id=imovel_id)

@@ -149,6 +149,15 @@ def atualizar_animal(animal_id: int, dados: AnimalUpdate):
         conn.close()
 
 
+def _limpar_unicode(valor):
+    """Remove surrogates soltos e outros caracteres inválidos que às vezes
+    sobrevivem de exports de planilha/HTML malformados — sem isso, o
+    psycopg2 quebra com UnicodeEncodeError ao gravar no Postgres."""
+    if valor is None or not isinstance(valor, str):
+        return valor
+    return valor.encode("utf-8", errors="replace").decode("utf-8")
+
+
 @router.post("/animais", status_code=201)
 def cadastrar_animal(dados: AnimalCreate):
     conn = get_db()
@@ -160,9 +169,10 @@ def cadastrar_animal(dados: AnimalCreate):
                  data_nascimento, peso_nascimento, mae_id, pai_id, lote_id, observacoes)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
-        """, (dados.imovel_id, dados.brinco, dados.nome, dados.raca, dados.sexo,
-              dados.categoria, dados.data_nascimento, dados.peso_nascimento,
-              dados.mae_id, dados.pai_id, dados.lote_id, dados.observacoes))
+        """, (dados.imovel_id, _limpar_unicode(dados.brinco), _limpar_unicode(dados.nome),
+              _limpar_unicode(dados.raca), _limpar_unicode(dados.sexo),
+              _limpar_unicode(dados.categoria), dados.data_nascimento, dados.peso_nascimento,
+              dados.mae_id, dados.pai_id, dados.lote_id, _limpar_unicode(dados.observacoes)))
         animal_id = cur.fetchone()["id"]
 
         if dados.peso_nascimento:
@@ -173,6 +183,12 @@ def cadastrar_animal(dados: AnimalCreate):
 
         conn.commit()
         return {"id": animal_id}
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(409, f"Brinco '{dados.brinco}' já cadastrado neste imóvel.")
+    except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError) as e:
+        conn.rollback()
+        raise HTTPException(400, f"Caractere inválido em algum campo de texto do animal '{dados.brinco}': {e}")
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -435,7 +451,16 @@ def registrar_abate(dados: AbateCreate):
               dados.classificacao, dados.destino, dados.valor_total_rs,
               dados.comprador, dados.registrado_por))
         abate_id = cur.fetchone()["id"]
-        cur.execute("UPDATE suino_animais SET status = 'abatido' WHERE id = %s", (dados.animal_id,))
+        MAPA_STATUS_BAIXA = {
+            "abate_proprio": "abatido",
+            "abate_frigorif": "abatido",
+            "venda": "vendido",
+            "morte": "morto",
+            "doacao": "descartado",
+            "permuta": "descartado",
+        }
+        novo_status = MAPA_STATUS_BAIXA.get(dados.destino, "abatido")
+        cur.execute("UPDATE suino_animais SET status = %s WHERE id = %s", (novo_status, dados.animal_id))
         conn.commit()
         return {"id": abate_id}
     except Exception as e:
@@ -649,5 +674,65 @@ def previsao_racao(imovel_id: int):
                 "racao_30d_kg": round(total_dia * 30, 1),
             }
         }
+    finally:
+        conn.close()
+
+
+@router.get("/desempenho")
+def desempenho_rebanho(imovel_id: int, dias: int = Query(30, ge=7, le=180)):
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        data_inicio = date.today() - timedelta(days=dias)
+
+        cur.execute(
+            """
+            SELECT a.id, a.brinco, a.nome, a.lote_id, l.nome AS lote_nome
+            FROM suino_animais a
+            LEFT JOIN suino_lotes l ON l.id = a.lote_id
+            WHERE a.imovel_id = %s AND a.status = 'ativo'
+            """,
+            (imovel_id,),
+        )
+        animais = cur.fetchall()
+
+        resultados = []
+        for a in animais:
+            cur.execute(
+                """
+                SELECT peso_kg FROM suino_pesagens
+                WHERE animal_id = %s AND data_pesagem >= %s
+                ORDER BY data_pesagem ASC
+                """,
+                (a["id"], data_inicio),
+            )
+            pesagens = cur.fetchall()
+            producao = (
+                float(pesagens[-1]["peso_kg"]) - float(pesagens[0]["peso_kg"])
+                if len(pesagens) >= 2
+                else None
+            )
+            metrica_dia = round(producao / dias, 3) if producao is not None else None
+            resultados.append(
+                {
+                    "animal_id": a["id"],
+                    "brinco": a["brinco"],
+                    "nome": a["nome"],
+                    "tipo": "corte",
+                    "lote_id": a["lote_id"],
+                    "lote_nome": a["lote_nome"],
+                    "producao_periodo": round(producao, 2) if producao is not None else None,
+                    "metrica_dia": metrica_dia,
+                    "score": None,
+                }
+            )
+
+        grupo = [r for r in resultados if r["metrica_dia"] is not None]
+        grupo.sort(key=lambda r: r["metrica_dia"])
+        n = len(grupo)
+        for i, r in enumerate(grupo):
+            r["score"] = round((i / (n - 1)) * 100) if n > 1 else 50
+
+        return resultados
     finally:
         conn.close()

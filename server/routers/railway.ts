@@ -118,9 +118,22 @@ interface Insumo {
   estoque_atual: number;
   estoque_minimo: number;
   estoque_ideal: number;
+  estoque_reservado?: number;
+  estoque_maximo?: number;
+  estoque_disponivel?: number;
+  consumo_medio_diario?: number;
+  autonomia_dias?: number | null;
+  lote?: string;
+  validade?: string;
+  local_armazenamento?: string;
+  ultima_compra?: string;
+  ultima_saida?: string;
   preco_estimado?: number;
   custo_medio?: number;
   valor_total_estoque?: number;
+  entradas_mes?: number;
+  saidas_mes?: number;
+  estoque_inicial_mes?: number;
   fornecedor_id?: number;
   fornecedor_nome?: string;
   reposicao_modo: string;
@@ -199,6 +212,22 @@ async function requireClaims(req: Parameters<typeof getClaimsFromRequest>[0]) {
 }
 
 // ─── Generic Railway mutation helper ─────────────────────────────────────────
+// Extrai uma mensagem legível de qualquer formato de erro (Error, TRPCError,
+// objeto de erro do fetch, string, objeto arbitrário) — nunca retorna
+// "[object Object]", que era o que aparecia antes na importação.
+function msgDeErro(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e instanceof Error && e.message) return e.message;
+  if (e && typeof e === "object") {
+    const obj = e as Record<string, unknown>;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.detail === "string") return obj.detail;
+    if (obj.cause) return msgDeErro(obj.cause);
+    try { return JSON.stringify(obj); } catch { return "erro desconhecido"; }
+  }
+  return String(e);
+}
+
 async function railwayMutate<T>(
   path: string,
   method: "POST" | "PATCH" | "PUT" | "DELETE",
@@ -219,9 +248,13 @@ async function railwayMutate<T>(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const detail = (err as { detail?: unknown }).detail;
+    const detailStr = typeof detail === "string" ? detail
+      : detail != null ? (() => { try { return JSON.stringify(detail); } catch { return String(detail); } })()
+      : `Railway API error ${res.status}`;
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: (err as { detail?: string }).detail ?? `Railway API error ${res.status}`,
+      message: detailStr,
     });
   }
   // Some DELETE endpoints return 204 No Content
@@ -320,6 +353,17 @@ export const railwayRouter = router({
       );
     }),
 
+  // ── Excluir Imóvel ───────────────────────────────────────────────────────────
+  excluirImovel: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayMutate(
+        `/imoveis-rurais/${input.imovelId}`, "DELETE", undefined, claims.produtorId
+      );
+    }),
+
   racas: publicProcedure
     .input(z.object({ especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]) }))
     .query(async ({ ctx, input }) => {
@@ -340,6 +384,103 @@ export const railwayRouter = router({
         return railwayFetch<Animal[]>(`/${prefix}/animais/${input.imovelId}`, undefined, claims.produtorId);
       }
       return railwayFetch<Animal[]>(`/${prefix}/animais?imovel_id=${input.imovelId}`, undefined, claims.produtorId);
+    }),
+
+  // ── Dar baixa no rebanho (venda / morte / abate / doacao / permuta) ──────
+  registrarBaixaAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      animalId: z.number(),
+      tipo: z.enum(["abate_proprio", "abate_frigorif", "venda", "morte", "doacao", "permuta"]),
+      data: z.string(),
+      pesoVivoKg: z.number().optional(),
+      pesoCarcacaKg: z.number().optional(),
+      valorTotal: z.number().optional(),
+      comprador: z.string().optional(),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const body: Record<string, unknown> =
+        input.especie === "bovinos"
+          ? {
+              animal_id: input.animalId,
+              data: input.data,
+              tipo: input.tipo,
+              peso_vivo_kg: input.pesoVivoKg,
+              peso_carcaca_kg: input.pesoCarcacaKg,
+              valor_total: input.valorTotal,
+              comprador: input.comprador,
+              observacoes: input.observacoes,
+            }
+          : {
+              animal_id: input.animalId,
+              data_abate: input.data,
+              peso_vivo_kg: input.pesoVivoKg,
+              peso_carcaca_kg: input.pesoCarcacaKg,
+              destino: input.tipo,
+              valor_total_rs: input.valorTotal,
+              comprador: input.comprador,
+            };
+      return railwayMutate(`/${prefix}/abates`, "POST", body, claims.produtorId);
+    }),
+
+  // ── Registrar pesagem (kg canonico; conversao de arroba feita no cliente) ─
+  registrarPesagemAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      animalId: z.number(),
+      data: z.string(),
+      pesoKg: z.number(),
+      motivo: z.string().default("rotina"),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      const body: Record<string, unknown> =
+        input.especie === "bovinos"
+          ? {
+              animal_id: input.animalId,
+              data: input.data,
+              peso_kg: input.pesoKg,
+              motivo: input.motivo,
+              observacoes: input.observacoes,
+            }
+          : {
+              animal_id: input.animalId,
+              data_pesagem: input.data,
+              peso_kg: input.pesoKg,
+              motivo: input.motivo,
+            };
+      return railwayMutate(`/${prefix}/pesagens`, "POST", body, claims.produtorId);
+    }),
+
+  // ── Desempenho do rebanho (score por percentil de GMD/litros-dia) ────────
+  desempenhoRebanho: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      dias: z.number().min(7).max(180).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+      return railwayFetch<{
+        animal_id: number; brinco: string; nome: string | null;
+        tipo: "leite" | "corte"; lote_id: number | null; lote_nome: string | null;
+        producao_periodo: number | null; metrica_dia: number | null; score: number | null;
+      }[]>(
+        `/${prefix}/desempenho?imovel_id=${input.imovelId}&dias=${input.dias}`,
+        undefined,
+        claims.produtorId
+      );
     }),
 
   createAnimal: publicProcedure
@@ -439,7 +580,7 @@ export const railwayRouter = router({
 
       const brincoExistente = new Set(existentes.map((a) => String(a.brinco ?? "").toLowerCase().trim()));
 
-      const COL_BRINCO = ["brinco", "id", "identificacao", "numero", "tag", "brinco/id"];
+      const COL_BRINCO = ["brinco", "id", "identificacao", "identificador", "numero", "tag", "brinco/id"];
       const COL_NOME   = ["nome", "name"];
       const COL_RACA   = ["raca", "ra\u00e7a", "breed", "raca_nome"];
       const COL_SEXO   = ["sexo", "sex", "genero", "g\u00eanero"];
@@ -452,9 +593,25 @@ export const railwayRouter = router({
       // Garante que colunas com acentos (ex: Raça, Gênero, Aptidão) sejam encontradas
       const normColKey = (s: string) =>
         s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      // Quebra o nome da coluna em palavras (por espaço/underscore/hífen/barra) já normalizadas
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
       const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        // 1ª passada: nome da coluna inteiro bate exatamente com o alias
+        // (comportamento original — cobre "Brinco" === "brinco", "ID" === "id")
         for (const k of keys) {
-          const found = Object.keys(row).find((c) => normColKey(c) === normColKey(k));
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        // 2ª passada: alguma PALAVRA do nome da coluna bate exatamente com o
+        // alias — cobre "Nome Animal" (~ "nome"), "Identificador Animal"
+        // (~ "identificador"), sem o risco de "Sobrenome" casar com "nome"
+        // (substring cru casaria errado; por palavra, não).
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
           if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
         }
         return undefined;
@@ -463,6 +620,37 @@ export const railwayRouter = router({
       const rows_novas: any[] = [];
       const conflitos: any[] = [];
       let ignoradas_count = 0;
+
+      // Colunas de data partida em Dia/Mês/Ano (planilhas GISleite e afins).
+      // Sem tratar isso, o alias "nascimento" casaria com "Data Nascimento
+      // Dia" e o dia solto ("28") vazaria como se fosse a data inteira.
+      const COL_NASC_DIA = ["datanascimentodia", "dianascimento"];
+      const COL_NASC_MES = ["datanascimentomes", "mesnascimento"];
+      const COL_NASC_ANO = ["datanascimentoano", "anonascimento"];
+
+      // Só aceita como data um valor no formato completo (YYYY-MM-DD ou
+      // DD/MM/YYYY) — um número solto tipo "28" (dia) é rejeitado.
+      const dataCompletaOuNada = (v: string | undefined): string | undefined => {
+        if (!v) return undefined;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+        return undefined; // valor não é data completa (ex: "28" sozinho)
+      };
+
+      const montarData = (row: Record<string, any>): string | undefined => {
+        const dia = findCol(row, COL_NASC_DIA);
+        const mes = findCol(row, COL_NASC_MES);
+        const ano = findCol(row, COL_NASC_ANO);
+        if (dia && mes && ano) {
+          const d = parseInt(dia, 10), m = parseInt(mes, 10), a = parseInt(ano, 10);
+          if (!isNaN(d) && !isNaN(m) && !isNaN(a) && a > 1900)
+            return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        }
+        // Sem Dia/Mês/Ano separados: tenta a coluna única, mas só se for data completa
+        return dataCompletaOuNada(findCol(row, COL_NASC));
+      };
 
       for (const row of input.rows) {
         const brinco = findCol(row, COL_BRINCO);
@@ -473,7 +661,7 @@ export const railwayRouter = router({
           nome:            findCol(row, COL_NOME),
           raca:            findCol(row, COL_RACA),
           sexo:            (findCol(row, COL_SEXO) ?? "M").toUpperCase().startsWith("F") ? "F" : "M",
-          data_nascimento: findCol(row, COL_NASC),
+          data_nascimento: montarData(row),
           peso_nascimento: findCol(row, COL_PESO) ? Number(findCol(row, COL_PESO)) : undefined,
           categoria:       findCol(row, COL_CAT),
           aptidao_manejo:  findCol(row, COL_APT) ?? "corte",
@@ -485,6 +673,13 @@ export const railwayRouter = router({
         } else {
           rows_novas.push(parsed);
         }
+      }
+
+      if (rows_novas.length === 0 && conflitos.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Nenhuma linha com brinco reconhecido. Verifique se a planilha tem uma coluna "Brinco" (ou ID/Identificação/Número/Tag) e se o cabeçalho está na primeira linha de dados.`,
+        });
       }
 
       return { rows_novas, conflitos, ignoradas_count, total_planilha: input.rows.length };
@@ -508,12 +703,17 @@ export const railwayRouter = router({
       const prefix = especiePrefix[input.especie];
 
       let criados = 0, atualizados = 0, ignorados = 0, erros = 0;
+      const erros_detalhe: string[] = [];
 
       for (const row of input.rows_novas) {
         try {
           await railwayMutate<Animal>(`/${prefix}/animais`, "POST", { imovel_id: input.imovelId, ...row }, claims.produtorId);
           criados++;
-        } catch (_) { erros++; }
+        } catch (e) {
+          erros++;
+          const msg = msgDeErro(e);
+          if (erros_detalhe.length < 10) erros_detalhe.push(`${row.brinco ?? "?"}: ${msg}`);
+        }
       }
 
       for (const dec of (input.conflitos_decisoes ?? [])) {
@@ -521,13 +721,396 @@ export const railwayRouter = router({
           try {
             await railwayMutate<Animal>(`/${prefix}/animais/${dec.existente_id}`, "PATCH", dec.dados ?? {}, claims.produtorId);
             atualizados++;
-          } catch (_) { erros++; }
+          } catch (e) {
+            erros++;
+            const msg = msgDeErro(e);
+            if (erros_detalhe.length < 10) erros_detalhe.push(`${dec.brinco}: ${msg}`);
+          }
         } else {
           ignorados++;
         }
       }
 
-      return { criados, atualizados, ignorados, erros, total: criados + atualizados + ignorados + erros };
+      return {
+        criados, atualizados, ignorados, erros,
+        total: criados + atualizados + ignorados + erros,
+        erros_detalhe: erros_detalhe.length > 0 ? erros_detalhe : undefined,
+      };
+    }),
+
+  // ── Genealogia (Bovino) ──────────────────────────────────────────────────
+  // Importa exportações de sistemas de genealogia (ex.: GISleite), que
+  // frequentemente vêm como tabela HTML salva com extensão .xls e com nomes
+  // de coluna diferentes do template padrão (ex.: "Identificador Animal" em
+  // vez de "Brinco", data de nascimento partida em Dia/Mês/Ano, pai/mãe por
+  // número de registro em vez de estarem no próprio rebanho).
+  analisarPlanilhaGenealogiaBovino: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      rows: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      let existentes: Animal[] = [];
+      try {
+        existentes = await railwayFetch<Animal[]>(`/bovino/animais/${input.imovelId}`, undefined, claims.produtorId);
+      } catch (_) { existentes = []; }
+      const brincoExistente = new Set(existentes.map((a) => String(a.brinco ?? "").toLowerCase().trim()));
+
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        for (const k of keys) {
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+
+      const COL_BRINCO = ["brinco", "id", "identificacao", "identificador", "numero", "tag"];
+      const COL_NOME = ["nome", "name"];
+      const COL_REG_PAI = ["registropai", "registro_pai", "regpai", "numero_pai"];
+      const COL_NOME_PAI = ["nomepai", "nome_pai", "pai"];
+      const COL_REG_MAE = ["registromae", "registro_mae", "regmae", "numero_mae"];
+      const COL_NOME_MAE = ["nomemae", "nome_mae", "mae", "mãe"];
+      const COL_SEXO = ["sexo", "sex", "genero", "gênero"];
+      const COL_RACA = ["raca", "raça", "breed"];
+      const COL_COMPOSICAO = ["composicaoracial", "composicao_racial", "composicao"];
+      const COL_NASC_DIA = ["datanascimentodia", "diananscimento", "dia"];
+      const COL_NASC_MES = ["datanascimentomes", "mesnascimento", "mes"];
+      const COL_NASC_ANO = ["datanascimentoano", "anonascimento", "ano"];
+
+      const rows_novas: any[] = [];
+      const conflitos: any[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        if (!brinco) { ignoradas_count++; continue; }
+
+        // Data de nascimento: aceita tanto uma coluna única quanto Dia+Mês+Ano separados
+        let data_nascimento: string | undefined;
+        const dia = findCol(row, COL_NASC_DIA);
+        const mes = findCol(row, COL_NASC_MES);
+        const ano = findCol(row, COL_NASC_ANO);
+        if (dia && mes && ano) {
+          const diaNum = parseInt(dia, 10);
+          const mesNum = parseInt(mes, 10);
+          const anoNum = parseInt(ano, 10);
+          if (!isNaN(diaNum) && !isNaN(mesNum) && !isNaN(anoNum)) {
+            data_nascimento = `${anoNum}-${String(mesNum).padStart(2, "0")}-${String(diaNum).padStart(2, "0")}`;
+          }
+        }
+
+        const sexoRaw = (findCol(row, COL_SEXO) ?? "").toUpperCase();
+        const parsed: Record<string, any> = {
+          brinco,
+          nome: findCol(row, COL_NOME),
+          sexo: sexoRaw.startsWith("F") ? "F" : "M",
+          raca_nome: findCol(row, COL_RACA),        // resolvido pro raca_id no backend, se houver match
+          composicao_racial: findCol(row, COL_COMPOSICAO),
+          data_nascimento,
+          nome_pai: findCol(row, COL_NOME_PAI),
+          registro_pai_externo: findCol(row, COL_REG_PAI),
+          nome_mae: findCol(row, COL_NOME_MAE),
+          registro_mae_externo: findCol(row, COL_REG_MAE),
+          // Constraint do banco (bovino_animais_categoria_check) só aceita:
+          // bezerro/bezerra/novilho/novilha/garrote/garrotas/touro/vaca/boi.
+          // Genealogia não informa idade, só sexo — usamos o valor adulto
+          // genérico (vaca/touro), já que animais de pedigree/reprodução são
+          // tipicamente adultos. Produtor pode ajustar depois na tela.
+          categoria: sexoRaw.startsWith("F") ? "vaca" : "touro",
+          aptidao_manejo: "leite",
+          // Constraint do banco (bovino_animais_origem_check) só aceita:
+          // nascimento / compra / transferencia. Animais importados via
+          // genealogia vieram de fora do sistema (aquisição/registro
+          // externo), então "compra" é o valor apropriado.
+          origem: "compra",
+        };
+
+        if (brincoExistente.has(brinco.toLowerCase())) {
+          const existente = existentes.find((a) => String(a.brinco ?? "").toLowerCase().trim() === brinco.toLowerCase());
+          conflitos.push({ brinco, parsed, existente_id: existente?.id, existente });
+        } else {
+          rows_novas.push(parsed);
+        }
+      }
+
+      if (rows_novas.length === 0 && conflitos.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Nenhuma linha com identificação de animal reconhecida. Colunas aceitas: Brinco, Identificador (Animal), ID, Número, Tag.`,
+        });
+      }
+
+      return { rows_novas, conflitos, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  // Segunda passada: depois que confirmarImportacaoAnimais criar os animais
+  // (via /bovino/animais, que já aceita nome_pai/nome_mae/registro_*_externo/
+  // composicao_racial desde a migração 017), chama isso pra tentar linkar
+  // pai_id/mae_id de verdade sempre que o pai/mãe também estiver no rebanho.
+  relinkGenealogiaBovino: publicProcedure
+    .input(z.object({ imovelId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      return railwayMutate(`/bovino/animais/relink-genealogia/${input.imovelId}`, "POST", {}, claims.produtorId);
+    }),
+
+  // ── Produção Leiteira (Bovino) ───────────────────────────────────────────────
+  // Importa exportações de controle leiteiro oficial (ex.: GISleite), que vêm
+  // em dois níveis: resumo por lactação ("producao") e controle dia a dia
+  // ("controle" / "controle_todas_lactacoes"). Ambos usam "Identificador
+  // Animal" para casar com o brinco já cadastrado no rebanho — igual à
+  // genealogia.
+  analisarPlanilhaLactacoesBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), rows: z.array(z.record(z.string(), z.any())) }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      let existentes: Animal[] = [];
+      try {
+        existentes = await railwayFetch<Animal[]>(`/bovino/animais/${input.imovelId}`, undefined, claims.produtorId);
+      } catch { existentes = []; }
+      const brincoParaId = new Map<string, number>();
+      for (const a of existentes) {
+        if (a.brinco) brincoParaId.set(String(a.brinco).toLowerCase().trim(), a.id);
+      }
+
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        for (const k of keys) {
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+      const dataBr = (v?: string): string | undefined => {
+        if (!v) return undefined;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const br = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+        return undefined;
+      };
+
+      const COL_BRINCO = ["identificadoranimal", "identificador", "brinco"];
+      const COL_DATA_PARTO = ["dataparto"];
+      const COL_ORDEM_PARTO = ["ordemdeparto", "ordemparto"];
+      const COL_DURACAO = ["duracaolactacao"];
+      const COL_PROD_TOTAL = ["producaototalleite"];
+      const COL_PROD_305 = ["producao305d"];
+      const COL_PROD_GORD = ["producaoacumuladagordura"];
+      const COL_PROD_PROT = ["producaoacumuladaproteina"];
+      const COL_ESCORE = ["escorecorporal"];
+      const COL_RACA = ["raca"];
+      const COL_CCS = ["ccs"];
+      const COL_DATA_ENC = ["dataencerramentolactacao"];
+      const COL_CAUSA_ENC = ["causaencerramentolactacao"];
+
+      const itens: any[] = [];
+      const nao_encontrados: { brinco: string }[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        const dataParto = dataBr(findCol(row, COL_DATA_PARTO));
+        if (!brinco || !dataParto) { ignoradas_count++; continue; }
+
+        const animalId = brincoParaId.get(brinco.toLowerCase());
+        if (!animalId) { nao_encontrados.push({ brinco }); continue; }
+
+        const n = (v?: string) => (v !== undefined ? Number(v.replace(",", ".")) : undefined);
+        itens.push({
+          animal_id: animalId,
+          brinco,
+          ordem_parto: n(findCol(row, COL_ORDEM_PARTO)),
+          data_parto: dataParto,
+          duracao_lactacao_dias: n(findCol(row, COL_DURACAO)),
+          producao_total_litros: n(findCol(row, COL_PROD_TOTAL)),
+          producao_305d_litros: n(findCol(row, COL_PROD_305)),
+          producao_acumulada_gordura: n(findCol(row, COL_PROD_GORD)),
+          producao_acumulada_proteina: n(findCol(row, COL_PROD_PROT)),
+          escore_corporal: n(findCol(row, COL_ESCORE)),
+          raca_registro: findCol(row, COL_RACA),
+          ccs_media: n(findCol(row, COL_CCS)),
+          data_encerramento: dataBr(findCol(row, COL_DATA_ENC)),
+          causa_encerramento: findCol(row, COL_CAUSA_ENC),
+        });
+      }
+
+      if (itens.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nenhuma linha reconhecida. Verifique se a planilha tem 'Identificador Animal' e 'Data Parto', e se os animais já estão cadastrados no rebanho.",
+        });
+      }
+
+      return { itens, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  confirmarImportacaoLactacoesBovino: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      itens: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const itens = input.itens.map(({ brinco, ...rest }) => rest);
+      return railwayMutate(`/bovino/leiteiro/lactacoes/importar`, "POST", {
+        imovel_id: input.imovelId, itens,
+      }, claims.produtorId);
+    }),
+
+  analisarPlanilhaControleLeiteiroBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), rows: z.array(z.record(z.string(), z.any())) }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+
+      let existentes: Animal[] = [];
+      try {
+        existentes = await railwayFetch<Animal[]>(`/bovino/animais/${input.imovelId}`, undefined, claims.produtorId);
+      } catch { existentes = []; }
+      const brincoParaId = new Map<string, number>();
+      for (const a of existentes) {
+        if (a.brinco) brincoParaId.set(String(a.brinco).toLowerCase().trim(), a.id);
+      }
+
+      const normColKey = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      const colWords = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .split(/[^a-z0-9]+/).filter(Boolean);
+      const findCol = (row: Record<string, any>, keys: string[]): string | undefined => {
+        const cols = Object.keys(row);
+        for (const k of keys) {
+          const found = cols.find((c) => normColKey(c) === normColKey(k));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        for (const k of keys) {
+          const kn = normColKey(k);
+          const found = cols.find((c) => colWords(c).includes(kn));
+          if (found && row[found] != null && String(row[found]).trim() !== "") return String(row[found]).trim();
+        }
+        return undefined;
+      };
+      const dataBr = (v?: string): string | undefined => {
+        if (!v) return undefined;
+        const s = v.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const br = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+        return undefined;
+      };
+
+      const COL_BRINCO = ["identificadoranimal", "identificador", "brinco"];
+      const COL_DATA_CONTROLE = ["datacontrole"];
+      const COL_NUM_CONTROLE = ["numerocontrole"];
+      const COL_NUM_ORDENHAS = ["numerodeordenhasnocontrole", "numeroordenhas"];
+      const COL_PROD_CONTROLE = ["producaoleitecontrole"];
+      const COL_GORDURA = ["percentualgordura"];
+      const COL_PROTEINA = ["percentualproteina"];
+      const COL_LACTOSE = ["percentuallactose"];
+      const COL_ES = ["es"];
+      const COL_CCS = ["ccs"];
+
+      const itens: any[] = [];
+      const nao_encontrados: { brinco: string }[] = [];
+      let ignoradas_count = 0;
+
+      for (const row of input.rows) {
+        const brinco = findCol(row, COL_BRINCO);
+        const dataControle = dataBr(findCol(row, COL_DATA_CONTROLE));
+        const producaoControle = findCol(row, COL_PROD_CONTROLE);
+        if (!brinco || !dataControle || !producaoControle) { ignoradas_count++; continue; }
+
+        const animalId = brincoParaId.get(brinco.toLowerCase());
+        if (!animalId) { nao_encontrados.push({ brinco }); continue; }
+
+        const n = (v?: string) => (v !== undefined ? Number(v.replace(",", ".")) : undefined);
+        itens.push({
+          animal_id: animalId,
+          brinco,
+          data: dataControle,
+          volume_l: n(producaoControle),
+          gordura_pct: n(findCol(row, COL_GORDURA)),
+          proteina_pct: n(findCol(row, COL_PROTEINA)),
+          lactose_pct: n(findCol(row, COL_LACTOSE)),
+          es_pct: n(findCol(row, COL_ES)),
+          ccs: n(findCol(row, COL_CCS)),
+          numero_ordenhas_dia: n(findCol(row, COL_NUM_ORDENHAS)),
+          numero_controle_externo: n(findCol(row, COL_NUM_CONTROLE)),
+        });
+      }
+
+      if (itens.length === 0 && input.rows.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Nenhuma linha reconhecida. Verifique se a planilha tem 'Identificador Animal', 'Data Controle' e 'Producao Leite Controle', e se os animais já estão cadastrados no rebanho.",
+        });
+      }
+
+      return { itens, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
+    }),
+
+  confirmarImportacaoControleLeiteiroBovino: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      itens: z.array(z.record(z.string(), z.any())),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const itens = input.itens.map(({ brinco, ...rest }) => rest);
+      return railwayMutate(`/bovino/leiteiro/ordenha/importar`, "POST", {
+        imovel_id: input.imovelId, itens,
+      }, claims.produtorId);
+    }),
+
+  lactacoesBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), animalId: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const qs = input.animalId ? `?animal_id=${input.animalId}` : "";
+      return railwayFetch<any[]>(`/bovino/leiteiro/lactacoes/${input.imovelId}${qs}`, undefined, claims.produtorId);
+    }),
+
+  controleLeiteiroBovino: publicProcedure
+    .input(z.object({ imovelId: z.number(), animalId: z.number().optional(), dias: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const params = new URLSearchParams();
+      params.set("dias", String(input.dias ?? 3650));
+      params.set("fonte", "gisleite");
+      if (input.animalId) params.set("animal_id", String(input.animalId));
+      return railwayFetch<any[]>(`/bovino/leiteiro/ordenha/${input.imovelId}?${params.toString()}`, undefined, claims.produtorId);
     }),
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -824,6 +1407,11 @@ export const railwayRouter = router({
       estoque_atual: z.number().default(0),
       estoque_minimo: z.number().default(0),
       estoque_ideal: z.number().default(0),
+      estoque_reservado: z.number().default(0),
+      estoque_maximo: z.number().optional(),
+      lote: z.string().optional(),
+      validade: z.string().optional(),
+      local_armazenamento: z.string().optional(),
       preco_estimado: z.number().optional(),
       fornecedor_id: z.number().optional(),
       reposicao_modo: z.enum(["automatico", "manual"]).default("manual"),
@@ -835,6 +1423,42 @@ export const railwayRouter = router({
       const { imovelId, ...fields } = input;
       const data = await railwayMutate<{ data: Insumo } | Insumo>(`/insumos/`, "POST", { fazenda_id: imovelId, ...fields }, claims.produtorId);
       return (data as { data: Insumo }).data ?? data;
+    }),
+
+  // ── Editar Insumo (inclui vincular/trocar fornecedor) ────────────────────────
+  atualizarInsumo: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      insumoId: z.number(),
+      nome: z.string().min(1),
+      descricao: z.string().optional(),
+      categoria: z.string(),
+      unidade: z.string(),
+      origem: z.enum(["comprado", "proprio", "doacao"]),
+      estoque_minimo: z.number(),
+      estoque_ideal: z.number(),
+      preco_estimado: z.number().optional(),
+      fornecedor_id: z.number().optional(),
+      reposicao_modo: z.enum(["automatico", "manual"]),
+      lead_time_dias: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, insumoId, ...fields } = input;
+      const data = await railwayMutate<{ data: Insumo } | Insumo>(`/insumos/${insumoId}`, "PUT", fields, claims.produtorId);
+      return (data as { data: Insumo }).data ?? data;
+    }),
+
+  resumoMovimentacoesInsumos: publicProcedure
+    .input(z.object({ imovelId: z.number(), mes: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const qs = input.mes ? `&mes=${input.mes}` : "";
+      return railwayFetch<{
+        compras_mes: number; consumo_mes: number; qtd_compras: number; qtd_usos: number;
+      }>(`/insumos/resumo-movimentacoes?fazenda_id=${input.imovelId}${qs}`, undefined, claims.produtorId);
     }),
 
   insumoDetalhe: publicProcedure
@@ -859,6 +1483,9 @@ export const railwayRouter = router({
       motivo_saida: z.enum(["consumo_rebanho", "perda", "vencimento", "transferencia", "venda", "ajuste", "outro"]).optional(),
       lote_destino: z.string().optional(),
       atividade: z.enum(["pecuaria_corte", "pecuaria_leite", "suinocultura", "avicultura", "agricultura", "geral"]).optional(),
+      // Vínculo real com o Rebanho (para GMD/custo por kg e litros/dia por animal)
+      animal_id: z.number().optional(),
+      lote_id: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
@@ -877,9 +1504,63 @@ export const railwayRouter = router({
         custo_unitario: fields.custo_unitario,
         data_movim: fields.data_movim,
         observacao: observacaoEnriquecida,
+        animal_id: fields.animal_id,
+        lote_id: fields.lote_id,
+        atividade: fields.atividade,
       };
       const data = await railwayMutate<{ data: MovimentacaoInsumo } | MovimentacaoInsumo>(`/insumos/${insumoId}/movimentar`, "POST", payload, claims.produtorId);
       return (data as { data: MovimentacaoInsumo }).data ?? data;
+    }),
+
+  // ── Produção integrada com Insumos (GMD/custo por kg, ou litros/dia e custo/litro) ──
+  // Bovino tem endpoint dedicado (corte + leite); Ovino/Caprino reaproveitam o
+  // endpoint de indicadores já existente; Suíno tem endpoint espelhado do de Bovino.
+  producaoInsumosAnimal: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      animalId: z.number(),
+      especie: z.enum(["ovinos", "caprinos", "suinos", "bovinos"]),
+      dias: z.number().min(1).max(365).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const prefix = especiePrefix[input.especie];
+
+      if (input.especie === "bovinos") {
+        return railwayFetch<{
+          animal_id: number; tipo: "corte" | "leite"; periodo_dias: number;
+          gmd_kg_dia?: number | null; ganho_total_kg?: number | null;
+          litros_dia?: number; producao_total_l?: number;
+          custo_insumos_periodo: number; custo_por_kg_ganho?: number | null;
+          custo_por_litro?: number | null; aviso?: string | null;
+        }>(`/${prefix}/animais/${input.animalId}/producao-insumos?dias=${input.dias}`, undefined, claims.produtorId);
+      }
+
+      if (input.especie === "suinos") {
+        const r = await railwayFetch<{
+          animal_id: number; periodo_dias: number; gmd_kg_dia?: number | null;
+          ganho_total_kg?: number | null; custo_insumos_periodo: number;
+          custo_por_kg_ganho?: number | null; aviso?: string | null;
+        }>(`/${prefix}/animais/${input.animalId}/producao-insumos?dias=${input.dias}`, undefined, claims.produtorId);
+        return { ...r, tipo: "corte" as const };
+      }
+
+      // Ovino/Caprino: reaproveita /indicadores/animal/{id} (não recebe `dias` — usa histórico completo de pesagens)
+      const r = await railwayFetch<{
+        gmd_geral?: number | null; ganho_total_kg?: number | null;
+        custo_insumos_periodo?: number; custo_por_kg_ganho?: number | null;
+      }>(`/${prefix}/indicadores/animal/${input.animalId}`, undefined, claims.produtorId);
+      return {
+        animal_id: input.animalId,
+        tipo: "corte" as const,
+        periodo_dias: input.dias,
+        gmd_kg_dia: r.gmd_geral ?? null,
+        ganho_total_kg: r.ganho_total_kg ?? null,
+        custo_insumos_periodo: r.custo_insumos_periodo ?? 0,
+        custo_por_kg_ganho: r.custo_por_kg_ganho ?? null,
+        aviso: null,
+      };
     }),
 
   deleteInsumo: publicProcedure
@@ -938,6 +1619,37 @@ export const railwayRouter = router({
       const { imovelId, ...fields } = input;
       const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/`, "POST", { fazenda_id: imovelId, ...fields }, claims.produtorId);
       return (data as { data: Fornecedor }).data ?? data;
+    }),
+
+  updateFornecedor: publicProcedure
+    .input(z.object({
+      imovelId: z.number(),
+      fornecedorId: z.number(),
+      nome: z.string().min(1),
+      cnpj_cpf: z.string().optional(),
+      whatsapp: z.string().optional(),
+      telegram: z.string().optional(),
+      email: z.string().optional(),
+      endereco: z.string().optional(),
+      prazo_entrega_dias: z.number().default(7),
+      forma_pagamento: z.string().default("a_vista"),
+      observacoes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const { imovelId, fornecedorId, ...fields } = input;
+      const data = await railwayMutate<{ data: Fornecedor } | Fornecedor>(`/fornecedores/${fornecedorId}`, "PUT", { fazenda_id: imovelId, ...fields }, claims.produtorId);
+      return (data as { data: Fornecedor }).data ?? data;
+    }),
+
+  deleteFornecedor: publicProcedure
+    .input(z.object({ imovelId: z.number(), fornecedorId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const claims = await requireClaims(ctx.req);
+      assertImovel(claims, input.imovelId);
+      const data = await railwayMutate<{ ok: boolean }>(`/fornecedores/${input.fornecedorId}`, "DELETE", undefined, claims.produtorId);
+      return data;
     }),
 
   // ── Pedidos de Compra ────────────────────────────────────────────────────────
@@ -1151,12 +1863,16 @@ export const railwayRouter = router({
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
 
-      // Detectar linha de cabeçalho real
+      // Detectar linha de cabeçalho real (tolerante a acento e a variações
+      // de nome de coluna — mesma lógica usada no import de animais)
+      const HEADER_HINTS_INSUMO = ["nome", "name", "insumo", "produto", "descricao"];
+      const normHeaderVal = (v: unknown) =>
+        String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", header: 1 }) as unknown[][];
       let headerRowIndex = 0;
       for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
-        const rowVals = rawRows[i].map(v => String(v ?? "").toLowerCase().trim());
-        if (rowVals.some(v => v === "nome" || v === "name" || v === "insumo" || v === "produto")) {
+        const rowVals = (rawRows[i] || []).map(normHeaderVal);
+        if (rowVals.some(v => HEADER_HINTS_INSUMO.some(h => v === h || v.includes(h)))) {
           headerRowIndex = i;
           break;
         }
@@ -1169,9 +1885,22 @@ export const railwayRouter = router({
       const toNum = (v: unknown) => { const n = parseFloat(String(v ?? "0").replace(",", ".")); return isNaN(n) ? 0 : n; };
       // Normaliza chave de coluna: remove acentos (NFD) e caracteres não alfanuméricos
       const normKey = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+      // Quebra o nome da coluna em palavras, pra correspondência por palavra
+      // inteira (ex.: "Nome do Insumo" ~ "nome", sem "Sobrenome" casar errado)
+      const colWordsInsumo = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
       const col = (row: Record<string, unknown>, ...keys: string[]) => {
+        const cols = Object.keys(row);
+        // 1ª passada: nome da coluna inteiro bate exatamente com o alias
         for (const k of keys) {
-          const found = Object.keys(row).find(rk => normKey(rk) === normKey(k));
+          const found = cols.find(rk => normKey(rk) === normKey(k));
+          if (found && row[found] !== "") return row[found];
+        }
+        // 2ª passada: alguma palavra do nome da coluna bate com o alias
+        // (cobre "Nome do Insumo", "Preço Unitário", "Estoque Atual (kg)" etc.)
+        for (const k of keys) {
+          const kn = normKey(k);
+          const found = cols.find(rk => colWordsInsumo(rk).includes(kn));
           if (found && row[found] !== "") return row[found];
         }
         return "";
@@ -1190,6 +1919,7 @@ export const railwayRouter = router({
         preco_estimado: toNum(col(row, "precoestimado", "preco", "price", "valor", "valorunitariodaultimacompra", "valorunitario")) || 0,
         reposicao_modo: normalize(col(row, "reposicaomodo", "reposicao")) === "automatico" ? "automatico" : "manual",
         lead_time_dias: toNum(col(row, "leadtime", "leadtimediatias", "prazoentrega")) || 7,
+        fornecedor_nome: normalize(col(row, "fornecedor", "fornecedornome", "supplier", "fabricante", "vendor")),
       }));
 
       // ── VALIDAÇÃO 1: Normalização de nomes para deduplicação ──────────────────
@@ -1309,6 +2039,7 @@ export const railwayRouter = router({
         preco_estimado: z.number(),
         reposicao_modo: z.string(),
         lead_time_dias: z.number(),
+        fornecedor_nome: z.string().optional(),
       })),
       mappings: z.record(z.string(), z.string()), // { nomePlanilha: nomeDestino }
       // Decisões do usuário para insumos já existentes: "adicionar" = soma estoque | "ignorar" = pula
@@ -1344,6 +2075,42 @@ export const railwayRouter = router({
       const mapaExistentesConf = new Map<string, Insumo>();
       for (const ins of insumosExistentes) {
         mapaExistentesConf.set(normalizeNomeConf(ins.nome), ins);
+      }
+
+      // ── FORNECEDORES: buscar existentes e preparar resolução por nome ───────────────
+      // A planilha pode trazer uma coluna "fornecedor" com o nome do fornecedor.
+      // Resolvemos para o fornecedor_id existente (por nome normalizado) ou criamos
+      // um novo fornecedor (apenas com o nome) na primeira ocorrência dentro do lote.
+      let fornecedoresExistentes: Fornecedor[] = [];
+      try {
+        const fornRes = await railwayFetch<{ data: Fornecedor[] } | Fornecedor[]>(
+          `/fornecedores/?fazenda_id=${input.imovelId}`, undefined, claims.produtorId
+        );
+        fornecedoresExistentes = Array.isArray(fornRes) ? fornRes : (fornRes as { data: Fornecedor[] }).data ?? [];
+      } catch {
+        // Railway indisponível — segue sem resolução de fornecedor
+      }
+      const mapaFornecedores = new Map<string, number>();
+      for (const f of fornecedoresExistentes) {
+        mapaFornecedores.set(normalizeNomeConf(f.nome), f.id);
+      }
+      async function resolverFornecedorId(nomeFornecedor?: string): Promise<number | undefined> {
+        const nome = (nomeFornecedor ?? "").trim();
+        if (!nome) return undefined;
+        const key = normalizeNomeConf(nome);
+        const existente = mapaFornecedores.get(key);
+        if (existente) return existente;
+        try {
+          const novo = await railwayMutate<{ data: Fornecedor } | Fornecedor>(
+            `/fornecedores/`, "POST", { fazenda_id: input.imovelId, nome }, claims.produtorId
+          );
+          const fornecedorCriado = (novo as { data: Fornecedor }).data ?? (novo as Fornecedor);
+          mapaFornecedores.set(key, fornecedorCriado.id);
+          return fornecedorCriado.id;
+        } catch {
+          // Não bloqueia a importação do insumo se a criação do fornecedor falhar
+          return undefined;
+        }
       }
 
       // Decisões do usuário: { nomePlanilha: "adicionar" | "ignorar" }
@@ -1411,12 +2178,36 @@ export const railwayRouter = router({
               // Ignorar: não altera o estoque existente
               results.push({ nome: nomeDestino, codigo: catalogItem.codigo, ok: true, action: "ignorado" });
             }
+            // Se o insumo já existe mas ainda não tem fornecedor, e a planilha trouxe um,
+            // vincula o fornecedor (resolvendo ou criando pelo nome) sem mexer em mais nada.
+            if (!insumoExistente.fornecedor_id && row.fornecedor_nome) {
+              const fornecedorId = await resolverFornecedorId(row.fornecedor_nome);
+              if (fornecedorId) {
+                try {
+                  await railwayMutate(`/insumos/${insumoExistente.id}`, "PUT", {
+                    nome: insumoExistente.nome,
+                    categoria: insumoExistente.categoria,
+                    unidade: insumoExistente.unidade,
+                    origem: insumoExistente.origem,
+                    estoque_minimo: insumoExistente.estoque_minimo,
+                    estoque_ideal: insumoExistente.estoque_ideal,
+                    preco_estimado: insumoExistente.preco_estimado,
+                    fornecedor_id: fornecedorId,
+                    reposicao_modo: insumoExistente.reposicao_modo,
+                    lead_time_dias: insumoExistente.lead_time_dias,
+                  }, claims.produtorId);
+                } catch {
+                  // Não bloqueia a importação se a vinculação do fornecedor falhar
+                }
+              }
+            }
             continue;
           }
 
           // Insumo não existe: criar novo no Railway
           let actionFinal: "criado" | "atualizado" = "criado";
           try {
+            const fornecedorId = await resolverFornecedorId(row.fornecedor_nome);
             const payload = {
               fazenda_id: input.imovelId,
               nome: nomeDestino,
@@ -1427,6 +2218,7 @@ export const railwayRouter = router({
               estoque_minimo: row.estoque_minimo,
               estoque_ideal: row.estoque_ideal,
               preco_estimado: row.preco_estimado || undefined,
+              fornecedor_id: fornecedorId,
               reposicao_modo: row.reposicao_modo,
               lead_time_dias: row.lead_time_dias,
             };

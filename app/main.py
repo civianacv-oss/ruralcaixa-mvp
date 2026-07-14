@@ -37,6 +37,27 @@ except Exception as e:
     caprino_router = None
 
 try:
+    from app.routers.culturas import router as culturas_router
+    print("CULTURAS ROUTER LOADED OK")
+except Exception as e:
+    print(f"CULTURAS ROUTER FAILED: {e}")
+    culturas_router = None
+
+try:
+    from app.routers.forum_cultura import router as forum_cultura_router
+    print("FORUM_CULTURA ROUTER LOADED OK")
+except Exception as e:
+    print(f"FORUM_CULTURA ROUTER FAILED: {e}")
+    forum_cultura_router = None
+
+try:
+    from app.routers.clima import router as clima_router
+    print("CLIMA ROUTER LOADED OK")
+except Exception as e:
+    print(f"CLIMA ROUTER FAILED: {e}")
+    clima_router = None
+
+try:
     from app.routers.suino import router as suino_router
     print("SUINO ROUTER LOADED OK")
 except Exception as e:
@@ -92,6 +113,9 @@ GRAPH        = "https://graph.facebook.com/v23.0"
 sessoes = {}
 if ovino_router: app.include_router(ovino_router)
 if caprino_router: app.include_router(caprino_router)
+if culturas_router: app.include_router(culturas_router)
+if forum_cultura_router: app.include_router(forum_cultura_router)
+if clima_router: app.include_router(clima_router)
 if suino_router: app.include_router(suino_router)
 if compravenda_router: app.include_router(compravenda_router)
 if locacoes_pontos_router: app.include_router(locacoes_pontos_router)
@@ -195,6 +219,15 @@ try:
 except Exception as e:
     print(f"INSUMOS ROUTER FAILED: {e}")
 
+producao_insumos_router = None
+try:
+    from app.routers.producao_insumos import router as producao_insumos_router
+    app.include_router(producao_insumos_router)
+    print("PRODUCAO_INSUMOS ROUTER LOADED OK")
+except Exception as e:
+    print(f"PRODUCAO_INSUMOS ROUTER FAILED: {e}")
+
+
 # Cron alertas insumos
 try:
     from app.services.insumo_cron import verificar_alertas_insumo
@@ -262,6 +295,20 @@ CORS_ORIGINS = [
     "http://localhost:8000",  # testes locais
 ]
 
+
+# Auth middleware (executa depois do CORS)
+# Auth executa por ULTIMO (adicionado primeiro)
+try:
+    from app.routers.condominio import router as condominio_router
+    app.include_router(condominio_router)
+    print('CONDOMINIO ROUTER LOADED OK')
+except Exception as _e:
+    print(f'CONDOMINIO ROUTER FAILED: {_e}')
+
+from app.middleware.auth_middleware import AuthMiddleware
+app.add_middleware(AuthMiddleware)
+
+# CORS executa PRIMEIRO (adicionado por ultimo) — intercepta OPTIONS antes do Auth
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -271,10 +318,6 @@ app.add_middleware(
     expose_headers=["Content-Type", "Authorization"],
     max_age=86400,  # 24 horas de cache para preflight
 )
-
-# Auth middleware (executa depois do CORS)
-from app.middleware.auth_middleware import AuthMiddleware
-app.add_middleware(AuthMiddleware)
 app.include_router(contratos_router)
 app.include_router(lanc_router)
 from app.propriedades import router as propriedades_router
@@ -515,7 +558,7 @@ def deletar_imovel_rural(imovel_id: int):
     from sqlalchemy import text
     with engine.connect() as conn:
         total = conn.execute(text(
-            "SELECT COUNT(*) FROM lancamentos WHERE empreendimento_id=:id"
+            "SELECT COUNT(*) FROM lancamentos WHERE imovel_id=:id"
         ), {"id": imovel_id}).fetchone()[0]
         if total > 0:
             raise HTTPException(status_code=400,

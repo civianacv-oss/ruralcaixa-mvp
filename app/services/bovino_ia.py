@@ -1,6 +1,7 @@
 """
-RuralCaixa — services/caprino_ia.py  (v2 — síncrono)
-Compatível com psycopg2/FastAPI síncrono do main_api.py.
+RuralCaixa — services/bovino_ia.py
+Classificador de mensagens de WhatsApp/Telegram para o módulo Bovino.
+Espelha o padrão de app/services/ovino_ia.py.
 """
 
 import os
@@ -15,8 +16,9 @@ import anthropic
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Você é o assistente de campo do RuralCaixa, especializado em
-criação de caprinos de corte no Brasil. Sua tarefa é extrair eventos zootécnicos
-de mensagens enviadas pelo produtor via WhatsApp (texto ou transcrição de áudio).
+pecuária bovina (corte e leite) no Brasil. Sua tarefa é extrair eventos
+zootécnicos e financeiros de mensagens enviadas pelo produtor via WhatsApp
+(texto ou transcrição de áudio).
 
 Responda SOMENTE com um objeto JSON válido, sem markdown, sem texto extra.
 
@@ -29,27 +31,27 @@ Formato de resposta:
 }
 
 Intents disponíveis e seus campos:
-- pesagem        → brinco (str), peso_kg (float), motivo? (str)
-- vacinacao      → produto (str), lote? (str), brinco? (str), dose_ml? (float)
-- vermifugacao   → produto (str), lote? (str), brinco? (str), dose_ml? (float), via? (str)
-- famacha        → brinco (str), escore (int 1-5)
-- parto          → brinco_matriz (str), cabritos_vivos (int), cabritos_mortos? (int)
-- monta          → brinco_matriz (str), brinco_reprodutor? (str)
-- abate          → brinco (str), peso_vivo_kg? (float), peso_carcaca_kg? (float), destino? (str)
-- cadastro       → brinco (str), sexo ("M"|"F"), raca? (str), data_nascimento? (str YYYY-MM-DD)
-- tratamento     → brinco (str), produto (str), diagnostico? (str)
-- desmame        → brinco_cordeiro (str), peso_kg? (float)
-- morte          → brinco (str), causa? (str)
-- compra         → quantidade (int), valor_total (float), raca? (str), fornecedor? (str)
-- venda          → quantidade (int), valor_total (float), brinco? (str), comprador? (str)
-- outro          → descricao (str)
+- pesagem         → brinco (str), peso_kg (float), motivo? (str)
+- producao_leite  → brinco? (str), volume_l (float), turno? ("manha"|"tarde"|"total"), destinacao? (str)
+- vacinacao       → produto (str), brinco? (str), dose_ml? (float)
+- vermifugacao    → produto (str), brinco? (str), dose_ml? (float)
+- tratamento      → brinco (str), produto (str), diagnostico? (str)
+- cobertura       → brinco_femea (str), brinco_touro? (str), metodo? ("monta_natural"|"iatf"|"ia")
+- parto           → brinco_matriz (str), sexo_bezerro? ("M"|"F")
+- abate           → brinco (str), peso_vivo_kg? (float), peso_carcaca_kg? (float), preco_arroba? (float), valor_total? (float), comprador? (str)
+- cadastro        → brinco (str), sexo ("M"|"F"), raca? (str), categoria? (str), data_nascimento? (str YYYY-MM-DD)
+- morte           → brinco (str), causa? (str)
+- compra          → quantidade (int), valor_total (float), raca? (str), fornecedor? (str)
+- venda           → quantidade (int), valor_total (float), brinco? (str), comprador? (str)
+- outro           → descricao (str)
 
 Regras:
 - Datas sem ano assumem o ano atual.
 - Pesos em arrobas (@): multiplique por 15 para obter kg.
+- "Comprei/adquiri N boi(s)/vaca(s)/novilho(s)/nelore/angus por R$ X" → intent "compra".
+- "Vendi N boi(s)/vaca(s)... por R$ X" (venda de animal vivo, não abate) → intent "venda".
+- Venda para frigorífico/abate → intent "abate", não "venda".
 - Se confiança < 0.4, use intent "outro".
-- "Comprei/adquiri N cabras/bodes/cabritos por R$ X" → intent "compra".
-- "Vendi N cabras/bodes/cabritos por R$ X" → intent "venda".
 """
 
 
@@ -88,14 +90,14 @@ def classificar_mensagem_sync(
         if "data_evento" not in result["entidades"]:
             result["entidades"]["data_evento"] = hoje_str
 
-        logger.info("caprino_ia | intent=%s confianca=%.2f", result["intent"], result["confianca"])
+        logger.info("bovino_ia | intent=%s confianca=%.2f", result["intent"], result["confianca"])
         return result
 
     except json.JSONDecodeError as e:
-        logger.warning("caprino_ia | JSON inválido: %s", e)
+        logger.warning("bovino_ia | JSON inválido: %s", e)
         return _fallback("Resposta da IA não era JSON válido.", texto)
     except Exception as e:
-        logger.error("caprino_ia | Erro: %s", e, exc_info=True)
+        logger.error("bovino_ia | Erro: %s", e, exc_info=True)
         return _fallback(str(e), texto)
 
 

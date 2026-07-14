@@ -15,8 +15,11 @@ import psycopg2
 import psycopg2.extras
 import logging
 
+from app.services.estoque_insumos import aplicar_movimentacao_insumo
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/acai", tags=["Acai"])
+FAZENDA_ID = 1  # MVP: fazenda_id fixo, mesmo padrão de app/routers/insumos.py
 
 DB_URL = "postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway"
 
@@ -72,8 +75,9 @@ class InsumoCreate(BaseModel):
     quantidade: Optional[float] = None
     unidade: Optional[str] = None
     valor_unitario: Optional[float] = None
-    valor_total: float
+    valor_total: Optional[float] = None
     observacoes: Optional[str] = None
+    insumo_id: Optional[int] = None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -225,17 +229,44 @@ def registrar_insumo(dados: InsumoCreate):
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        valor_total = dados.valor_total
+        movimentacao_id = None
+
+        # Aplicação de insumo do catálogo geral: baixa automática pelo PMP global
+        if dados.categoria == "insumo" and dados.insumo_id and dados.quantidade:
+            resultado = aplicar_movimentacao_insumo(
+                cur, fazenda_id=FAZENDA_ID, insumo_id=dados.insumo_id,
+                tipo="uso", quantidade=float(dados.quantidade),
+                origem_modulo="acai",
+                origem_tipo="talhao" if dados.talhao_id else "imovel",
+                origem_id=dados.talhao_id or dados.imovel_id,
+                origem_descricao=f"Açaí — imóvel #{dados.imovel_id}"
+                                  + (f" — talhão #{dados.talhao_id}" if dados.talhao_id else ""),
+                observacao=dados.descricao, data_movim=dados.data_lancamento,
+            )
+            movimentacao_id = resultado["movimentacao_id"]
+            valor_total = resultado["custo_total"]  # custo real pelo PMP vigente
+
+        if valor_total is None:
+            raise HTTPException(400, "Informe valor_total, ou insumo_id + quantidade para calcular pelo PMP.")
+
         cur.execute("""
             INSERT INTO acai_insumos
                 (imovel_id, talhao_id, data_lancamento, descricao, categoria,
-                 quantidade, unidade, valor_unitario, valor_total, observacoes)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+                 quantidade, unidade, valor_unitario, valor_total, observacoes,
+                 insumo_id, movimentacao_id)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
         """, (dados.imovel_id, dados.talhao_id, dados.data_lancamento,
               dados.descricao, dados.categoria, dados.quantidade,
-              dados.unidade, dados.valor_unitario, dados.valor_total, dados.observacoes))
+              dados.unidade, dados.valor_unitario, valor_total, dados.observacoes,
+              dados.insumo_id, movimentacao_id))
         iid = cur.fetchone()["id"]
         conn.commit()
-        return {"id": iid}
+        return {"id": iid, "movimentacao_id": movimentacao_id, "valor_total": valor_total}
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

@@ -43,6 +43,7 @@ import {
   ChevronsUpDown,
   Hash,
   Trash2,
+  Pencil,
   Search,
   Filter,
   MoreVertical,
@@ -249,6 +250,12 @@ export default function Insumos() {
     { enabled: !!imovelId && !!selectedInsumoId && historyOpen, retry: false }
   );
 
+  // Resumo de compras/consumo do mês (cards do topo da tela)
+  const { data: resumoMovimentacoes } = trpc.railway.resumoMovimentacoesInsumos.useQuery(
+    { imovelId: imovelId! },
+    { enabled: !!imovelId, retry: false }
+  );
+
   // ── Mutations ────────────────────────────────────────────────────────────────
   const createInsumo = trpc.railway.createInsumo.useMutation({
     onSuccess: () => {
@@ -259,6 +266,96 @@ export default function Insumos() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const atualizarInsumo = trpc.railway.atualizarInsumo.useMutation({
+    onSuccess: () => {
+      toast.success("Insumo atualizado com sucesso");
+      utils.railway.insumos.invalidate();
+      utils.railway.insumosAlertas.invalidate();
+      setOpenNovoInsumo(false);
+      setEditingInsumoId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Cria (se necessário) e vincula um fornecedor a um insumo específico, a partir
+  // do atalho rápido exibido quando o insumo está "Sem fornecedor" na listagem.
+  const vincularFornecedorMutation = trpc.railway.atualizarInsumo.useMutation({
+    onSuccess: () => {
+      toast.success("Fornecedor vinculado ao insumo");
+      utils.railway.insumos.invalidate();
+      utils.railway.insumosAlertas.invalidate();
+      setVincularFornecedorInsumo(null);
+      setVincularFornecedorSelecao("");
+      setVincularFornecedorNovoNome("");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const criarFornecedorParaVincular = trpc.railway.createFornecedor.useMutation({
+    onSuccess: (novo: any) => {
+      utils.railway.fornecedores.invalidate();
+      if (vincularFornecedorInsumo) {
+        vincularFornecedorMutation.mutate({
+          imovelId: imovelId!,
+          insumoId: vincularFornecedorInsumo.id,
+          nome: vincularFornecedorInsumo.nome,
+          categoria: vincularFornecedorInsumo.categoria,
+          unidade: vincularFornecedorInsumo.unidade,
+          origem: vincularFornecedorInsumo.origem,
+          estoque_minimo: vincularFornecedorInsumo.estoque_minimo ?? 0,
+          estoque_ideal: vincularFornecedorInsumo.estoque_ideal ?? 0,
+          preco_estimado: vincularFornecedorInsumo.preco_estimado,
+          fornecedor_id: novo.id,
+          reposicao_modo: vincularFornecedorInsumo.reposicao_modo ?? "manual",
+          lead_time_dias: vincularFornecedorInsumo.lead_time_dias ?? 7,
+        });
+      }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleEditInsumo = (ins: any) => {
+    setEditingInsumoId(ins.id);
+    setNovoInsumo({
+      nome: ins.nome ?? "",
+      categoria: ins.categoria ?? "outros",
+      unidade: ins.unidade ?? "unidade",
+      origem: (ins.origem ?? "comprado") as "comprado" | "proprio" | "doacao",
+      estoque_atual: ins.estoque_atual ?? 0,
+      estoque_minimo: ins.estoque_minimo ?? 0,
+      estoque_ideal: ins.estoque_ideal ?? 0,
+      preco_estimado: ins.preco_estimado != null ? String(ins.preco_estimado) : "",
+      lead_time_dias: ins.lead_time_dias ?? 7,
+      reposicao_modo: (ins.reposicao_modo ?? "manual") as "manual" | "automatico",
+      fornecedor_id: ins.fornecedor_id ?? "",
+    });
+    setOpenNovoInsumo(true);
+  };
+
+  const confirmarVincularFornecedor = () => {
+    if (!vincularFornecedorInsumo) return;
+    if (vincularFornecedorSelecao === "novo") {
+      if (!vincularFornecedorNovoNome.trim()) { toast.error("Informe o nome do fornecedor"); return; }
+      criarFornecedorParaVincular.mutate({ imovelId: imovelId!, nome: vincularFornecedorNovoNome.trim() });
+      return;
+    }
+    if (!vincularFornecedorSelecao) { toast.error("Selecione um fornecedor"); return; }
+    vincularFornecedorMutation.mutate({
+      imovelId: imovelId!,
+      insumoId: vincularFornecedorInsumo.id,
+      nome: vincularFornecedorInsumo.nome,
+      categoria: vincularFornecedorInsumo.categoria,
+      unidade: vincularFornecedorInsumo.unidade,
+      origem: vincularFornecedorInsumo.origem,
+      estoque_minimo: vincularFornecedorInsumo.estoque_minimo ?? 0,
+      estoque_ideal: vincularFornecedorInsumo.estoque_ideal ?? 0,
+      preco_estimado: vincularFornecedorInsumo.preco_estimado,
+      fornecedor_id: Number(vincularFornecedorSelecao),
+      reposicao_modo: vincularFornecedorInsumo.reposicao_modo ?? "manual",
+      lead_time_dias: vincularFornecedorInsumo.lead_time_dias ?? 7,
+    });
+  };
 
   const movimentar = trpc.railway.movimentarInsumo.useMutation({
     onSuccess: () => {
@@ -276,6 +373,27 @@ export default function Insumos() {
       toast.success("Fornecedor cadastrado");
       utils.railway.fornecedores.invalidate();
       setOpenNovoFornecedor(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateFornecedor = trpc.railway.updateFornecedor.useMutation({
+    onSuccess: () => {
+      toast.success("Fornecedor atualizado");
+      utils.railway.fornecedores.invalidate();
+      utils.railway.insumos.invalidate();
+      setOpenNovoFornecedor(false);
+      setEditingFornecedorId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteFornecedor = trpc.railway.deleteFornecedor.useMutation({
+    onSuccess: () => {
+      toast.success("Fornecedor excluído com sucesso");
+      utils.railway.fornecedores.invalidate();
+      utils.railway.insumos.invalidate();
+      setConfirmDeleteFornecedorId(null);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -428,8 +546,8 @@ export default function Insumos() {
   };
 
   const downloadTemplate = () => {
-    const headers = ["nome", "categoria", "unidade", "origem", "estoque_atual", "estoque_minimo", "estoque_ideal", "preco_estimado", "reposicao_modo", "lead_time_dias"];
-    const example = ["Ração ovinos", "racao", "kg", "comprado", "100", "20", "150", "3.50", "manual", "7"];
+    const headers = ["nome", "categoria", "unidade", "origem", "estoque_atual", "estoque_minimo", "estoque_ideal", "preco_estimado", "fornecedor", "reposicao_modo", "lead_time_dias"];
+    const example = ["Ração ovinos", "racao", "kg", "comprado", "100", "20", "150", "3.50", "Agropecuária Central", "manual", "7"];
     const csv = [headers.join(","), example.join(",")].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -442,8 +560,14 @@ export default function Insumos() {
   const [novoInsumo, setNovoInsumo] = useState({
     nome: "", categoria: "outros", unidade: "unidade", origem: "comprado" as "comprado" | "proprio" | "doacao",
     estoque_atual: 0, estoque_minimo: 0, estoque_ideal: 0, preco_estimado: "", lead_time_dias: 7,
-    reposicao_modo: "manual" as "manual" | "automatico",
+    reposicao_modo: "manual" as "manual" | "automatico", fornecedor_id: "" as string | number,
   });
+  // ID do insumo em edição (null = o dialog está criando um novo insumo)
+  const [editingInsumoId, setEditingInsumoId] = useState<number | null>(null);
+  // Insumo-alvo do atalho rápido "vincular fornecedor" na listagem
+  const [vincularFornecedorInsumo, setVincularFornecedorInsumo] = useState<any | null>(null);
+  const [vincularFornecedorSelecao, setVincularFornecedorSelecao] = useState<string>("");
+  const [vincularFornecedorNovoNome, setVincularFornecedorNovoNome] = useState("");
 
   const [movimForm, setMovimForm] = useState({
     tipo: "uso" as "compra" | "producao_propria" | "doacao" | "ajuste_positivo" | "uso" | "venda" | "perda" | "ajuste_negativo",
@@ -457,6 +581,9 @@ export default function Insumos() {
     nome: "", cnpj_cpf: "", whatsapp: "", telegram: "", email: "",
     prazo_entrega_dias: 7, forma_pagamento: "a_vista",
   });
+  // ID do fornecedor em edição (null = formulário está criando um novo)
+  const [editingFornecedorId, setEditingFornecedorId] = useState<number | null>(null);
+  const [confirmDeleteFornecedorId, setConfirmDeleteFornecedorId] = useState<number | null>(null);
 
   const [novoPedido, setNovoPedido] = useState({
     insumo_id: 0, fornecedor_id: "", quantidade: 0, preco_estimado: "", data_entrega_desejada: "", observacao: "",
@@ -1148,7 +1275,7 @@ export default function Insumos() {
 
       {/* ── Cards de custo ── */}
       {!backendPendente && (valorTotalEstoque > 0 || custoMedioGeral > 0) && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Valor total do estoque */}
           <div className="rounded-lg border bg-emerald-50 border-emerald-200 p-3">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
@@ -1156,6 +1283,24 @@ export default function Insumos() {
             </p>
             <p className="text-xl font-bold text-emerald-700 tabular-nums">{fmtBRL(valorTotalEstoque)}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{insumosComCusto.length} insumos com custo</p>
+          </div>
+
+          {/* Compras do mês */}
+          <div className="rounded-lg border bg-sky-50 border-sky-200 p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <ArrowDownCircle className="h-3 w-3 text-sky-600" /> Compras no mês
+            </p>
+            <p className="text-xl font-bold text-sky-700 tabular-nums">{fmtBRL(resumoMovimentacoes?.compras_mes ?? 0)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{resumoMovimentacoes?.qtd_compras ?? 0} entrada(s)</p>
+          </div>
+
+          {/* Consumo do mês */}
+          <div className="rounded-lg border bg-orange-50 border-orange-200 p-3">
+            <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+              <ArrowUpCircle className="h-3 w-3 text-orange-600" /> Consumo no mês
+            </p>
+            <p className="text-xl font-bold text-orange-700 tabular-nums">{fmtBRL(resumoMovimentacoes?.consumo_mes ?? 0)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{resumoMovimentacoes?.qtd_usos ?? 0} saída(s)</p>
           </div>
 
           {/* Custo médio geral */}
@@ -1246,12 +1391,20 @@ export default function Insumos() {
               >
                 <Trash2 className="h-4 w-4 mr-1" /> Limpar Duplicados
               </Button>
-              <Dialog open={openNovoInsumo} onOpenChange={setOpenNovoInsumo}>
+              <Dialog open={openNovoInsumo} onOpenChange={(o) => { setOpenNovoInsumo(o); if (!o) setEditingInsumoId(null); }}>
               <DialogTrigger asChild>
-                <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Novo Insumo</Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingInsumoId(null);
+                    setNovoInsumo({ nome: "", categoria: "outros", unidade: "unidade", origem: "comprado", estoque_atual: 0, estoque_minimo: 0, estoque_ideal: 0, preco_estimado: "", lead_time_dias: 7, reposicao_modo: "manual", fornecedor_id: "" });
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Novo Insumo
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
-                <DialogHeader><DialogTitle>Cadastrar Insumo</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{editingInsumoId ? "Editar Insumo" : "Cadastrar Insumo"}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div>
                     <Label>Nome *</Label>
@@ -1373,6 +1526,22 @@ export default function Insumos() {
                     </div>
                   </div>
 
+                  <div>
+                    <Label>Fornecedor</Label>
+                    <Select
+                      value={novoInsumo.fornecedor_id ? String(novoInsumo.fornecedor_id) : "none"}
+                      onValueChange={v => setNovoInsumo(p => ({ ...p, fornecedor_id: v === "none" ? "" : v }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Sem fornecedor" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem fornecedor</SelectItem>
+                        {(fornecedores as any[]).map(f => (
+                          <SelectItem key={f.id} value={String(f.id)}>{f.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {/* Reposição automática — destaque visual */}
                   <div className={`rounded-lg border p-3 transition-all ${novoInsumo.reposicao_modo === "automatico" ? "border-emerald-300 bg-emerald-50" : "border-border bg-muted/30"}`}>
                     <div className="flex items-center justify-between mb-2">
@@ -1413,8 +1582,25 @@ export default function Insumos() {
 
                   <Button
                     className="w-full"
-                    disabled={!novoInsumo.nome || createInsumo.isPending || upsertCatalog.isPending}
+                    disabled={!novoInsumo.nome || createInsumo.isPending || upsertCatalog.isPending || atualizarInsumo.isPending}
                     onClick={() => {
+                      if (editingInsumoId) {
+                        atualizarInsumo.mutate({
+                          imovelId: imovelId!,
+                          insumoId: editingInsumoId,
+                          nome: novoInsumo.nome,
+                          categoria: novoInsumo.categoria,
+                          unidade: novoInsumo.unidade,
+                          origem: novoInsumo.origem,
+                          estoque_minimo: novoInsumo.estoque_minimo,
+                          estoque_ideal: novoInsumo.estoque_ideal,
+                          preco_estimado: novoInsumo.preco_estimado ? Number(novoInsumo.preco_estimado) : undefined,
+                          fornecedor_id: novoInsumo.fornecedor_id ? Number(novoInsumo.fornecedor_id) : undefined,
+                          reposicao_modo: novoInsumo.reposicao_modo,
+                          lead_time_dias: novoInsumo.lead_time_dias,
+                        });
+                        return;
+                      }
                       // Salvar no catálogo local primeiro (cria ou atualiza)
                       upsertCatalog.mutate({
                         imovelId: imovelId!,
@@ -1433,12 +1619,15 @@ export default function Insumos() {
                         estoque_minimo: novoInsumo.estoque_minimo,
                         estoque_ideal: novoInsumo.estoque_ideal,
                         preco_estimado: novoInsumo.preco_estimado ? Number(novoInsumo.preco_estimado) : undefined,
+                        fornecedor_id: novoInsumo.fornecedor_id ? Number(novoInsumo.fornecedor_id) : undefined,
                         reposicao_modo: novoInsumo.reposicao_modo,
                         lead_time_dias: novoInsumo.lead_time_dias,
                       });
                     }}
                   >
-                    {createInsumo.isPending || upsertCatalog.isPending ? "Salvando..." : "Cadastrar Insumo"}
+                    {createInsumo.isPending || upsertCatalog.isPending || atualizarInsumo.isPending
+                      ? "Salvando..."
+                      : editingInsumoId ? "Salvar Alterações" : "Cadastrar Insumo"}
                   </Button>
                 </div>
               </DialogContent>
@@ -1650,7 +1839,7 @@ export default function Insumos() {
                       {!ins.fornecedor_nome && (
                         <button
                           className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
-                          onClick={() => setOpenNovoFornecedor(true)}
+                          onClick={() => setVincularFornecedorInsumo(ins)}
                         >
                           <AlertTriangle className="h-3 w-3" /> Cadastrar fornecedor
                         </button>
@@ -1668,6 +1857,11 @@ export default function Insumos() {
                             onClick={() => { setNovoPedido(p => ({ ...p, insumo_id: ins.id })); setOpenNovoPedido(true); }}
                           >🛒 Pedido</button>
                         )}
+                        <button
+                          className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-blue-500 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-colors"
+                          onClick={() => handleEditInsumo(ins)}
+                          title="Editar"
+                        ><Pencil className="h-3 w-3" /></button>
                         <button
                           className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
                           onClick={() => setConfirmDeleteId(ins.id)}
@@ -1725,8 +1919,12 @@ export default function Insumos() {
                   <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
                     <TableRow>
                       <TableHead className="w-[220px] max-w-[220px]">Nome</TableHead>
+                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Inicial</TableHead>
+                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Entradas</TableHead>
+                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Saídas</TableHead>
                       <TableHead className="w-[100px] text-right">Estoque</TableHead>
                       <TableHead className="w-[80px] text-right hidden sm:table-cell">Mínimo</TableHead>
+                      <TableHead className="w-[100px] text-right hidden xl:table-cell">Valor</TableHead>
                       <TableHead className="w-[90px]">Status</TableHead>
                       <TableHead className="w-[140px] hidden md:table-cell">Fornecedor</TableHead>
                       <TableHead className="w-[120px] text-right">Ação</TableHead>
@@ -1750,7 +1948,7 @@ export default function Insumos() {
                                   return next;
                                 })}
                               >
-                                <TableCell colSpan={7}>
+                                <TableCell colSpan={11}>
                                   <div className="flex items-center gap-2">
                                     {expandida ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                     <span className="font-semibold capitalize">{cat}</span>
@@ -1780,6 +1978,22 @@ export default function Insumos() {
                                         </span>
                                       </div>
                                     </TableCell>
+                                    {/* Colunas: Inicial / Entradas / Saídas do mês (só telas grandes) */}
+                                    <TableCell className="text-right hidden lg:table-cell">
+                                      <span className="text-xs text-muted-foreground tabular-nums">
+                                        {fmtEstoque(ins.estoque_inicial_mes ?? 0, ins.unidade)}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right hidden lg:table-cell">
+                                      <span className="text-xs text-green-600 font-medium tabular-nums">
+                                        {(ins.entradas_mes ?? 0) > 0 ? `+${fmtEstoque(ins.entradas_mes, ins.unidade)}` : "—"}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right hidden lg:table-cell">
+                                      <span className="text-xs text-red-600 font-medium tabular-nums">
+                                        {(ins.saidas_mes ?? 0) > 0 ? `-${fmtEstoque(ins.saidas_mes, ins.unidade)}` : "—"}
+                                      </span>
+                                    </TableCell>
                                     {/* Coluna 2: Estoque Atual */}
                                     <TableCell className="text-right">
                                       <span className={`font-semibold tabular-nums ${
@@ -1792,6 +2006,14 @@ export default function Insumos() {
                                     <TableCell className="text-right hidden sm:table-cell">
                                       <span className="text-sm text-muted-foreground tabular-nums">
                                         {fmtEstoque(ins.estoque_minimo, ins.unidade)}
+                                      </span>
+                                    </TableCell>
+                                    {/* Coluna: Valor em estoque (custo médio × estoque atual) */}
+                                    <TableCell className="text-right hidden xl:table-cell">
+                                      <span className="text-xs text-muted-foreground tabular-nums">
+                                        {(ins.custo_medio ?? ins.preco_estimado)
+                                          ? fmtBRL(Number(ins.estoque_atual ?? 0) * Number(ins.custo_medio ?? ins.preco_estimado ?? 0))
+                                          : "—"}
                                       </span>
                                     </TableCell>
                                     {/* Coluna 4: Status Real */}
@@ -1807,7 +2029,7 @@ export default function Insumos() {
                                       ) : (
                                         <button
                                           className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
-                                          onClick={(e) => { e.stopPropagation(); setOpenNovoFornecedor(true); }}
+                                          onClick={(e) => { e.stopPropagation(); setVincularFornecedorInsumo(ins); }}
                                         >
                                           <AlertTriangle className="h-3 w-3" />
                                           <span>Cadastrar</span>
@@ -1845,6 +2067,9 @@ export default function Insumos() {
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
                                               <Plus className="h-4 w-4 mr-2" /> Movimentar
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleEditInsumo(ins)}>
+                                              <Pencil className="h-4 w-4 mr-2" /> Editar
                                             </DropdownMenuItem>
                                             {(isCritico || isBaixo) && (
                                               <>
@@ -1889,6 +2114,22 @@ export default function Insumos() {
                                   </span>
                                 </div>
                               </TableCell>
+                              {/* Colunas: Inicial / Entradas / Saídas do mês (só telas grandes) */}
+                              <TableCell className="text-right hidden lg:table-cell">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {fmtEstoque(ins.estoque_inicial_mes ?? 0, ins.unidade)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right hidden lg:table-cell">
+                                <span className="text-xs text-green-600 font-medium tabular-nums">
+                                  {(ins.entradas_mes ?? 0) > 0 ? `+${fmtEstoque(ins.entradas_mes, ins.unidade)}` : "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right hidden lg:table-cell">
+                                <span className="text-xs text-red-600 font-medium tabular-nums">
+                                  {(ins.saidas_mes ?? 0) > 0 ? `-${fmtEstoque(ins.saidas_mes, ins.unidade)}` : "—"}
+                                </span>
+                              </TableCell>
                               {/* Coluna 2: Estoque Atual */}
                               <TableCell className="text-right">
                                 <span className={`font-semibold tabular-nums ${
@@ -1901,6 +2142,14 @@ export default function Insumos() {
                               <TableCell className="text-right hidden sm:table-cell">
                                 <span className="text-sm text-muted-foreground tabular-nums">
                                   {fmtEstoque(ins.estoque_minimo, ins.unidade)}
+                                </span>
+                              </TableCell>
+                              {/* Coluna: Valor em estoque (custo médio × estoque atual) */}
+                              <TableCell className="text-right hidden xl:table-cell">
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {(ins.custo_medio ?? ins.preco_estimado)
+                                    ? fmtBRL(Number(ins.estoque_atual ?? 0) * Number(ins.custo_medio ?? ins.preco_estimado ?? 0))
+                                    : "—"}
                                 </span>
                               </TableCell>
                               {/* Coluna 4: Status Real */}
@@ -1916,7 +2165,7 @@ export default function Insumos() {
                                 ) : (
                                   <button
                                     className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 font-medium"
-                                    onClick={(e) => { e.stopPropagation(); setOpenNovoFornecedor(true); }}
+                                    onClick={(e) => { e.stopPropagation(); setVincularFornecedorInsumo(ins); }}
                                   >
                                     <AlertTriangle className="h-3 w-3" />
                                     <span>Cadastrar</span>
@@ -1954,6 +2203,9 @@ export default function Insumos() {
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => { setMovimInsumoId(ins.id); setOpenMovim(true); }}>
                                               <Plus className="h-4 w-4 mr-2" /> Movimentar
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleEditInsumo(ins)}>
+                                              <Pencil className="h-4 w-4 mr-2" /> Editar
                                             </DropdownMenuItem>
                                             {(isCritico || isBaixo) && (
                                               <>
@@ -2147,6 +2399,54 @@ export default function Insumos() {
           </DialogContent>
         </Dialog>
 
+        {/* Dialog: Vincular fornecedor a um insumo específico */}
+        <Dialog
+          open={!!vincularFornecedorInsumo}
+          onOpenChange={(o) => { if (!o) { setVincularFornecedorInsumo(null); setVincularFornecedorSelecao(""); setVincularFornecedorNovoNome(""); } }}
+        >
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5 text-amber-600" />
+                Vincular fornecedor
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Escolha o fornecedor de <strong>{vincularFornecedorInsumo?.nome}</strong>.
+              </p>
+              <div>
+                <Label>Fornecedor</Label>
+                <Select value={vincularFornecedorSelecao} onValueChange={setVincularFornecedorSelecao}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {(fornecedores as any[]).map(f => (
+                      <SelectItem key={f.id} value={String(f.id)}>{f.nome}</SelectItem>
+                    ))}
+                    <SelectItem value="novo">+ Cadastrar novo fornecedor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {vincularFornecedorSelecao === "novo" && (
+                <div>
+                  <Label>Nome do novo fornecedor *</Label>
+                  <Input value={vincularFornecedorNovoNome} onChange={e => setVincularFornecedorNovoNome(e.target.value)} placeholder="Ex: Agropecuária Central" />
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setVincularFornecedorInsumo(null)}>Cancelar</Button>
+                <Button
+                  className="flex-1"
+                  disabled={!vincularFornecedorSelecao || vincularFornecedorMutation.isPending || criarFornecedorParaVincular.isPending}
+                  onClick={confirmarVincularFornecedor}
+                >
+                  {vincularFornecedorMutation.isPending || criarFornecedorParaVincular.isPending ? "Salvando..." : "Vincular"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Dialog: Limpar duplicados */}
         <Dialog open={openLimparDuplicados} onOpenChange={setOpenLimparDuplicados}>
           <DialogContent className="max-w-sm">
@@ -2180,12 +2480,26 @@ export default function Insumos() {
         {/* ── ABA FORNECEDORES ── */}
         <TabsContent value="fornecedores">
           <div className="flex justify-end mb-4">
-            <Dialog open={openNovoFornecedor} onOpenChange={setOpenNovoFornecedor}>
+            <Dialog
+              open={openNovoFornecedor}
+              onOpenChange={(o) => {
+                setOpenNovoFornecedor(o);
+                if (!o) setEditingFornecedorId(null);
+              }}
+            >
               <DialogTrigger asChild>
-                <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Novo Fornecedor</Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingFornecedorId(null);
+                    setNovoFornecedor({ nome: "", cnpj_cpf: "", whatsapp: "", telegram: "", email: "", prazo_entrega_dias: 7, forma_pagamento: "a_vista" });
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Novo Fornecedor
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-md">
-                <DialogHeader><DialogTitle>Cadastrar Fornecedor</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{editingFornecedorId ? "Editar Fornecedor" : "Cadastrar Fornecedor"}</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                   <div>
                     <Label>Nome *</Label>
@@ -2232,19 +2546,27 @@ export default function Insumos() {
                   </div>
                   <Button
                     className="w-full"
-                    disabled={!novoFornecedor.nome || createFornecedor.isPending}
-                    onClick={() => createFornecedor.mutate({
-                      imovelId: imovelId!,
-                      nome: novoFornecedor.nome,
-                      cnpj_cpf: novoFornecedor.cnpj_cpf || undefined,
-                      whatsapp: novoFornecedor.whatsapp || undefined,
-                      telegram: novoFornecedor.telegram || undefined,
-                      email: novoFornecedor.email || undefined,
-                      prazo_entrega_dias: novoFornecedor.prazo_entrega_dias,
-                      forma_pagamento: novoFornecedor.forma_pagamento,
-                    })}
+                    disabled={!novoFornecedor.nome || createFornecedor.isPending || updateFornecedor.isPending}
+                    onClick={() => {
+                      const fields = {
+                        nome: novoFornecedor.nome,
+                        cnpj_cpf: novoFornecedor.cnpj_cpf || undefined,
+                        whatsapp: novoFornecedor.whatsapp || undefined,
+                        telegram: novoFornecedor.telegram || undefined,
+                        email: novoFornecedor.email || undefined,
+                        prazo_entrega_dias: novoFornecedor.prazo_entrega_dias,
+                        forma_pagamento: novoFornecedor.forma_pagamento,
+                      };
+                      if (editingFornecedorId) {
+                        updateFornecedor.mutate({ imovelId: imovelId!, fornecedorId: editingFornecedorId, ...fields });
+                      } else {
+                        createFornecedor.mutate({ imovelId: imovelId!, ...fields });
+                      }
+                    }}
                   >
-                    {createFornecedor.isPending ? "Salvando..." : "Cadastrar Fornecedor"}
+                    {createFornecedor.isPending || updateFornecedor.isPending
+                      ? "Salvando..."
+                      : editingFornecedorId ? "Salvar Alterações" : "Cadastrar Fornecedor"}
                   </Button>
                 </div>
               </DialogContent>
@@ -2262,9 +2584,41 @@ export default function Insumos() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {fornecedores.map((f: any) => (
                 <Card key={f.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">{f.nome}</CardTitle>
-                    {f.cnpj_cpf && <p className="text-xs text-muted-foreground">{f.cnpj_cpf}</p>}
+                  <CardHeader className="pb-2 flex flex-row items-start justify-between space-y-0">
+                    <div>
+                      <CardTitle className="text-base">{f.nome}</CardTitle>
+                      {f.cnpj_cpf && <p className="text-xs text-muted-foreground">{f.cnpj_cpf}</p>}
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 -mt-1 -mr-1">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setEditingFornecedorId(f.id);
+                            setNovoFornecedor({
+                              nome: f.nome ?? "",
+                              cnpj_cpf: f.cnpj_cpf ?? "",
+                              whatsapp: f.whatsapp ?? "",
+                              telegram: f.telegram ?? "",
+                              email: f.email ?? "",
+                              prazo_entrega_dias: f.prazo_entrega_dias ?? 7,
+                              forma_pagamento: f.forma_pagamento ?? "a_vista",
+                            });
+                            setOpenNovoFornecedor(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" /> Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-red-600" onClick={() => setConfirmDeleteFornecedorId(f.id)}>
+                          <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </CardHeader>
                   <CardContent className="space-y-1 text-sm">
                     {f.whatsapp && <p className="text-muted-foreground">📱 {f.whatsapp}</p>}
@@ -2280,6 +2634,33 @@ export default function Insumos() {
             </div>
           )}
         </TabsContent>
+
+        {/* Dialog: Confirmar exclusão de fornecedor */}
+        <Dialog open={!!confirmDeleteFornecedorId} onOpenChange={(o) => { if (!o) setConfirmDeleteFornecedorId(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-red-700 flex items-center gap-2">
+                <Trash2 className="h-5 w-5" /> Excluir Fornecedor
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Tem certeza que deseja excluir este fornecedor? Esta ação desativa o registro (soft delete).
+                Insumos e pedidos já vinculados a ele são preservados.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteFornecedorId(null)}>Cancelar</Button>
+                <Button
+                  variant="destructive" className="flex-1"
+                  disabled={deleteFornecedor.isPending}
+                  onClick={() => confirmDeleteFornecedorId && deleteFornecedor.mutate({ imovelId: imovelId!, fornecedorId: confirmDeleteFornecedorId })}
+                >
+                  {deleteFornecedor.isPending ? "Excluindo..." : "Sim, excluir"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* ── ABA PEDIDOS DE COMPRA ── */}
         <TabsContent value="pedidos">
@@ -2462,6 +2843,31 @@ export default function Insumos() {
                   </span>
                 )}
               </div>
+
+              {/* Movimentação do mês: estoque inicial + entradas - saídas = estoque atual */}
+              {(insumoDetalhe.entradas_mes > 0 || insumoDetalhe.saidas_mes > 0) && (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">Movimentação deste mês</p>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Inicial</p>
+                      <p className="text-sm font-bold tabular-nums">{fmtEstoque(insumoDetalhe.estoque_inicial_mes, insumoDetalhe.unidade)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Entradas</p>
+                      <p className="text-sm font-bold text-green-600 tabular-nums">+{fmtEstoque(insumoDetalhe.entradas_mes, insumoDetalhe.unidade)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Saídas</p>
+                      <p className="text-sm font-bold text-red-600 tabular-nums">-{fmtEstoque(insumoDetalhe.saidas_mes, insumoDetalhe.unidade)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Atual</p>
+                      <p className="text-sm font-bold tabular-nums">{fmtEstoque(insumoDetalhe.estoque_atual, insumoDetalhe.unidade)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Button size="sm" className="flex-1" onClick={() => { setMovimInsumoId(selectedInsumoId); setOpenMovim(true); }}>

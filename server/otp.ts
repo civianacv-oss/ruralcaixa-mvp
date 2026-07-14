@@ -1,25 +1,31 @@
 /**
  * OTP (One-Time Password) module for RuralCaixa two-factor authentication.
  *
- * Channel priority (configurable per-produtor via produtor_config table):
- *   - Default: Telegram (group broadcast via /telegram/alerta/generico)
- *   - If produtor has telegram_chat_id: Telegram direct message via /telegram/mensagem-direta
- *   - If produtor has whatsappPriority=true: WhatsApp first, Telegram as fallback
- *   - Once Meta approves WhatsApp Business: set whatsappPriority=true globally or per-produtor
+ * Fluxo de PRODUTOR (o mais usado): delega geracao, persistencia e envio do
+ * codigo ao backend FastAPI (/auth/solicitar, /auth/verificar), que grava em
+ * auth_codigos (Postgres). Isso elimina a dependencia de estado em memoria
+ * entre invocacoes serverless distintas na Vercel, que causava falhas
+ * intermitentes ("codigo invalido ou nao solicitado") quando o "solicitar"
+ * e o "verificar" caiam em instancias diferentes.
  *
- * Contador flow:
- *   - Contadores are registered by the produtor (not self-registered)
- *   - On sendOtp, if CPF matches a contador_vinculo record, OTP is sent to the contador's phone
- *   - The contador can access all imóveis of the produtores that registered them
+ * Fluxo de CONTADOR: ainda usa o Map em memoria (otpStore) abaixo. Isso tem
+ * o mesmo risco estrutural do fluxo de produtor antigo, mas foi deixado como
+ * estava por ora (uso mais raro). TODO: migrar contadores para uma tabela
+ * persistente tambem, se comecarem a reportar o mesmo sintoma.
+ *
+ * Channel priority (produtor):
+ *   1. Telegram direto (chat_id do produtor), se configurado
+ *   2. Telegram grupo (fallback)
+ *   3. WhatsApp (ultimo fallback, pendente aprovacao Meta)
  */
 
-import { getProdutorConfig, getUserByCpf, getImoveisForProdutor, getVinculosPorContador } from "./db";
+import { getUserByCpf, getImoveisForProdutor, getVinculosPorContador } from "./db";
 
 const RAILWAY_API = "https://ruralcaixa-mvp-production.up.railway.app";
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_ATTEMPTS = 5;
 
-// ─── In-memory OTP store ──────────────────────────────────────────────────────
+// ─── In-memory OTP store (usado apenas para o fluxo de CONTADOR) ───────────
 
 interface OtpEntry {
   code: string;
@@ -45,7 +51,7 @@ setInterval(() => {
   });
 }, 60_000);
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
 function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -61,7 +67,7 @@ export function maskPhone(phone: string): string {
   return `(${digits.slice(0, 2)}) *****-${digits.slice(-4)}`;
 }
 
-// ─── Railway API helpers ──────────────────────────────────────────────────────
+// ─── Railway API helpers ─────────────────────────────────────────────────
 
 interface ProdutorRaw {
   id: number;
@@ -94,7 +100,7 @@ async function fetchImoveis(cpf: string): Promise<ImovelRaw[]> {
   }
 }
 
-// ─── Send helpers ─────────────────────────────────────────────────────────────
+// ─── Send helpers (usados apenas pelo fluxo de CONTADOR) ────────────────
 
 async function sendWhatsApp(telefone: string, code: string): Promise<boolean> {
   try {
@@ -105,27 +111,6 @@ async function sendWhatsApp(telefone: string, code: string): Promise<boolean> {
       imovel_id: null,
     };
     const res = await fetch(`${RAILWAY_API}/ovino/webhook/whatsapp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Send OTP via Telegram direct message (requires telegram_chat_id).
- * Uses /telegram/mensagem-direta endpoint.
- */
-async function sendTelegramDirect(telegramChatId: string, code: string, nome: string): Promise<boolean> {
-  try {
-    const body = {
-      telegram_chat_id: telegramChatId,
-      mensagem: `🔐 Olá, ${nome}!\n\nSeu código de acesso ao *RuralCaixa* é:\n\n*${code}*\n\nVálido por 5 minutos. Não compartilhe com ninguém.`,
-    };
-    const res = await fetch(`${RAILWAY_API}/telegram/mensagem-direta`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -158,54 +143,7 @@ async function sendTelegramGroup(code: string, nome: string): Promise<boolean> {
   }
 }
 
-/**
- * Smart send: chooses the best available channel based on per-produtor config.
- *
- * Priority logic:
- *   1. If whatsappPriority=true → try WhatsApp first, then Telegram
- *   2. Else → try Telegram first (direct if chat_id available, else group), then WhatsApp
- *
- * Returns the channel that succeeded, or throws if all fail.
- */
-async function smartSend(
-  produtorId: number,
-  telefone: string,
-  code: string,
-  nome: string
-): Promise<"whatsapp" | "telegram_direct" | "telegram_group"> {
-  // Load per-produtor config (may be null if not yet configured)
-  const config = await getProdutorConfig(produtorId).catch(() => null);
-  const whatsappPriority = config?.whatsappPriority ?? false;
-  const telegramChatId = config?.telegramChatId ?? null;
-
-  if (whatsappPriority) {
-    // WhatsApp first (Meta approved)
-    const wappOk = await sendWhatsApp(telefone, code);
-    if (wappOk) return "whatsapp";
-    // Fallback to Telegram
-    if (telegramChatId) {
-      const tgOk = await sendTelegramDirect(telegramChatId, code, nome);
-      if (tgOk) return "telegram_direct";
-    }
-    const tgGroupOk = await sendTelegramGroup(code, nome);
-    if (tgGroupOk) return "telegram_group";
-    throw new Error("Não foi possível enviar o código. Tente novamente em instantes.");
-  } else {
-    // Telegram first (default — WhatsApp pending Meta approval)
-    if (telegramChatId) {
-      const tgOk = await sendTelegramDirect(telegramChatId, code, nome);
-      if (tgOk) return "telegram_direct";
-    }
-    const tgGroupOk = await sendTelegramGroup(code, nome);
-    if (tgGroupOk) return "telegram_group";
-    // Fallback to WhatsApp
-    const wappOk = await sendWhatsApp(telefone, code);
-    if (wappOk) return "whatsapp";
-    throw new Error("Não foi possível enviar o código. Tente novamente em instantes.");
-  }
-}
-
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Public API ──────────────────────────────────────────────────────────
 
 export interface SendOtpResult {
   success: true;
@@ -217,13 +155,12 @@ export interface SendOtpResult {
 export async function sendOtp(cpf: string): Promise<SendOtpResult> {
   const cpfClean = cleanCpf(cpf);
 
-  // ── Verificar se é um contador cadastrado por algum produtor ────────────────
+  // ── Verificar se é um contador cadastrado por algum produtor ────────────
+  // (fluxo de contador: continua em memória por ora — ver nota no topo)
   const vinculos = await getVinculosPorContador(cpfClean).catch(() => [] as Awaited<ReturnType<typeof getVinculosPorContador>>);
   if (vinculos.length > 0) {
-    // É um contador: usa os dados do vínculo para enviar o OTP
     const vinculo = vinculos[0];
 
-    // Coleta todos os imóveis dos produtores vinculados (sem duplicatas)
     const allImovelIds: number[] = [];
     for (const v of vinculos) {
       const imovelList = await fetchImoveis(v.produtorCpf).catch(() => [] as ImovelRaw[]);
@@ -233,8 +170,6 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     }
 
     const code = generateCode();
-    // Para o contador, produtorId = 0 (não é um produtor no Railway)
-    // O imovelId inicial é undefined — o contador escolhe o imóvel na tela de seleção
     const entry: OtpEntry = {
       code,
       cpf: cpfClean,
@@ -248,7 +183,6 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
       attempts: 0,
     };
 
-    // Envia OTP para o telefone do contador via WhatsApp ou Telegram grupo
     let channel: SendOtpResult["channel"] = "telegram_group";
     const wappOk = await sendWhatsApp(vinculo.contadorTelefone, code).catch(() => false);
     if (wappOk) {
@@ -268,51 +202,28 @@ export async function sendOtp(cpf: string): Promise<SendOtpResult> {
     };
   }
 
-  // ── Fluxo normal: produtor ──────────────────────────────────────────────────
+  // ── Fluxo normal: produtor ───────────────────────────────────────────────
+  // Delega geracao, persistencia (Postgres/auth_codigos) e envio do codigo
+  // ao backend FastAPI — elimina o Map em memoria para este fluxo.
   const produtor = await fetchProdutor(cpfClean);
   if (!produtor) {
     throw new Error("CPF não encontrado. Verifique ou entre em contato.");
   }
 
-  // Get imoveis from Railway
-  const imovelList = await fetchImoveis(cpfClean);
+  const res = await fetch(`${RAILWAY_API}/auth/solicitar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cpf: cpfClean }),
+  });
 
-  // Determine role from local DB (admin = contador, user = produtor)
-  const localUser = await getUserByCpf(cpfClean).catch(() => null);
-  const role: "user" | "admin" = localUser?.role ?? "user";
-
-  // For produtor (user), filter imoveis by local ACL; for admin (contador), show all
-  let allowedImoveis = imovelList;
-  if (role === "user") {
-    const allowedIds = await getImoveisForProdutor(produtor.id).catch(() => null);
-    if (allowedIds) {
-      allowedImoveis = imovelList.filter((im) => allowedIds.includes(im.id));
-    }
+  if (!res.ok) {
+    const errBody: { detail?: string } = await res.json().catch(() => ({}));
+    throw new Error(errBody.detail || "Não foi possível enviar o código. Tente novamente em instantes.");
   }
 
-  const imovelId = allowedImoveis?.[0]?.id;
-  const imovelCount = allowedImoveis.length;
-
-  // Generate code
-  const code = generateCode();
-  const entry: OtpEntry = {
-    code,
-    cpf: cpfClean,
-    produtorId: produtor.id,
-    produtorNome: produtor.nome,
-    telefone: produtor.telefone,
-    imovelId,
-    imovelCount,
-    role,
-    expiresAt: Date.now() + OTP_TTL_MS,
-    attempts: 0,
-  };
-
-  // Send via best available channel
-  const channel = await smartSend(produtor.id, produtor.telefone, code, produtor.nome);
-
-  // Store OTP only after successful send
-  otpStore.set(cpfClean, entry);
+  const data: { status: string; canal: "telegram" | "telegram_grupo" | "whatsapp" } = await res.json();
+  const channel: SendOtpResult["channel"] =
+    data.canal === "whatsapp" ? "whatsapp" : data.canal === "telegram_grupo" ? "telegram_group" : "telegram_direct";
 
   console.log(`[OTP] Code sent to ${produtor.nome} via ${channel} (${maskPhone(produtor.telefone)})`);
 
@@ -336,43 +247,83 @@ export interface VerifyOtpResult {
 
 export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpResult> {
   const cpfClean = cleanCpf(cpf);
+
+  // ── Fluxo de contador: ainda validado via Map em memória ─────────────────
   const entry = otpStore.get(cpfClean);
+  if (entry) {
+    if (Date.now() > entry.expiresAt) {
+      otpStore.delete(cpfClean);
+      throw new Error("Código expirado. Solicite um novo código.");
+    }
 
-  if (!entry) {
-    throw new Error("Código expirado ou não solicitado. Solicite um novo código.");
-  }
+    entry.attempts += 1;
+    if (entry.attempts > MAX_ATTEMPTS) {
+      otpStore.delete(cpfClean);
+      throw new Error("Muitas tentativas incorretas. Solicite um novo código.");
+    }
 
-  if (Date.now() > entry.expiresAt) {
+    if (entry.code !== code.trim()) {
+      const remaining = MAX_ATTEMPTS - entry.attempts;
+      throw new Error(
+        `Código incorreto. ${remaining} tentativa${remaining !== 1 ? "s" : ""} restante${remaining !== 1 ? "s" : ""}.`
+      );
+    }
+
+    // Valid — remove from store (single use)
     otpStore.delete(cpfClean);
-    throw new Error("Código expirado. Solicite um novo código.");
+
+    const openId = `rc_contador_${cpfClean}`;
+
+    return {
+      success: true,
+      produtorId: entry.produtorId,
+      produtorNome: entry.produtorNome,
+      imovelId: entry.imovelId,
+      imovelCount: entry.imovelCount ?? 1,
+      role: entry.role ?? "admin",
+      openId,
+    };
   }
 
-  entry.attempts += 1;
-  if (entry.attempts > MAX_ATTEMPTS) {
-    otpStore.delete(cpfClean);
-    throw new Error("Muitas tentativas incorretas. Solicite um novo código.");
+  // ── Fluxo normal: produtor — valida via FastAPI (Postgres, persistente) ──
+  const res = await fetch(`${RAILWAY_API}/auth/verificar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cpf: cpfClean, codigo: code.trim() }),
+  });
+
+  if (!res.ok) {
+    const errBody: { detail?: string } = await res.json().catch(() => ({}));
+    throw new Error(errBody.detail || "Código expirado ou não solicitado. Solicite um novo código.");
   }
 
-  if (entry.code !== code.trim()) {
-    const remaining = MAX_ATTEMPTS - entry.attempts;
-    throw new Error(
-      `Código incorreto. ${remaining} tentativa${remaining !== 1 ? "s" : ""} restante${remaining !== 1 ? "s" : ""}.`
-    );
+  const data: { status: string; token: string; produtor_id: number; nome: string } = await res.json();
+
+  // Recalcula imoveis/role no momento da verificacao (reflete o estado atual)
+  const imovelList = await fetchImoveis(cpfClean);
+  const localUser = await getUserByCpf(cpfClean).catch(() => null);
+  const role: "user" | "admin" = localUser?.role ?? "user";
+
+  let allowedImoveis = imovelList;
+  if (role === "user") {
+    const allowedIds = await getImoveisForProdutor(data.produtor_id).catch(() => null);
+    if (allowedIds) {
+      allowedImoveis = imovelList.filter((im) => allowedIds.includes(im.id));
+    }
   }
 
-  // Valid — remove from store (single use)
-  otpStore.delete(cpfClean);
-
-  // For contadores (produtorId=0), use CPF as openId to avoid collision
-  const openId = entry.produtorId === 0 ? `rc_contador_${cpfClean}` : `rc_${entry.produtorId}`;
+  const imovelId = allowedImoveis?.[0]?.id;
+  const imovelCount = allowedImoveis.length;
+  const openId = `rc_${data.produtor_id}`;
 
   return {
     success: true,
-    produtorId: entry.produtorId,
-    produtorNome: entry.produtorNome,
-    imovelId: entry.imovelId,
-    imovelCount: entry.imovelCount ?? 1,
-    role: entry.role ?? "user",
+    produtorId: data.produtor_id,
+    produtorNome: data.nome,
+    rcClaimsToken: data.token,
+    imovelId,
+    imovelCount,
+    role,
     openId,
   };
 }

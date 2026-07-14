@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Plus, PawPrint, Search, RefreshCw, Pencil, Trash2, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, LogOut, Scale, BarChart3, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,6 +62,7 @@ export default function Rebanhos() {
   const [editAnimal, setEditAnimal] = useState<any | null>(null);
   const [deleteId,   setDeleteId]   = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [producaoAnimalId, setProducaoAnimalId] = useState<number | null>(null);
 
   // ── Formulário (novo / editar) ────────────────────────────────────────────
   const [form, setForm] = useState({ ...FORM_EMPTY });
@@ -108,6 +109,152 @@ export default function Rebanhos() {
     onError: (e: any) => toast.error(e.message ?? "Erro ao remover animal"),
   });
 
+  // ── Dar Baixa (venda / morte / abate / doacao / permuta) ─────────────────
+  const [baixaAnimal, setBaixaAnimal] = useState<any | null>(null);
+  const [baixaForm, setBaixaForm] = useState({
+    tipo: "venda",
+    data: new Date().toISOString().slice(0, 10),
+    pesoVivoKg: "",
+    pesoCarcacaKg: "",
+    valorTotal: "",
+    comprador: "",
+    observacoes: "",
+  });
+
+  const registrarBaixa = trpc.railway.registrarBaixaAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Baixa registrada com sucesso");
+      utils.railway.animais.invalidate();
+      setBaixaAnimal(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao registrar baixa"),
+  });
+
+  const abrirDialogBaixa = (a: any) => {
+    setBaixaAnimal(a);
+    setBaixaForm({
+      tipo: "venda",
+      data: new Date().toISOString().slice(0, 10),
+      pesoVivoKg: "",
+      pesoCarcacaKg: "",
+      valorTotal: "",
+      comprador: "",
+      observacoes: "",
+    });
+  };
+
+  const handleRegistrarBaixa = () => {
+    if (!baixaAnimal || !imovelId) return;
+    registrarBaixa.mutate({
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      animalId: baixaAnimal.id,
+      tipo: baixaForm.tipo as any,
+      data: baixaForm.data,
+      pesoVivoKg: baixaForm.pesoVivoKg ? Number(baixaForm.pesoVivoKg) : undefined,
+      pesoCarcacaKg: baixaForm.pesoCarcacaKg ? Number(baixaForm.pesoCarcacaKg) : undefined,
+      valorTotal: baixaForm.valorTotal ? Number(baixaForm.valorTotal) : undefined,
+      comprador: baixaForm.comprador || undefined,
+      observacoes: baixaForm.observacoes || undefined,
+    });
+  };
+
+  // ── Registrar Pesagem (kg / arroba) ───────────────────────────────────
+  const KG_POR_ARROBA = 15;
+  const [pesagemAnimal, setPesagemAnimal] = useState<any | null>(null);
+  const [pesagemForm, setPesagemForm] = useState({
+    peso: "",
+    unidade: "kg" as "kg" | "arroba",
+    data: new Date().toISOString().slice(0, 10),
+    motivo: "rotina",
+    observacoes: "",
+  });
+
+  const registrarPesagem = trpc.railway.registrarPesagemAnimal.useMutation({
+    onSuccess: () => {
+      toast.success("Pesagem registrada com sucesso");
+      utils.railway.animais.invalidate();
+      setPesagemAnimal(null);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao registrar pesagem"),
+  });
+
+  const abrirDialogPesagem = (a: any) => {
+    setPesagemAnimal(a);
+    setPesagemForm({
+      peso: "",
+      unidade: "kg",
+      data: new Date().toISOString().slice(0, 10),
+      motivo: "rotina",
+      observacoes: "",
+    });
+  };
+
+  const handleRegistrarPesagem = () => {
+    if (!pesagemAnimal || !imovelId) return;
+    const pesoNum = Number(pesagemForm.peso);
+    if (!pesoNum || pesoNum <= 0) { toast.error("Informe um peso válido"); return; }
+    const pesoKg = pesagemForm.unidade === "arroba" ? pesoNum * KG_POR_ARROBA : pesoNum;
+    registrarPesagem.mutate({
+      imovelId: imovelId!,
+      especie: especieAtual.trpc,
+      animalId: pesagemAnimal.id,
+      data: pesagemForm.data,
+      pesoKg,
+      motivo: pesagemForm.motivo,
+      observacoes: pesagemForm.observacoes || undefined,
+    });
+  };
+
+  // ── Desempenho do Rebanho (bovino) ────────────────────────────────────────
+  const [showDesempenho, setShowDesempenho] = useState(false);
+  const [desempFiltroTipo, setDesempFiltroTipo] = useState<"todos" | "leite" | "corte">("todos");
+  const [desempFiltroLote, setDesempFiltroLote] = useState<string>("todos");
+  const [desempOrdem, setDesempOrdem] = useState<"score_desc" | "score_asc" | "brinco">("score_desc");
+  const [desempFiltroStatus, setDesempFiltroStatus] = useState<string | null>(null);
+  const [desempView, setDesempView] = useState<"grade" | "cubos">("grade");
+  const [desempSelecionado, setDesempSelecionado] = useState<any | null>(null);
+
+  const { data: desempenhoData, isLoading: loadingDesempenho } = trpc.railway.desempenhoRebanho.useQuery(
+    { imovelId: imovelId!, especie: especieAtual.trpc, dias: 30 },
+    { enabled: showDesempenho && !!imovelId }
+  );
+
+  const desempStatusOf = (score: number | null) => {
+    if (score === null) return { bg: "#9ca3af", label: "Sem dado" };
+    if (score >= 75) return { bg: "#0ca30c", label: "Excelente" };
+    if (score >= 50) return { bg: "#fab219", label: "Bom" };
+    if (score >= 30) return { bg: "#ec835a", label: "Regular" };
+    return { bg: "#d03b3b", label: "Crítico" };
+  };
+
+  const desempLotes = Array.from(
+    new Set((desempenhoData ?? []).map((a: any) => a.lote_nome).filter(Boolean))
+  ) as string[];
+
+  const desempFiltrado = (desempenhoData ?? [])
+    .filter((a: any) => desempFiltroTipo === "todos" || a.tipo === desempFiltroTipo)
+    .filter((a: any) => desempFiltroLote === "todos" || a.lote_nome === desempFiltroLote)
+    .filter((a: any) => !desempFiltroStatus || desempStatusOf(a.score).label === desempFiltroStatus)
+    .slice()
+    .sort((a: any, b: any) => {
+      if (desempOrdem === "score_desc") return (b.score ?? -1) - (a.score ?? -1);
+      if (desempOrdem === "score_asc") return (a.score ?? 999) - (b.score ?? 999);
+      return String(a.brinco).localeCompare(String(b.brinco), undefined, { numeric: true });
+    });
+
+  const desempContagem = { Excelente: 0, Bom: 0, Regular: 0, "Crítico": 0, "Sem dado": 0 };
+  desempFiltrado.forEach((a: any) => {
+    const label = desempStatusOf(a.score).label as keyof typeof desempContagem;
+    desempContagem[label]++;
+  });
+
+  // Produção integrada com Insumos (GMD/custo por kg, ou litros/dia e custo/litro) — todas as espécies
+  const { data: producaoInsumos, isLoading: loadingProducao } = trpc.railway.producaoInsumosAnimal.useQuery(
+    { imovelId: imovelId!, animalId: producaoAnimalId!, especie: especieAtual.trpc, dias: 30 },
+    { enabled: !!imovelId && !!producaoAnimalId }
+  );
+
   const analisarPlanilha = trpc.railway.analisarPlanilhaAnimais.useMutation({
     onSuccess: (data) => {
       setImportPreview(data);
@@ -125,9 +272,110 @@ export default function Rebanhos() {
       setImportResult(data);
       setImportStep("resultado");
       utils.railway.animais.invalidate();
+      if (importIsGenealogia && imovelId) {
+        relinkGenealogia.mutate({ imovelId });
+      }
     },
     onError: (e: any) => toast.error(e.message ?? "Erro ao importar animais"),
   });
+
+  // ── Genealogia (Bovino) ──────────────────────────────────────────────────
+  const [importIsGenealogia, setImportIsGenealogia] = useState(false);
+
+  const analisarGenealogia = trpc.railway.analisarPlanilhaGenealogiaBovino.useMutation({
+    onSuccess: (data) => {
+      setImportPreview(data);
+      const dec: Record<string, "atualizar" | "ignorar"> = {};
+      data.conflitos.forEach((c: any) => { dec[c.brinco] = "ignorar"; });
+      setConflitosDecisoes(dec);
+      setImportStep(data.conflitos.length > 0 ? "conflitos" : "resultado");
+      if (data.conflitos.length === 0) handleConfirmarImportacao(data.rows_novas, []);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha de genealogia"),
+  });
+
+  const relinkGenealogia = trpc.railway.relinkGenealogiaBovino.useMutation({
+    onSuccess: (data) => {
+      if (data.pais_linkados > 0 || data.maes_linkadas > 0) {
+        toast.success(`Genealogia: ${data.pais_linkados} pai(s) e ${data.maes_linkadas} mãe(s) linkados ao rebanho`);
+      }
+    },
+  });
+
+  // ── Lactações / Controle leiteiro (Bovino) — sem etapa de conflito, ──────
+  // já que cada linha é um registro histórico aditivo, não um "animal" que
+  // possa colidir por brinco.
+  // Info da fase de analise (linhas ignoradas / brincos nao encontrados)
+  // que precisa sobreviver ate a tela de resultado, apos a confirmacao.
+  const [analisePreviaExtra, setAnalisePreviaExtra] = useState<{
+    nao_encontrados?: { brinco: string }[];
+    ignoradas_count?: number;
+    total_planilha?: number;
+  } | null>(null);
+
+  const confirmarLactacoes = trpc.railway.confirmarImportacaoLactacoesBovino.useMutation({
+    onSuccess: (data) => {
+      setImportResult({ tipo: "lactacoes", ...data, ...(analisePreviaExtra ?? {}) });
+      setImportStep("resultado");
+      utils.railway.lactacoesBovino?.invalidate?.();
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao importar lactações"),
+  });
+
+  const analisarLactacoes = trpc.railway.analisarPlanilhaLactacoesBovino.useMutation({
+    onSuccess: (data) => {
+      setAnalisePreviaExtra({
+        nao_encontrados: data.nao_encontrados,
+        ignoradas_count: data.ignoradas_count,
+        total_planilha: data.total_planilha,
+      });
+      if (data.itens.length === 0) {
+        setImportResult({ tipo: "lactacoes", criados: 0, duplicados: [], erros: [], ...data });
+        setImportStep("resultado");
+        return;
+      }
+      confirmarLactacoes.mutate({ imovelId: imovelId!, itens: data.itens });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha de lactações"),
+  });
+
+  const confirmarControle = trpc.railway.confirmarImportacaoControleLeiteiroBovino.useMutation({
+    onSuccess: (data) => {
+      setImportResult({ tipo: "controle", ...data, ...(analisePreviaExtra ?? {}) });
+      setImportStep("resultado");
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao importar controle leiteiro"),
+  });
+
+  const analisarControle = trpc.railway.analisarPlanilhaControleLeiteiroBovino.useMutation({
+    onSuccess: (data) => {
+      setAnalisePreviaExtra({
+        nao_encontrados: data.nao_encontrados,
+        ignoradas_count: data.ignoradas_count,
+        total_planilha: data.total_planilha,
+      });
+      if (data.itens.length === 0) {
+        setImportResult({ tipo: "controle", criados: 0, duplicados: [], erros: [], ...data });
+        setImportStep("resultado");
+        return;
+      }
+      confirmarControle.mutate({ imovelId: imovelId!, itens: data.itens });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao analisar planilha de controle leiteiro"),
+  });
+
+  // ── Auto-detecção de tipo de planilha por assinatura de coluna ───────────
+  const detectarTipoPlanilha = (headerRow: unknown[]): "genealogia" | "controle" | "lactacoes" | "animais" => {
+    const norm = (s: unknown) =>
+      String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    const cols = headerRow.map(norm);
+    const has = (...keys: string[]) => keys.some((k) => cols.some((c) => c.includes(k)));
+
+    if (has("registropai", "nomepai", "registromae", "nomemae")) return "genealogia";
+    if (has("numerocontrole", "ordenha1", "ordenha2")) return "controle";
+    if (has("producaototalleite", "duracaolactacao", "producao305d")) return "lactacoes";
+    return "animais";
+  };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleCreate = () => {
@@ -175,6 +423,8 @@ export default function Rebanhos() {
     });
   };
 
+  const HEADER_HINTS = ["brinco", "id", "identificacao", "numero", "tag"];
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !imovelId) return;
@@ -183,9 +433,41 @@ export default function Rebanhos() {
       try {
         const wb = XLSX.read(ev.target?.result, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        if (rows.length === 0) { toast.error("Planilha vazia ou sem dados reconhecíveis"); return; }
-        analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+
+        // Detecta a linha real de cabeçalho (pula linhas de metadados tipo
+        // "Gerado em...", "Fazenda...", etc. antes do cabeçalho verdadeiro).
+        const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "", header: 1 }) as unknown[][];
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(rawRows.length, 20); i++) {
+          const rowVals = (rawRows[i] || []).map((v) =>
+            String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          );
+          if (rowVals.some((v) => HEADER_HINTS.some((h) => v === h || v.includes(h)))) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
+        if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna de identificação reconhecível.'); return; }
+
+        // Auto-detecta o tipo (só relevante pra bovino; outras espécies só têm
+        // o import genérico de animais por enquanto).
+        const tipo = especie === "bovino" ? detectarTipoPlanilha(rawRows[headerRowIndex] || []) : "animais";
+
+        if (tipo === "genealogia") {
+          setImportIsGenealogia(true);
+          analisarGenealogia.mutate({ imovelId: imovelId!, rows });
+        } else if (tipo === "lactacoes") {
+          setImportIsGenealogia(false);
+          analisarLactacoes.mutate({ imovelId: imovelId!, rows });
+        } else if (tipo === "controle") {
+          setImportIsGenealogia(false);
+          analisarControle.mutate({ imovelId: imovelId!, rows });
+        } else {
+          setImportIsGenealogia(false);
+          analisarPlanilha.mutate({ imovelId: imovelId!, especie: especieAtual.trpc, rows });
+        }
       } catch {
         toast.error("Erro ao ler o arquivo. Verifique se é um Excel válido.");
       }
@@ -216,6 +498,8 @@ export default function Rebanhos() {
     setConflitosDecisoes({});
     setImportResult(null);
     setShowImport(false);
+    setImportIsGenealogia(false);
+    setAnalisePreviaExtra(null);
   };
 
   const filtered = (animais as any[]).filter((a) =>
@@ -242,9 +526,13 @@ export default function Rebanhos() {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
+          <Button variant="outline" size="sm" onClick={() => { setImportIsGenealogia(false); setImportStep("upload"); setImportPreview(null); setImportResult(null); setShowImport(true); }}>
             <Upload className="w-4 h-4 mr-2" />
             Importar Planilha
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowDesempenho(true)}>
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Desempenho
           </Button>
           <Button size="sm" onClick={() => { setForm({ ...FORM_EMPTY }); setShowNew(true); }} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
@@ -349,6 +637,34 @@ export default function Rebanhos() {
                   </div>
                   {/* Botões de ação */}
                   <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost" size="icon"
+                      className="w-8 h-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
+                      title="Produção × Insumos (GMD/custo)"
+                      onClick={() => setProducaoAnimalId(a.id)}
+                    >
+                      📈
+                    </Button>
+                    {a.status === "ativo" && (
+                      <Button
+                        variant="ghost" size="icon"
+                        className="w-8 h-8 text-orange-600 hover:text-orange-800 hover:bg-orange-50"
+                        title="Dar baixa (venda, morte, abate, doação, permuta)"
+                        onClick={() => abrirDialogBaixa(a)}
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                    {a.status === "ativo" && (
+                      <Button
+                        variant="ghost" size="icon"
+                        className="w-8 h-8 text-purple-600 hover:text-purple-800 hover:bg-purple-50"
+                        title="Registrar pesagem"
+                        onClick={() => abrirDialogPesagem(a)}
+                      >
+                        <Scale className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost" size="icon"
                       className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
@@ -535,6 +851,309 @@ export default function Rebanhos() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Dialog: Dar Baixa ──────────────────────────────────────────────── */}
+      <Dialog open={baixaAnimal !== null} onOpenChange={(o) => { if (!o) setBaixaAnimal(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-700">
+              <LogOut className="w-5 h-5" /> Dar Baixa — #{baixaAnimal?.brinco}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium block mb-1">Tipo de baixa *</label>
+              <select
+                className="w-full border rounded-md p-2 text-sm"
+                value={baixaForm.tipo}
+                onChange={(e) => setBaixaForm({ ...baixaForm, tipo: e.target.value })}
+              >
+                <option value="venda">Venda</option>
+                <option value="abate_proprio">Abate próprio (consumo)</option>
+                <option value="abate_frigorif">Abate frigorífico</option>
+                <option value="morte">Morte</option>
+                <option value="doacao">Doação</option>
+                <option value="permuta">Permuta / Troca</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Data *</label>
+              <Input
+                type="date"
+                value={baixaForm.data}
+                onChange={(e) => setBaixaForm({ ...baixaForm, data: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-sm font-medium block mb-1">Peso vivo (kg)</label>
+                <Input
+                  type="number"
+                  value={baixaForm.pesoVivoKg}
+                  onChange={(e) => setBaixaForm({ ...baixaForm, pesoVivoKg: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Peso carcaça (kg)</label>
+                <Input
+                  type="number"
+                  value={baixaForm.pesoCarcacaKg}
+                  onChange={(e) => setBaixaForm({ ...baixaForm, pesoCarcacaKg: e.target.value })}
+                />
+              </div>
+            </div>
+            {(baixaForm.tipo === "venda" || baixaForm.tipo === "abate_frigorif") && (
+              <div>
+                <label className="text-sm font-medium block mb-1">Valor total (R$)</label>
+                <Input
+                  type="number"
+                  value={baixaForm.valorTotal}
+                  onChange={(e) => setBaixaForm({ ...baixaForm, valorTotal: e.target.value })}
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-medium block mb-1">
+                {baixaForm.tipo === "doacao" ? "Destinatário" : baixaForm.tipo === "permuta" ? "Trocado com" : "Comprador"}
+              </label>
+              <Input
+                value={baixaForm.comprador}
+                onChange={(e) => setBaixaForm({ ...baixaForm, comprador: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Observações</label>
+              <Input
+                value={baixaForm.observacoes}
+                onChange={(e) => setBaixaForm({ ...baixaForm, observacoes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBaixaAnimal(null)}>Cancelar</Button>
+            <Button
+              onClick={handleRegistrarBaixa}
+              disabled={registrarBaixa.isPending}
+              style={{ background: "oklch(0.42 0.14 145)" }}
+            >
+              {registrarBaixa.isPending ? "Registrando..." : "Confirmar Baixa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Registrar Pesagem ────────────────────────────────────────── */}
+      <Dialog open={pesagemAnimal !== null} onOpenChange={(o) => { if (!o) setPesagemAnimal(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-700">
+              <Scale className="w-5 h-5" /> Registrar Pesagem — #{pesagemAnimal?.brinco}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium block mb-1">Peso *</label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={pesagemForm.peso}
+                  onChange={(e) => setPesagemForm({ ...pesagemForm, peso: e.target.value })}
+                  className="flex-1"
+                />
+                <select
+                  className="border rounded-md px-2 text-sm"
+                  value={pesagemForm.unidade}
+                  onChange={(e) => setPesagemForm({ ...pesagemForm, unidade: e.target.value as "kg" | "arroba" })}
+                >
+                  <option value="kg">kg</option>
+                  <option value="arroba">@ (arroba)</option>
+                </select>
+              </div>
+              {pesagemForm.unidade === "arroba" && pesagemForm.peso && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  = {(Number(pesagemForm.peso) * 15).toFixed(1)} kg (1 @ = 15 kg)
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Data *</label>
+              <Input
+                type="date"
+                value={pesagemForm.data}
+                onChange={(e) => setPesagemForm({ ...pesagemForm, data: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Motivo</label>
+              <select
+                className="w-full border rounded-md p-2 text-sm"
+                value={pesagemForm.motivo}
+                onChange={(e) => setPesagemForm({ ...pesagemForm, motivo: e.target.value })}
+              >
+                <option value="rotina">Rotina</option>
+                <option value="entrada_lote">Entrada de lote</option>
+                <option value="nascimento">Nascimento</option>
+                <option value="desmame">Desmame</option>
+                <option value="pre_abate">Pré-abate</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Observações</label>
+              <Input
+                value={pesagemForm.observacoes}
+                onChange={(e) => setPesagemForm({ ...pesagemForm, observacoes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPesagemAnimal(null)}>Cancelar</Button>
+            <Button
+              onClick={handleRegistrarPesagem}
+              disabled={registrarPesagem.isPending}
+              style={{ background: "oklch(0.42 0.14 145)" }}
+            >
+              {registrarPesagem.isPending ? "Registrando..." : "Salvar Pesagem"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Desempenho do Rebanho ─────────────────────────────────────── */}
+      <Dialog open={showDesempenho} onOpenChange={(o) => { if (!o) { setShowDesempenho(false); setDesempSelecionado(null); setDesempFiltroStatus(null); } }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-emerald-600" />
+              Desempenho do Rebanho — últimos 30 dias
+            </DialogTitle>
+          </DialogHeader>
+
+          {loadingDesempenho && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <RefreshCw className="w-4 h-4 animate-spin" /> Calculando desempenho...
+            </div>
+          )}
+
+          {!loadingDesempenho && desempenhoData && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-5 gap-2">
+                {(["Excelente", "Bom", "Regular", "Crítico", "Sem dado"] as const).map((label) => {
+                  const ativo = desempFiltroStatus === label;
+                  const cor = desempStatusOf(label === "Excelente" ? 100 : label === "Bom" ? 60 : label === "Regular" ? 40 : label === "Crítico" ? 10 : null).bg;
+                  return (
+                    <div
+                      key={label}
+                      onClick={() => setDesempFiltroStatus(ativo ? null : label)}
+                      className="border rounded-lg p-2 text-center cursor-pointer transition-colors"
+                      style={{ borderColor: ativo ? cor : undefined, background: ativo ? `${cor}18` : undefined, borderWidth: ativo ? 2 : 1 }}
+                      title={`Filtrar por ${label}`}
+                    >
+                      <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
+                      <p className="text-lg font-bold" style={{ color: cor }}>
+                        {desempContagem[label]}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+              {desempFiltroStatus && (
+                <button
+                  onClick={() => setDesempFiltroStatus(null)}
+                  className="text-xs text-muted-foreground underline -mt-2 text-left"
+                >
+                  Limpar filtro de status ({desempFiltroStatus})
+                </button>
+              )}
+
+              <div className="flex gap-2 flex-wrap items-center">
+                <select className="border rounded-md p-2 text-sm" value={desempFiltroTipo} onChange={(e) => setDesempFiltroTipo(e.target.value as any)}>
+                  <option value="todos">Todos os tipos</option>
+                  <option value="leite">Leite</option>
+                  <option value="corte">Corte</option>
+                </select>
+                <select className="border rounded-md p-2 text-sm" value={desempFiltroLote} onChange={(e) => setDesempFiltroLote(e.target.value)}>
+                  <option value="todos">Todos os lotes</option>
+                  {desempLotes.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <select className="border rounded-md p-2 text-sm" value={desempOrdem} onChange={(e) => setDesempOrdem(e.target.value as any)}>
+                  <option value="score_desc">Maior desempenho</option>
+                  <option value="score_asc">Menor desempenho</option>
+                  <option value="brinco">Brinco</option>
+                </select>
+                <div className="flex gap-1 ml-auto">
+                  <Button size="sm" variant={desempView === "grade" ? "default" : "outline"} onClick={() => setDesempView("grade")}>Grade</Button>
+                  <Button size="sm" variant={desempView === "cubos" ? "default" : "outline"} onClick={() => setDesempView("cubos")}>Cubos</Button>
+                </div>
+              </div>
+
+              {desempView === "grade" && (
+                <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))" }}>
+                  {desempFiltrado.map((a: any) => {
+                    const s = desempStatusOf(a.score);
+                    return (
+                      <div
+                        key={a.animal_id}
+                        onClick={() => setDesempSelecionado(a)}
+                        className="rounded-lg p-2 cursor-pointer border"
+                        style={{ background: `${s.bg}22`, borderColor: `${s.bg}66` }}
+                      >
+                        <p className="text-xs font-medium">#{a.brinco}</p>
+                        <p className="text-[10px] text-muted-foreground">{a.tipo}</p>
+                        <p className="text-lg font-bold" style={{ color: s.bg }}>{a.score ?? "—"}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {desempView === "cubos" && (
+                <div className="flex gap-3 flex-wrap items-end py-2">
+                  {desempFiltrado.map((a: any) => {
+                    const s = desempStatusOf(a.score);
+                    const h = 20 + (a.score ?? 0) * 0.8;
+                    return (
+                      <div key={a.animal_id} onClick={() => setDesempSelecionado(a)} className="flex flex-col items-center cursor-pointer" style={{ width: 42 }}>
+                        <div style={{ position: "relative", width: 42, height: h }}>
+                          <div style={{ position: "absolute", width: 42, height: h, background: s.bg, opacity: 0.9, borderRadius: 2 }} />
+                          <div style={{ position: "absolute", top: -8, left: 4, width: 34, height: 12, background: s.bg, opacity: 0.6, transform: "skewX(-40deg) scaleY(0.6)" }} />
+                          <div style={{ position: "absolute", top: 0, right: -8, width: 10, height: h, background: s.bg, opacity: 0.45, transform: "skewY(-40deg) scaleX(0.6)" }} />
+                        </div>
+                        <p className="text-[10px] mt-1 text-muted-foreground">#{a.brinco}</p>
+                        <p className="text-xs font-bold" style={{ color: s.bg }}>{a.score ?? "—"}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {desempSelecionado && (
+                <div className="border rounded-lg p-3 bg-gray-50 relative">
+                  <button className="absolute top-2 right-2" onClick={() => setDesempSelecionado(null)}>
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                  <p className="font-semibold text-sm">#{desempSelecionado.brinco} {desempSelecionado.nome}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tipo: {desempSelecionado.tipo} · Lote: {desempSelecionado.lote_nome ?? "sem lote"} · Score: {desempSelecionado.score ?? "sem dado"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Produção no período: {desempSelecionado.producao_periodo ?? "—"} {desempSelecionado.tipo === "leite" ? "L" : "kg"} ·{" "}
+                    {desempSelecionado.tipo === "leite" ? "Litros/dia" : "GMD"}: {desempSelecionado.metrica_dia ?? "—"} {desempSelecionado.tipo === "leite" ? "L/dia" : "kg/dia"}
+                  </p>
+                </div>
+              )}
+
+              {desempFiltrado.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum animal encontrado com esses filtros.</p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowDesempenho(false); setDesempSelecionado(null); }}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Dialog: Confirmar Exclusão ──────────────────────────────────────── */}
       <Dialog open={deleteId !== null} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <DialogContent className="max-w-sm">
@@ -562,13 +1181,79 @@ export default function Rebanhos() {
         </DialogContent>
       </Dialog>
 
+      {/* ── Dialog: Produção × Insumos (GMD/custo por kg, ou litros/dia e custo/litro) ──── */}
+      <Dialog open={producaoAnimalId !== null} onOpenChange={(o) => { if (!o) setProducaoAnimalId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Produção × Insumos — últimos 30 dias</DialogTitle>
+          </DialogHeader>
+          {loadingProducao ? (
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-10 rounded-lg" />
+              <Skeleton className="h-10 rounded-lg" />
+            </div>
+          ) : !producaoInsumos ? (
+            <p className="text-sm text-muted-foreground py-4">Sem dados de produção para este animal ainda.</p>
+          ) : producaoInsumos.tipo === "leite" ? (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Litros/dia</p>
+                <p className="text-xl font-bold mt-0.5" style={{ color: "oklch(0.35 0.12 145)" }}>
+                  {producaoInsumos.litros_dia ?? "—"}
+                </p>
+              </div>
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo/litro</p>
+                <p className="text-xl font-bold mt-0.5">
+                  {producaoInsumos.custo_por_litro != null ? `R$ ${producaoInsumos.custo_por_litro.toFixed(2)}` : "—"}
+                </p>
+              </div>
+              <div className="col-span-2 border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo de insumos no período</p>
+                <p className="text-lg font-semibold mt-0.5">R$ {producaoInsumos.custo_insumos_periodo.toFixed(2)}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">GMD</p>
+                <p className="text-xl font-bold mt-0.5" style={{ color: "oklch(0.35 0.12 145)" }}>
+                  {producaoInsumos.gmd_kg_dia != null ? `${producaoInsumos.gmd_kg_dia} kg/dia` : "—"}
+                </p>
+              </div>
+              <div className="border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo/kg de ganho</p>
+                <p className="text-xl font-bold mt-0.5">
+                  {producaoInsumos.custo_por_kg_ganho != null ? `R$ ${producaoInsumos.custo_por_kg_ganho.toFixed(2)}` : "—"}
+                </p>
+              </div>
+              <div className="col-span-2 border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Custo de insumos no período</p>
+                <p className="text-lg font-semibold mt-0.5">R$ {producaoInsumos.custo_insumos_periodo.toFixed(2)}</p>
+              </div>
+              {producaoInsumos.aviso && (
+                <div className="col-span-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800 flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  {producaoInsumos.aviso}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProducaoAnimalId(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Dialog: Importar Planilha ───────────────────────────────────────── */}
       <Dialog open={showImport} onOpenChange={(o) => { if (!o) resetImport(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-              Importar Planilha — {especieAtual.emoji} {especieAtual.label}
+              {importIsGenealogia
+                ? "Importar Genealogia — 🐄 Bovino"
+                : `Importar Planilha — ${especieAtual.emoji} ${especieAtual.label}`}
             </DialogTitle>
           </DialogHeader>
 
@@ -595,17 +1280,36 @@ export default function Rebanhos() {
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
-                <p className="font-medium text-sm">Clique para selecionar o arquivo Excel</p>
-                <p className="text-xs text-muted-foreground mt-1">Formatos aceitos: .xlsx, .xls, .csv</p>
+                <p className="font-medium text-sm">Clique para selecionar o arquivo</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Formatos aceitos: .xlsx, .xls, .csv — inclusive .xls que na
+                  verdade é tabela HTML (comum em exports de sistemas de genealogia)
+                </p>
               </div>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
+              
 
               <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700 space-y-1">
-                <p className="font-semibold">Colunas reconhecidas automaticamente:</p>
-                <p><strong>Brinco/ID</strong> (obrigatório) · Nome · Raça · Sexo (M/F) · Data Nascimento · Peso · Categoria{especie === "bovino" ? " · Aptidão de Manejo" : ""}</p>
+                {importIsGenealogia ? (
+                  <>
+                    <p className="font-semibold">Colunas de genealogia reconhecidas automaticamente:</p>
+                    <p><strong>Identificador/Brinco</strong> (obrigatório) · Nome Animal · Sexo · Raça · Composição
+                      Racial · Data Nascimento (Dia/Mês/Ano separados ou coluna única) · Registro/Nome do Pai ·
+                      Registro/Nome da Mãe</p>
+                    <p className="text-blue-500">
+                      Pai/mãe que já estiverem no rebanho são linkados automaticamente depois da importação;
+                      os que não estiverem ficam guardados como texto (nada se perde).
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold">Colunas reconhecidas automaticamente:</p>
+                    <p><strong>Brinco/ID</strong> (obrigatório) · Nome · Raça · Sexo (M/F) · Data Nascimento · Peso · Categoria{especie === "bovino" ? " · Aptidão de Manejo" : ""}</p>
+                  </>
+                )}
               </div>
 
-              {analisarPlanilha.isPending && (
+              {(analisarPlanilha.isPending || analisarGenealogia.isPending) && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   Analisando planilha...
@@ -675,8 +1379,8 @@ export default function Rebanhos() {
             </div>
           )}
 
-          {/* ETAPA 3: Resultado */}
-          {importStep === "resultado" && importResult && (
+          {/* ETAPA 3: Resultado (animais / genealogia) */}
+          {importStep === "resultado" && importResult && importResult.tipo !== "lactacoes" && importResult.tipo !== "controle" && (
             <div className="space-y-4 py-2">
               <div className="flex items-center gap-2 text-emerald-700">
                 <CheckCircle2 className="w-5 h-5" />
@@ -688,7 +1392,11 @@ export default function Rebanhos() {
                   { label: "Criados",   value: importResult.criados,    color: "text-emerald-700" },
                   { label: "Atualizados", value: importResult.atualizados, color: "text-blue-700" },
                   { label: "Ignorados", value: importResult.ignorados,  color: "text-amber-700" },
-                  { label: "Erros",     value: importResult.erros,      color: "text-red-700" },
+                  {
+                    label: "Erros",
+                    value: Array.isArray(importResult.erros) ? importResult.erros.length : importResult.erros,
+                    color: "text-red-700",
+                  },
                 ].map((s) => (
                   <div key={s.label} className="border rounded-lg p-3">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
@@ -696,6 +1404,121 @@ export default function Rebanhos() {
                   </div>
                 ))}
               </div>
+
+              {Array.isArray(importResult.erros) && importResult.erros.length > 0 && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-800 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="font-semibold mb-1">Detalhes dos erros:</p>
+                  {importResult.erros.map((e: any, i: number) => (
+                    <p key={i}>
+                      Animal #{e.animal_id ?? e.brinco ?? "?"}
+                      {e.data ? ` (${e.data})` : ""}
+                      {e.data_parto ? ` (${e.data_parto})` : ""}
+                      : {e.erro ?? JSON.stringify(e)}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {Array.isArray(importResult.nao_encontrados) && importResult.nao_encontrados.length > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1 max-h-40 overflow-y-auto">
+                  <p className="font-semibold mb-1">
+                    {importResult.nao_encontrados.length} animal(is) da planilha não encontrado(s) no rebanho (brinco não cadastrado):
+                  </p>
+                  <p>{importResult.nao_encontrados.map((n: any) => n.brinco).join(", ")}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ETAPA 3 (variante): Resultado de Ordenha / Lactações — categorias claras */}
+          {importStep === "resultado" && importResult && (importResult.tipo === "lactacoes" || importResult.tipo === "controle") && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center gap-2 text-emerald-700">
+                <CheckCircle2 className="w-5 h-5" />
+                <p className="font-semibold">
+                  Importação de {importResult.tipo === "lactacoes" ? "lactações" : "controle leiteiro"} concluída!
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: "Linhas na planilha",
+                    value: importResult.total_planilha ?? importResult.total ?? "—",
+                    color: "text-gray-700",
+                    hint: "Total de linhas do arquivo original",
+                  },
+                  {
+                    label: "Criados",
+                    value: importResult.criados ?? 0,
+                    color: "text-emerald-700",
+                    hint: "Novos registros salvos com sucesso",
+                  },
+                  {
+                    label: "Já existiam",
+                    value: Array.isArray(importResult.duplicados) ? importResult.duplicados.length : 0,
+                    color: "text-blue-700",
+                    hint: "Duplicados — mesmo animal e data já importados antes",
+                  },
+                  {
+                    label: "Não encontrados",
+                    value: Array.isArray(importResult.nao_encontrados) ? importResult.nao_encontrados.length : 0,
+                    color: "text-amber-700",
+                    hint: "Brinco da planilha não existe no rebanho",
+                  },
+                  {
+                    label: "Ignorados",
+                    value: importResult.ignoradas_count ?? 0,
+                    color: "text-amber-700",
+                    hint: "Linha sem data ou identificação válida",
+                  },
+                  {
+                    label: "Erros inesperados",
+                    value: Array.isArray(importResult.erros) ? importResult.erros.length : 0,
+                    color: "text-red-700",
+                    hint: "Problema técnico — vale revisar",
+                  },
+                ].map((s) => (
+                  <div key={s.label} className="border rounded-lg p-3" title={s.hint}>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
+                    <p className={`text-xl font-bold mt-0.5 ${s.color}`}>{s.value}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{s.hint}</p>
+                  </div>
+                ))}
+              </div>
+
+              {Array.isArray(importResult.duplicados) && importResult.duplicados.length > 0 && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1 max-h-32 overflow-y-auto">
+                  <p className="font-semibold mb-1">
+                    {importResult.duplicados.length} registro(s) já existente(s) (não é erro, só não duplicamos):
+                  </p>
+                  {importResult.duplicados.map((d: any, i: number) => (
+                    <p key={i}>
+                      Animal #{d.animal_id} — {d.data ?? d.data_parto} — {d.motivo}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {Array.isArray(importResult.nao_encontrados) && importResult.nao_encontrados.length > 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1 max-h-32 overflow-y-auto">
+                  <p className="font-semibold mb-1">
+                    Brinco(s) da planilha sem cadastro no rebanho (importe/cadastre o animal antes):
+                  </p>
+                  <p>{importResult.nao_encontrados.map((n: any) => n.brinco).join(", ")}</p>
+                </div>
+              )}
+
+              {Array.isArray(importResult.erros) && importResult.erros.length > 0 && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-800 space-y-1 max-h-32 overflow-y-auto">
+                  <p className="font-semibold mb-1">Erros inesperados (não são duplicatas — vale investigar):</p>
+                  {importResult.erros.map((e: any, i: number) => (
+                    <p key={i}>
+                      Animal #{e.animal_id ?? "?"} ({e.data ?? e.data_parto ?? "—"}): {e.erro ?? JSON.stringify(e)}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

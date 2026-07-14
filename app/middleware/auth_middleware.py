@@ -1,45 +1,64 @@
-# app/middleware/auth_middleware.py — RuralCaixa MVP
+# app/middleware/auth_middleware.py - RuralCaixa MVP
 """
-Middleware global de autenticação.
-Rotas públicas (sem token): webhooks, assinatura, health.
-Todas as demais exigem Bearer token válido.
+Middleware global de autenticacao.
+Rotas publicas (sem token): webhooks, assinatura, health, contratos.
+Todas as demais exigem Bearer token valido.
 """
-
-from fastapi import Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import Request
+from fastapi.responses import JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Rotas que NÃO exigem autenticação
 ROTAS_PUBLICAS = {
     "/",
     "/health",
     "/docs",
     "/openapi.json",
     "/redoc",
+    "/produtores",
+    "/imoveis/buscar",
+    "/auth/solicitar",
+    "/auth/verificar",
 }
 
 PREFIXOS_PUBLICOS = (
-    "/telegram/",       # webhook do Telegram
-    "/whatsapp/",       # webhook do WhatsApp
-    "/assinar/",        # página de assinatura (OTP próprio)
-    "/contratos/assinar/",  # endpoint de assinatura via OTP
+    "/telegram/",
+    "/whatsapp/",
+    "/assinar/",
+    "/contratos",
+    "/contratos-rurais",
     "/static/",
 )
+
+CORS_HEADERS_BASE = {
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Accept, Accept-Language, Authorization, Content-Language, Content-Type",
+    "Access-Control-Max-Age": "86400",
+}
+
+
+def cors_headers(request: Request) -> dict:
+    origin = request.headers.get("origin", "*")
+    return {"Access-Control-Allow-Origin": origin, **CORS_HEADERS_BASE}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        # Rotas públicas — passa direto
+        # Rotas publicas - passa direto
         if path in ROTAS_PUBLICAS:
             return await call_next(request)
 
         if any(path.startswith(p) for p in PREFIXOS_PUBLICOS):
             return await call_next(request)
+
+        # Preflight CORS - responde 200 com headers CORS
+        if request.method == "OPTIONS":
+            return Response(status_code=200, headers=cors_headers(request))
 
         # Verifica Bearer token
         auth_header = request.headers.get("Authorization", "")
@@ -47,10 +66,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={
-                    "error": "Token de autenticação não fornecido.",
+                    "error": "Token de autenticacao nao fornecido.",
                     "detail": "Use o header: Authorization: Bearer {seu_token}",
                 },
-                headers={"WWW-Authenticate": "Bearer"},
+                headers={"WWW-Authenticate": "Bearer", **cors_headers(request)},
             )
 
         token = auth_header.split(" ", 1)[1].strip()
@@ -58,21 +77,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"error": "Token vazio."},
+                headers={"WWW-Authenticate": "Bearer", **cors_headers(request)},
             )
 
-        # Valida token no banco
         produtor = _validar_token(token)
         if not produtor:
             return JSONResponse(
                 status_code=401,
-                content={"error": "Token inválido ou expirado."},
-                headers={"WWW-Authenticate": "Bearer"},
+                content={"error": "Token invalido ou expirado."},
+                headers={"WWW-Authenticate": "Bearer", **cors_headers(request)},
             )
 
-        # Injeta produtor no request state para uso nos endpoints
         request.state.produtor = produtor
         request.state.produtor_id = produtor["id"]
-
         return await call_next(request)
 
 

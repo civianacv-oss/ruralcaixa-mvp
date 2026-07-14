@@ -97,6 +97,7 @@ const NAV_SECTIONS: NavSection[] = [
       },
       { icon: Fish,      label: "Piscicultura", path: "/piscicultura" },
       { icon: Sprout,    label: "Agricultura",  path: "/agricultura" },
+      { icon: Leaf,      label: "Gestão de Culturas", path: "/gestao-culturas" },
       { icon: HeartPulse, label: "Saúde Animal", path: "/saude" },
       { icon: Baby,       label: "Reprodução",   path: "/reproducao" },
     ],

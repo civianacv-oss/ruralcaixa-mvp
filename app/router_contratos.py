@@ -11,21 +11,37 @@ from .db import get_db
 router = APIRouter(prefix="/contratos-rurais", tags=["Contratos Rurais"])
 
 
+TIPO_LABELS = {
+    "arrendamento": "Arrendamento",
+    "parceria": "Parceria",
+    "comodato": "Comodato",
+    "prestacao_servico": "Prestacao de Servico",
+    "compra_venda": "Compra e Venda",
+    "condominio": "Condominio Rural",
+}
+
+
 class ContratoSalvar(BaseModel):
     imovel_id: Optional[int] = None
     nome_imovel: Optional[str] = None
     matricula: Optional[str] = None
-    tipo: str                           # arrendamento | parceria | consorcio
+    tipo: str                           # arrendamento | parceria | comodato | prestacao_servico | compra_venda | condominio
     modalidade: Optional[str] = None
-    titulo: str
+    titulo: Optional[str] = None
     ano_safra: Optional[int] = None
     outorgante_id: Optional[int] = None
     outorgante_nome: Optional[str] = None
     outorgado_id: Optional[int] = None
     outorgado_nome: Optional[str] = None
-    dados_json: dict
-    docx_base64: str
-    nome_arquivo: str
+    dados_json: Optional[dict] = None
+    docx_base64: Optional[str] = None
+    nome_arquivo: Optional[str] = None
+    # Campos simples (contrato sem documento formal ainda) — guardados em dados_json
+    descricao: Optional[str] = None
+    valor: Optional[float] = None
+    data_inicio: Optional[str] = None
+    data_fim: Optional[str] = None
+    status: Optional[str] = None
 
 
 class DocumentoUpload(BaseModel):
@@ -46,11 +62,6 @@ def _imovel_info(conn, imovel_id):
 
 @router.post("", status_code=201)
 def salvar_contrato(body: ContratoSalvar):
-    try:
-        docx_bytes = base64.b64decode(body.docx_base64)
-    except Exception:
-        raise HTTPException(400, "docx_base64 invalido")
-
     conn = get_db()
     drive = None
     try:
@@ -63,12 +74,49 @@ def salvar_contrato(body: ContratoSalvar):
 
         ano = body.ano_safra or datetime.now().year
 
-        try:
-            drive = upload_contrato_docx(
-                docx_bytes, body.nome_arquivo,
-                body.imovel_id, nome_imovel, matricula, ano)
-        except Exception as e:
-            raise HTTPException(500, f"Erro Drive: {e}")
+        titulo = body.titulo or f"Contrato de {TIPO_LABELS.get(body.tipo, body.tipo)} - {ano}"
+
+        # Monta dados_json mesclando o que o cliente enviou com os campos
+        # simples (descricao/valor/datas/status) — assim nao e preciso
+        # migrar a tabela para suportar o formulario simples de contrato.
+        dados_json = dict(body.dados_json or {})
+        if body.descricao is not None:
+            dados_json["descricao"] = body.descricao
+        if body.valor is not None:
+            dados_json["valor"] = body.valor
+        if body.data_inicio is not None:
+            dados_json["data_inicio"] = body.data_inicio
+        if body.data_fim is not None:
+            dados_json["data_fim"] = body.data_fim
+        if body.status is not None:
+            dados_json["status"] = body.status
+
+        # Upload do documento (Word) e integracao com o Drive sao opcionais.
+        # Se nao houver docx_base64, o contrato e salvo sem documento anexado
+        # (pode ser complementado depois com upload_doc_cadastral).
+        docx_drive_id = None
+        docx_drive_url = None
+        pasta_drive_id = None
+        imovel_folder_id = None
+
+        if body.docx_base64:
+            try:
+                docx_bytes = base64.b64decode(body.docx_base64)
+            except Exception:
+                raise HTTPException(400, "docx_base64 invalido")
+
+            nome_arquivo = body.nome_arquivo or f"{titulo}.docx"
+            try:
+                drive = upload_contrato_docx(
+                    docx_bytes, nome_arquivo,
+                    body.imovel_id, nome_imovel, matricula, ano)
+            except Exception as e:
+                raise HTTPException(500, f"Erro Drive: {e}")
+
+            docx_drive_id = drive["drive_file_id"]
+            docx_drive_url = drive["drive_url"]
+            pasta_drive_id = drive["pasta_drive_id"]
+            imovel_folder_id = drive["imovel_folder_id"]
 
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
@@ -82,18 +130,27 @@ def salvar_contrato(body: ContratoSalvar):
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id, created_at""",
                 (body.imovel_id, nome_imovel, matricula,
-                 body.tipo, body.modalidade, body.titulo, ano,
-                 psycopg2.extras.Json(body.dados_json),
+                 body.tipo, body.modalidade, titulo, ano,
+                 psycopg2.extras.Json(dados_json),
                  body.outorgante_id, body.outorgante_nome,
                  body.outorgado_id,  body.outorgado_nome,
-                 drive["drive_file_id"], drive["drive_url"],
-                 drive["pasta_drive_id"], drive["imovel_folder_id"]))
+                 docx_drive_id, docx_drive_url,
+                 pasta_drive_id, imovel_folder_id))
             row = cur.fetchone()
             conn.commit()
-            return {"id": str(row["id"]),
-                    "created_at": row["created_at"].isoformat(),
-                    "drive_url": drive["drive_url"],
-                    "ano_safra": ano}
+            return {
+                "id": str(row["id"]),
+                "created_at": row["created_at"].isoformat(),
+                "tipo": body.tipo,
+                "titulo": titulo,
+                "descricao": dados_json.get("descricao"),
+                "valor": dados_json.get("valor"),
+                "data_inicio": dados_json.get("data_inicio"),
+                "data_fim": dados_json.get("data_fim"),
+                "status": dados_json.get("status"),
+                "drive_url": docx_drive_url,
+                "ano_safra": ano,
+            }
     except HTTPException:
         raise
     except Exception as e:
@@ -129,7 +186,12 @@ def listar_contratos(
             cur.execute(f"""
                 SELECT id, imovel_id, nome_imovel, matricula, tipo, modalidade,
                        titulo, ano_safra, outorgante_nome, outorgado_nome,
-                       docx_drive_url, created_at
+                       docx_drive_url, created_at,
+                       dados_json->>'descricao' AS descricao,
+                       (dados_json->>'valor')::numeric AS valor,
+                       dados_json->>'data_inicio' AS data_inicio,
+                       dados_json->>'data_fim' AS data_fim,
+                       COALESCE(dados_json->>'status', 'ativo') AS status
                 FROM contratos_rurais {where}
                 ORDER BY ano_safra DESC, created_at DESC
                 LIMIT %s OFFSET %s""", params)

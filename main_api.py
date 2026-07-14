@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
+from producao_insumos_animal_multiespecie import router as producao_insumos_router
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -122,6 +123,9 @@ async def emitir_nfe(produtor_id: int, request: NFeRequest):
 async def list_produtores():
     return [{"id": 1, "nome": "Joao Batista Neves"}]
 
+app.include_router(producao_insumos_router)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
