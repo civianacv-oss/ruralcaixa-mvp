@@ -1,17 +1,19 @@
+# deploy: 2026-07-14  ← VERSÃO CORRIGIDA
 # =============================================================
 # RURALCAIXA — Módulo de Contratos Rurais
 # Arquivo: contratos_api.py
-# Stack: FastAPI + psycopg2 (mesmo padrão do main_api.py)
-# =============================================================
-# Como integrar ao main_api.py:
-#   1. Copie este arquivo para C:\ruralcaixa\contratos_api.py
-#   2. Adicione no main_api.py:
-#        from contratos_api import router as contratos_router
-#        app.include_router(contratos_router)
+# Stack: FastAPI + psycopg2
+#
+# CORREÇÕES APLICADAS:
+#   1. percentual_outorgante/outorgado agora são Optional[float]
+#      — condomínio e comodato não exigem esses campos
+#   2. Validator aceita None para tipos sem divisão percentual
+#   3. Tolerância de ±0.01 na soma dos percentuais (evita erro de float)
+#   4. Condomínio usa área em hectares — percentual calculado pelo sistema
 # =============================================================
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
 from typing import Optional
 from datetime import datetime, timedelta
 import psycopg2
@@ -19,15 +21,22 @@ import psycopg2.extras
 import random
 import hashlib
 import json
+import os
 
 router = APIRouter(prefix="/contratos", tags=["Contratos Rurais"])
 
+# Tipos que NÃO usam divisão percentual outorgante/outorgado
+TIPOS_SEM_PERCENTUAL = {"condominio", "comodato"}
+
 def get_db():
     return psycopg2.connect(
-        "postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway",
+        os.getenv("DATABASE_URL")
+        or "postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway",
         cursor_factory=psycopg2.extras.RealDictCursor
     )
 
+# Schema real confirmado em produção (auditoria_contratos): colunas
+# contrato_id, assinatura_id, evento, descricao, ip, metadata, criado_em.
 def log_auditoria(cur, contrato_id, evento, descricao="", ip=None, metadata=None):
     cur.execute(
         """INSERT INTO auditoria_contratos (contrato_id, evento, descricao, ip, metadata)
@@ -53,33 +62,99 @@ class ParceiroExterno(BaseModel):
     telefone: Optional[str] = None
     email: Optional[str] = None
 
+
+# Mapeamento de nomes em PT-BR para os valores internos aceitos pelo banco
+_TIPO_MAP = {
+    "agricola": "agricola",
+    "pecuaria": "pecuaria",
+    "agroindustrial": "agroindustrial",
+    "extrativa": "extrativa",
+    "condominio": "condominio",
+    "arrendamento": "arrendamento",
+    "comodato": "comodato",
+    "compra_venda": "compra_venda",
+    "parceria": "pecuaria",
+    "parceria rural": "pecuaria",
+    "arrendamento rural": "arrendamento",
+    "comodato rural": "comodato",
+    "condomínio rural": "condominio",
+    "condominio rural": "condominio",
+    "integração agroindustrial": "agroindustrial",
+    "integracao agroindustrial": "agroindustrial",
+    "integracao_agroindustrial": "agroindustrial",
+}
+
 class ContratoCreate(BaseModel):
-    fazenda_id: int
-    tipo: str                          # agricola | pecuaria | agroindustrial | extrativa
+    model_config = ConfigDict(populate_by_name=True)
+
+    # aceita tanto fazenda_id (nome interno) quanto imovel_id (nome que o
+    # frontend Next.js envia)
+    fazenda_id: int = Field(..., alias="fazenda_id")
+    imovel_id: Optional[int] = Field(None, alias="imovel_id")
+
+    tipo: str
     outorgante_socio_id: Optional[int] = None
     outorgante_externo: Optional[ParceiroExterno] = None
     outorgado_socio_id: Optional[int] = None
     outorgado_externo: Optional[ParceiroExterno] = None
     data_inicio: str                   # YYYY-MM-DD
     data_fim: str
-    percentual_outorgante: float
-    percentual_outorgado: float
+    # ✅ CORREÇÃO 1: Optional — condomínio e comodato não usam esses campos
+    percentual_outorgante: Optional[float] = None
+    percentual_outorgado: Optional[float] = None
     frequencia_pagamento: str = "safra"
     area_parceria_hectares: Optional[float] = None
     clausulas_adicionais: Optional[dict] = {}
 
+    @model_validator(mode="before")
+    @classmethod
+    def resolver_fazenda_id(cls, values):
+        """Se o frontend enviar imovel_id mas não fazenda_id, usa imovel_id."""
+        if isinstance(values, dict):
+            if not values.get("fazenda_id") and values.get("imovel_id"):
+                values["fazenda_id"] = values["imovel_id"]
+        return values
+
     @validator("tipo")
     def tipo_valido(cls, v):
-        validos = ["agricola", "pecuaria", "agroindustrial", "extrativa"]
-        if v not in validos:
-            raise ValueError(f"tipo deve ser um de: {validos}")
-        return v
+        normalizado = v.lower().strip()
+        mapeado = _TIPO_MAP.get(normalizado)
+        if not mapeado:
+            validos = sorted(set(_TIPO_MAP.values()))
+            raise ValueError(
+                f"tipo inválido: '{v}'. Valores aceitos: {validos}. "
+                f"Aliases PT-BR aceitos: parceria, arrendamento rural, "
+                f"comodato rural, condomínio rural, integração agroindustrial."
+            )
+        return mapeado
 
-    @validator("percentual_outorgado")
-    def percentuais_somam_100(cls, v, values):
-        ote = values.get("percentual_outorgante", 0)
-        if round(ote + v, 2) != 100.0:
-            raise ValueError("percentual_outorgante + percentual_outorgado deve ser 100")
+    # ✅ CORREÇÃO 2: Validator aceita None para condomínio e comodato
+    @validator("percentual_outorgado", pre=True, always=True)
+    def validar_percentuais(cls, v, values):
+        tipo = values.get("tipo", "")
+
+        # Condomínio e Comodato não usam percentual outorgante/outorgado
+        if tipo in TIPOS_SEM_PERCENTUAL:
+            return v  # aceita None sem validação
+
+        # Para os demais tipos, os percentuais são obrigatórios
+        if v is None:
+            raise ValueError(
+                f"percentual_outorgado é obrigatório para contratos do tipo '{tipo}'."
+            )
+        ote = values.get("percentual_outorgante")
+        if ote is None:
+            raise ValueError(
+                f"percentual_outorgante é obrigatório para contratos do tipo '{tipo}'."
+            )
+
+        # ✅ CORREÇÃO 3: Tolerância de ±0.01 para evitar erro de ponto flutuante
+        soma = float(ote) + float(v)
+        if abs(soma - 100.0) > 0.01:
+            raise ValueError(
+                f"percentual_outorgante ({ote}) + percentual_outorgado ({v}) = {soma:.2f}. "
+                f"A soma deve ser 100%."
+            )
         return v
 
 class AssinarRequest(BaseModel):
@@ -90,8 +165,9 @@ class AssinarRequest(BaseModel):
 
 # -------------------------------------------------------------
 # GET /contratos
-# Lista contratos com filtros opcionais
 # -------------------------------------------------------------
+_STATIC_PATHS = {"acerto", "novo", "resumo", "relatorio"}
+
 @router.get("/")
 def listar_contratos(
     fazenda_id: Optional[int] = None,
@@ -130,10 +206,11 @@ def listar_contratos(
 
 # -------------------------------------------------------------
 # GET /contratos/{id}
-# Detalhe + assinaturas
 # -------------------------------------------------------------
 @router.get("/{contrato_id}")
 def detalhe_contrato(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -166,7 +243,6 @@ def detalhe_contrato(contrato_id: str):
 
 # -------------------------------------------------------------
 # POST /contratos
-# Cria novo contrato (status: rascunho)
 # -------------------------------------------------------------
 @router.post("/", status_code=201)
 def criar_contrato(body: ContratoCreate, request: Request):
@@ -242,17 +318,26 @@ def criar_contrato(body: ContratoCreate, request: Request):
         raise
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        err_str = str(e)
+        # FK inválida (fazenda_id inexistente) -> 422 com mensagem clara
+        if "foreign key" in err_str.lower() or "violates" in err_str.lower():
+            raise HTTPException(
+                status_code=422,
+                detail=f"fazenda_id inválido ou não encontrado: {body.fazenda_id}. "
+                       f"Verifique se a propriedade existe antes de criar o contrato."
+            )
+        raise HTTPException(status_code=500, detail=err_str)
     finally:
         conn.close()
 
 
 # -------------------------------------------------------------
 # POST /contratos/{id}/enviar
-# Envia para assinatura — gera OTP e notifica via WhatsApp
 # -------------------------------------------------------------
 @router.post("/{contrato_id}/enviar")
 def enviar_para_assinatura(contrato_id: str, request: Request):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -265,13 +350,11 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
             raise HTTPException(status_code=400,
                 detail=f"Contrato já está em status '{contrato['status']}'")
 
-        # Mudar status
         cur.execute("""
             UPDATE contratos SET status = 'aguardando_assinaturas', atualizado_em = NOW()
             WHERE id = %s
         """, (contrato_id,))
 
-        # Resolver partes
         partes = _resolver_partes(cur, contrato)
         partes_notificadas = []
 
@@ -298,7 +381,14 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
             ))
             assinatura_id = cur.fetchone()["id"]
 
-            # Enviar WhatsApp se tiver telefone
+            def _mascarar_telefone(tel: str) -> str:
+                if not tel:
+                    return "número cadastrado"
+                t = tel.replace(" ", "").replace("-", "")
+                if len(t) >= 6:
+                    return t[:4] + "•" * (len(t) - 6) + t[-2:]
+                return "•" * len(t)
+
             if parte.get("telefone"):
                 _enviar_whatsapp_otp(parte["telefone"], parte["nome"], otp, link)
 
@@ -310,7 +400,8 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
                 "papel": parte["papel"],
                 "nome": parte["nome"],
                 "assinatura_id": str(assinatura_id),
-                "whatsapp_enviado": bool(parte.get("telefone"))
+                "whatsapp_enviado": bool(parte.get("telefone")),
+                "telefone_mascarado": _mascarar_telefone(parte.get("telefone", ""))
             })
 
         conn.commit()
@@ -327,10 +418,11 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
 
 # -------------------------------------------------------------
 # POST /contratos/{id}/assinar
-# Valida OTP e registra assinatura
 # -------------------------------------------------------------
 @router.post("/{contrato_id}/assinar")
 def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -345,28 +437,23 @@ def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
             raise HTTPException(status_code=404,
                 detail="Assinatura não encontrada ou já concluída")
 
-        # OTP expirado
         if datetime.now() > assinatura["token_expira_em"].replace(tzinfo=None):
             log_auditoria(cur, contrato_id, "otp_expirado", ip=str(request.client.host))
             conn.commit()
             raise HTTPException(status_code=400, detail="OTP expirado. Solicite novo envio.")
 
-        # Muitas tentativas
         if assinatura["token_tentativas"] >= 5:
             raise HTTPException(status_code=429, detail="Muitas tentativas. Solicite novo OTP.")
 
-        # Validar OTP
         otp_valido = hash_otp(body.otp) == assinatura["token_otp"]
 
         if not otp_valido:
-            cur.execute("""
-                UPDATE assinaturas SET token_tentativas = token_tentativas + 1 WHERE id = %s
-            """, (assinatura["id"],))
+            cur.execute("UPDATE assinaturas SET token_tentativas = token_tentativas + 1 WHERE id = %s",
+                        (assinatura["id"],))
             log_auditoria(cur, contrato_id, "otp_falhou", ip=str(request.client.host))
             conn.commit()
             raise HTTPException(status_code=400, detail="OTP inválido")
 
-        # Registrar assinatura
         cur.execute("""
             UPDATE assinaturas SET
                 status = 'assinado',
@@ -389,7 +476,6 @@ def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
                      str(request.client.host),
                      {"geolocalizacao": body.geolocalizacao})
 
-        # Verificar se todos assinaram → ativar contrato
         cur.execute("""
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN status = 'assinado' THEN 1 ELSE 0 END) AS assinadas
@@ -421,6 +507,8 @@ def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
 # -------------------------------------------------------------
 @router.get("/{contrato_id}/auditoria")
 def auditoria_contrato(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -439,10 +527,12 @@ def auditoria_contrato(contrato_id: str):
 
 
 # -------------------------------------------------------------
-# DELETE /contratos/{id}  — só rascunho
+# DELETE /contratos/{id}
 # -------------------------------------------------------------
 @router.delete("/{contrato_id}")
 def deletar_contrato(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -463,6 +553,13 @@ def deletar_contrato(contrato_id: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+# NOTA: os endpoints de condomínio (adicionar/listar condôminos) foram
+# removidos daqui em 2026-07-14 — essa funcionalidade foi migrada para o
+# módulo dedicado app/routers/condominio.py (prefixo /condominio), que usa
+# sua própria tabela (condominio_condominos) e fluxo de assinatura por
+# condômino via OTP. Ver commits 1f081c4/6d41511/7da8601.
 
 
 # -------------------------------------------------------------
@@ -506,18 +603,12 @@ def _resolver_partes(cur, contrato):
 
 
 def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
-    """
-    Envia OTP via WhatsApp Business API.
-    Usa as mesmas credenciais do .env já configurado no projeto.
-    """
     import os, requests
-
-    phone_id = os.getenv("WHATSAPP_PHONE_ID", "1064255903445839")
+    phone_id = os.getenv("WHATSAPP_PHONE_ID", "1154361321082939")
     token    = os.getenv("WHATSAPP_TOKEN", "")
     if not token:
         print(f"[WARN] WHATSAPP_TOKEN não configurado. OTP para {nome}: {otp}")
         return None
-
     url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
     payload = {
         "messaging_product": "whatsapp",
@@ -526,21 +617,18 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
         "template": {
             "name": "assinatura_contrato",
             "language": {"code": "pt_BR"},
-            "components": [{
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": nome},
-                    {"type": "text", "text": otp},
-                    {"type": "text", "text": link},
-                ]
-            }]
+            "components": [
+                {"type": "body", "parameters": [{"type": "text", "text": otp}]},
+                {"type": "button", "sub_type": "url", "index": "0",
+                 "parameters": [{"type": "text", "text": otp}]}
+            ]
         }
     }
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
         r = requests.post(url, json=payload, headers=headers, timeout=10)
-        data = r.json()
-        return data.get("messages", [{}])[0].get("id")
+        print(f"[WhatsApp] Status: {r.status_code} Resposta: {r.text}")
+        return r.json().get("messages", [{}])[0].get("id")
     except Exception as e:
-        print(f"[WARN] Erro ao enviar WhatsApp para {telefone}: {e}")
+        print(f"[WARN] Erro WhatsApp para {telefone}: {e}")
         return None

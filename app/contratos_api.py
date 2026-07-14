@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # deploy: 2026-07-14  ← VERSÃO CORRIGIDA
 # =============================================================
 # RURALCAIXA — Módulo de Contratos Rurais
@@ -12,58 +11,49 @@
 #   3. Tolerância de ±0.01 na soma dos percentuais (evita erro de float)
 #   4. Condomínio usa área em hectares — percentual calculado pelo sistema
 # =============================================================
-=======
-"""
-contratos_api.py — RuralCaixa MVP (VERSÃO CORRIGIDA)
-=====================================================
-CORREÇÕES APLICADAS:
-  1. Erro 422 — causa raiz: o frontend enviava `imovel_id` mas o modelo
-     Pydantic exige `fazenda_id`. Adicionado alias `imovel_id` via
-     Field(alias=...) com model_config para aceitar ambos os nomes.
 
-  2. Erro 422 — causa raiz: percentuais não somando 100. Adicionado
-     tolerância de ±0.01 para evitar falhas por arredondamento de float
-     (ex.: 33.33 + 66.67 = 99.99999... em float).
-
-  3. Erro 422 — causa raiz: `tipo` enviado pelo frontend em português
-     (ex.: "parceria") mas o validator só aceitava inglês ("pecuaria").
-     Adicionado mapeamento PT-BR → valor interno.
-
-  4. Mensagem de erro 422 agora retorna detalhe legível indicando
-     exatamente qual campo falhou.
-
-  5. Erro 500 no POST — adicionado tratamento específico para
-     IntegrityError (FK inválida) com mensagem clara ao cliente.
-"""
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
-
-import json
-from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, validator, model_validator
-from pydantic import ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
+from typing import Optional
+from datetime import datetime, timedelta
+import psycopg2
+import psycopg2.extras
+import random
+import hashlib
+import json
+import os
 
-router = APIRouter(prefix="/contratos", tags=["contratos"])
+router = APIRouter(prefix="/contratos", tags=["Contratos Rurais"])
 
-<<<<<<< HEAD
 # Tipos que NÃO usam divisão percentual outorgante/outorgado
 TIPOS_SEM_PERCENTUAL = {"condominio", "comodato"}
 
-=======
-# ── Helpers de DB (mantidos do original) ─────────────────────────────────────
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
 def get_db():
-    from app.db import get_connection
-    return get_connection()
+    return psycopg2.connect(
+        os.getenv("DATABASE_URL")
+        or "postgresql://postgres:tkyfcRsbrZuuHoThKgjuTiZWYVXOTdOX@gondola.proxy.rlwy.net:53900/railway",
+        cursor_factory=psycopg2.extras.RealDictCursor
+    )
 
-def log_auditoria(cur, contrato_id, acao, descricao, ip):
-    cur.execute("""
-        INSERT INTO auditoria_contratos (contrato_id, acao, descricao, ip)
-        VALUES (%s, %s, %s, %s)
-    """, (contrato_id, acao, descricao, ip))
+# Schema real confirmado em produção (auditoria_contratos): colunas
+# contrato_id, assinatura_id, evento, descricao, ip, metadata, criado_em.
+def log_auditoria(cur, contrato_id, evento, descricao="", ip=None, metadata=None):
+    cur.execute(
+        """INSERT INTO auditoria_contratos (contrato_id, evento, descricao, ip, metadata)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (contrato_id, evento, descricao, ip, json.dumps(metadata or {}))
+    )
+
+def gerar_otp():
+    return str(random.randint(100000, 999999))
+
+def hash_otp(otp: str) -> str:
+    return hashlib.sha256(otp.encode()).hexdigest()
 
 
-# ── Modelos ───────────────────────────────────────────────────────────────────
+# -------------------------------------------------------------
+# MODELS
+# -------------------------------------------------------------
 
 class ParceiroExterno(BaseModel):
     nome: str
@@ -75,7 +65,6 @@ class ParceiroExterno(BaseModel):
 
 # Mapeamento de nomes em PT-BR para os valores internos aceitos pelo banco
 _TIPO_MAP = {
-    # Valores já aceitos (mantidos)
     "agricola": "agricola",
     "pecuaria": "pecuaria",
     "agroindustrial": "agroindustrial",
@@ -84,7 +73,6 @@ _TIPO_MAP = {
     "arrendamento": "arrendamento",
     "comodato": "comodato",
     "compra_venda": "compra_venda",
-    # Aliases em PT-BR que o frontend pode enviar
     "parceria": "pecuaria",
     "parceria rural": "pecuaria",
     "arrendamento rural": "arrendamento",
@@ -93,21 +81,17 @@ _TIPO_MAP = {
     "condominio rural": "condominio",
     "integração agroindustrial": "agroindustrial",
     "integracao agroindustrial": "agroindustrial",
+    "integracao_agroindustrial": "agroindustrial",
 }
 
-
 class ContratoCreate(BaseModel):
-<<<<<<< HEAD
-    fazenda_id: int
-=======
-    # CORREÇÃO 1: aceita tanto `fazenda_id` (nome interno) quanto `imovel_id`
-    # (nome que o frontend Next.js envia). O alias permite ambos.
     model_config = ConfigDict(populate_by_name=True)
 
+    # aceita tanto fazenda_id (nome interno) quanto imovel_id (nome que o
+    # frontend Next.js envia)
     fazenda_id: int = Field(..., alias="fazenda_id")
     imovel_id: Optional[int] = Field(None, alias="imovel_id")
 
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
     tipo: str
     outorgante_socio_id: Optional[int] = None
     outorgante_externo: Optional[ParceiroExterno] = None
@@ -133,15 +117,16 @@ class ContratoCreate(BaseModel):
 
     @validator("tipo")
     def tipo_valido(cls, v):
-<<<<<<< HEAD
-        validos = [
-            "agricola", "pecuaria", "agroindustrial", "extrativa",
-            "condominio", "arrendamento", "comodato", "compra_venda",
-            "parceria", "integracao_agroindustrial"
-        ]
-        if v not in validos:
-            raise ValueError(f"tipo deve ser um de: {validos}")
-        return v
+        normalizado = v.lower().strip()
+        mapeado = _TIPO_MAP.get(normalizado)
+        if not mapeado:
+            validos = sorted(set(_TIPO_MAP.values()))
+            raise ValueError(
+                f"tipo inválido: '{v}'. Valores aceitos: {validos}. "
+                f"Aliases PT-BR aceitos: parceria, arrendamento rural, "
+                f"comodato rural, condomínio rural, integração agroindustrial."
+            )
+        return mapeado
 
     # ✅ CORREÇÃO 2: Validator aceita None para condomínio e comodato
     @validator("percentual_outorgado", pre=True, always=True)
@@ -169,96 +154,35 @@ class ContratoCreate(BaseModel):
             raise ValueError(
                 f"percentual_outorgante ({ote}) + percentual_outorgado ({v}) = {soma:.2f}. "
                 f"A soma deve ser 100%."
-=======
-        # CORREÇÃO 3: normaliza para minúsculas e mapeia aliases PT-BR
-        normalizado = v.lower().strip()
-        mapeado = _TIPO_MAP.get(normalizado)
-        if not mapeado:
-            validos = sorted(set(_TIPO_MAP.values()))
-            raise ValueError(
-                f"tipo inválido: '{v}'. "
-                f"Valores aceitos: {validos}. "
-                f"Aliases PT-BR aceitos: parceria, arrendamento rural, comodato rural, "
-                f"condomínio rural, integração agroindustrial."
-            )
-        return mapeado
-
-    @validator("percentual_outorgado")
-    def percentuais_somam_100(cls, v, values):
-        # CORREÇÃO 2: tolerância de ±0.01 para evitar falhas por arredondamento
-        ote = values.get("percentual_outorgante", 0)
-        soma = round(ote + v, 2)
-        if abs(soma - 100.0) > 0.01:
-            raise ValueError(
-                f"percentual_outorgante ({ote}) + percentual_outorgado ({v}) = {soma}. "
-                f"A soma deve ser exatamente 100. "
-                f"Exemplo válido: 60 + 40 = 100 ou 33.33 + 66.67 = 100."
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
             )
         return v
-
-    @validator("data_inicio", "data_fim")
-    def data_formato_valido(cls, v):
-        """Valida e normaliza datas — aceita YYYY-MM-DD e DD/MM/YYYY."""
-        import re
-        if re.match(r"^\d{4}-\d{2}-\d{2}$", v):
-            return v
-        match = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", v)
-        if match:
-            d, m, y = match.groups()
-            return f"{y}-{m.zfill(2)}-{d.zfill(2)}"
-        raise ValueError(
-            f"Data inválida: '{v}'. Use o formato YYYY-MM-DD (ex.: 2025-01-15) "
-            f"ou DD/MM/YYYY (ex.: 15/01/2025)."
-        )
-
 
 class AssinarRequest(BaseModel):
     papel: str      # outorgante | outorgado
     otp: str
     geolocalizacao: Optional[dict] = None
 
-# ✅ CORREÇÃO 4: Condomínio usa área em hectares
-class CondomininoAdd(BaseModel):
-    produtor_id: Optional[int] = None
-    parceiro_externo: Optional[ParceiroExterno] = None
-    area_hectares: float          # área do condômino em hectares
-    data_entrada: Optional[str] = None
 
-    @validator("area_hectares")
-    def area_positiva(cls, v):
-        if v <= 0:
-            raise ValueError("area_hectares deve ser maior que zero")
-        return v
-
-
-<<<<<<< HEAD
 # -------------------------------------------------------------
 # GET /contratos
 # -------------------------------------------------------------
 _STATIC_PATHS = {"acerto", "novo", "resumo", "relatorio"}
 
-=======
-# ── GET /contratos ────────────────────────────────────────────────────────────
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
 @router.get("/")
 def listar_contratos(
     fazenda_id: Optional[int] = None,
-    imovel_id: Optional[int] = None,   # alias aceito pelo frontend
     status: Optional[str] = None,
     tipo: Optional[str] = None
 ):
-    # Aceita imovel_id como alias de fazenda_id
-    fid = fazenda_id or imovel_id
     conn = get_db()
     try:
         cur = conn.cursor()
         wheres = []
         params = []
 
-        if fid:
+        if fazenda_id:
             wheres.append("fazenda_id = %s")
-            params.append(fid)
+            params.append(fazenda_id)
         if status:
             wheres.append("status = %s")
             params.append(status)
@@ -280,15 +204,9 @@ def listar_contratos(
         conn.close()
 
 
-<<<<<<< HEAD
 # -------------------------------------------------------------
 # GET /contratos/{id}
 # -------------------------------------------------------------
-=======
-# ── GET /contratos/{id} ───────────────────────────────────────────────────────
-_STATIC_PATHS = {"acerto", "novo", "resumo", "relatorio"}
-
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
 @router.get("/{contrato_id}")
 def detalhe_contrato(contrato_id: str):
     if contrato_id in _STATIC_PATHS:
@@ -307,7 +225,7 @@ def detalhe_contrato(contrato_id: str):
                    s.nome  AS socio_nome,
                    pe.nome AS parceiro_nome
             FROM assinaturas a
-            LEFT JOIN produtores s          ON s.id  = a.socio_id
+            LEFT JOIN produtores s              ON s.id  = a.socio_id
             LEFT JOIN parceiros_externos pe ON pe.id = a.parceiro_externo_id
             WHERE a.contrato_id = %s
             ORDER BY a.criado_em
@@ -323,13 +241,9 @@ def detalhe_contrato(contrato_id: str):
         conn.close()
 
 
-<<<<<<< HEAD
 # -------------------------------------------------------------
 # POST /contratos
 # -------------------------------------------------------------
-=======
-# ── POST /contratos ───────────────────────────────────────────────────────────
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
 @router.post("/", status_code=201)
 def criar_contrato(body: ContratoCreate, request: Request):
     conn = get_db()
@@ -400,13 +314,12 @@ def criar_contrato(body: ContratoCreate, request: Request):
 
         conn.commit()
         return {"data": contrato}
-
     except HTTPException:
         raise
     except Exception as e:
         conn.rollback()
         err_str = str(e)
-        # CORREÇÃO 5: FK inválida → 422 com mensagem clara
+        # FK inválida (fazenda_id inexistente) -> 422 com mensagem clara
         if "foreign key" in err_str.lower() or "violates" in err_str.lower():
             raise HTTPException(
                 status_code=422,
@@ -416,7 +329,6 @@ def criar_contrato(body: ContratoCreate, request: Request):
         raise HTTPException(status_code=500, detail=err_str)
     finally:
         conn.close()
-<<<<<<< HEAD
 
 
 # -------------------------------------------------------------
@@ -643,137 +555,11 @@ def deletar_contrato(contrato_id: str):
         conn.close()
 
 
-# -------------------------------------------------------------
-# POST /contratos/{id}/condominos
-# ✅ CORREÇÃO 4: usa área em hectares — percentual calculado pelo sistema
-# -------------------------------------------------------------
-@router.post("/{contrato_id}/condominos", status_code=201)
-def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request):
-    if contrato_id in _STATIC_PATHS:
-        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
-    conn = get_db()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT tipo, status, area_parceria_hectares FROM contratos WHERE id = %s",
-                    (contrato_id,))
-        c = cur.fetchone()
-        if not c:
-            raise HTTPException(404, "Contrato não encontrado")
-        if c["tipo"] != "condominio":
-            raise HTTPException(400, "Este contrato não é do tipo condomínio")
-
-        # Calcular percentual com base na área total do imóvel
-        area_total = float(c["area_parceria_hectares"] or 0)
-        if area_total <= 0:
-            raise HTTPException(400,
-                "O contrato precisa ter area_parceria_hectares definida para calcular percentuais")
-
-        # Verificar soma das áreas já alocadas
-        cur.execute("""
-            SELECT COALESCE(SUM(area_hectares), 0) AS total_alocado
-            FROM contrato_condominos
-            WHERE contrato_id = %s AND ativo = TRUE
-        """, (contrato_id,))
-        total_alocado = float(cur.fetchone()["total_alocado"])
-
-        if total_alocado + body.area_hectares > area_total + 0.01:
-            disponivel = area_total - total_alocado
-            raise HTTPException(400,
-                f"Área insuficiente. Disponível: {disponivel:.2f} ha. "
-                f"Solicitado: {body.area_hectares:.2f} ha.")
-
-        percentual_calculado = round((body.area_hectares / area_total) * 100, 4)
-
-        parceiro_id = None
-        if body.parceiro_externo:
-            cur.execute("""
-                INSERT INTO parceiros_externos (nome, tipo_documento, documento, telefone, email)
-                VALUES (%s,%s,%s,%s,%s)
-                ON CONFLICT (tipo_documento, documento) DO UPDATE SET nome = EXCLUDED.nome
-                RETURNING id
-            """, (body.parceiro_externo.nome, body.parceiro_externo.tipo_documento,
-                  body.parceiro_externo.documento, body.parceiro_externo.telefone,
-                  body.parceiro_externo.email))
-            parceiro_id = cur.fetchone()["id"]
-
-        cur.execute("""
-            INSERT INTO contrato_condominos
-                (contrato_id, produtor_id, parceiro_id, area_hectares,
-                 percentual_cota, data_entrada, ativo)
-            VALUES (%s,%s,%s,%s,%s,%s,TRUE)
-            RETURNING id, percentual_cota
-        """, (contrato_id, body.produtor_id, parceiro_id,
-              body.area_hectares, percentual_calculado,
-              body.data_entrada or None))
-        row = cur.fetchone()
-
-        log_auditoria(cur, contrato_id, "condomino_adicionado",
-                      f"Condômino adicionado: {body.area_hectares} ha "
-                      f"({percentual_calculado}%)",
-                      str(request.client.host))
-        conn.commit()
-        return {
-            "id": str(row["id"]),
-            "area_hectares": body.area_hectares,
-            "percentual_calculado": percentual_calculado,
-            "area_total_imovel": area_total,
-            "area_total_alocada": round(total_alocado + body.area_hectares, 2),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(500, str(e))
-    finally:
-        conn.close()
-
-
-# -------------------------------------------------------------
-# GET /contratos/{id}/condominos
-# -------------------------------------------------------------
-@router.get("/{contrato_id}/condominos")
-def listar_condominos(contrato_id: str):
-    if contrato_id in _STATIC_PATHS:
-        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
-    conn = get_db()
-    try:
-        cur = conn.cursor()
-
-        # Buscar área total do contrato
-        cur.execute("SELECT area_parceria_hectares FROM contratos WHERE id = %s", (contrato_id,))
-        c = cur.fetchone()
-        area_total = float(c["area_parceria_hectares"] or 0) if c else 0
-
-        cur.execute("""
-            SELECT cc.id,
-                   cc.area_hectares,
-                   cc.percentual_cota,
-                   cc.data_entrada,
-                   cc.ativo,
-                   p.nome  AS produtor_nome,  p.cpf  AS produtor_cpf,
-                   pe.nome AS parceiro_nome, pe.documento AS parceiro_doc
-            FROM contrato_condominos cc
-            LEFT JOIN produtores p           ON p.id  = cc.produtor_id
-            LEFT JOIN parceiros_externos pe  ON pe.id = cc.parceiro_id
-            WHERE cc.contrato_id = %s AND cc.ativo = TRUE
-            ORDER BY cc.criado_em
-        """, (contrato_id,))
-        rows = [dict(r) for r in cur.fetchall()]
-
-        total_area = sum(float(r["area_hectares"] or 0) for r in rows)
-        total_perc = sum(float(r["percentual_cota"] or 0) for r in rows)
-
-        return {
-            "condominos": rows,
-            "area_total_imovel": area_total,
-            "area_total_alocada": round(total_area, 2),
-            "area_disponivel": round(area_total - total_area, 2),
-            "total_percentual": round(total_perc, 2),
-        }
-    except Exception as e:
-        raise HTTPException(500, str(e))
-    finally:
-        conn.close()
+# NOTA: os endpoints de condomínio (adicionar/listar condôminos) foram
+# removidos daqui em 2026-07-14 — essa funcionalidade foi migrada para o
+# módulo dedicado app/routers/condominio.py (prefixo /condominio), que usa
+# sua própria tabela (condominio_condominos) e fluxo de assinatura por
+# condômino via OTP. Ver commits 1f081c4/6d41511/7da8601.
 
 
 # -------------------------------------------------------------
@@ -846,5 +632,3 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
     except Exception as e:
         print(f"[WARN] Erro WhatsApp para {telefone}: {e}")
         return None
-=======
->>>>>>> 7da8601577607ff88bf5afa5abea74f2f4db5002
