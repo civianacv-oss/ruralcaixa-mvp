@@ -1395,7 +1395,8 @@ def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: fl
             subconta_id = sub["id"] if sub else None
             cur.execute("""
                 INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
-                VALUES (%s, %s, %s, %s, %s) RETURNING id
+                VALUES (%s, %s, %s, %s, %s) 
+		RETURNING *		
             """, (produtor_id, subconta_id, float(valor), data, origem))
             row = cur.fetchone()
             lcdpr_conn.commit()
