@@ -350,13 +350,18 @@ def relink_genealogia(imovel_id: int):
 
 class AnimalPatchIn(BaseModel):
     """Edição parcial — só os campos enviados são atualizados. Espelha o
-    contrato real da mutation tRPC `updateAnimal` (server/routers/railway.ts),
-    que manda PATCH com brinco/nome/raca/sexo/observacoes, todos opcionais."""
+    contrato real da mutation tRPC `updateAnimal` (server/routers/railway.ts):
+    brinco/nome/raca/sexo/observacoes/data_nascimento/peso_nascimento/
+    categoria/aptidao_manejo, todos opcionais."""
     brinco: Optional[str] = None
     nome: Optional[str] = None
     raca: Optional[str] = None
     sexo: Optional[str] = None
     observacoes: Optional[str] = None
+    data_nascimento: Optional[date] = None
+    peso_nascimento: Optional[float] = None
+    categoria: Optional[str] = None
+    aptidao_manejo: Optional[str] = None
 
 @router.patch("/animais/{animal_id}")
 def editar_animal(animal_id: int, data: AnimalPatchIn):
@@ -376,6 +381,14 @@ def editar_animal(animal_id: int, data: AnimalPatchIn):
             campos.append("sexo = %s"); valores.append(data.sexo)
         if data.observacoes is not None:
             campos.append("observacoes = %s"); valores.append(data.observacoes)
+        if data.data_nascimento is not None:
+            campos.append("data_nascimento = %s"); valores.append(data.data_nascimento)
+        if data.peso_nascimento is not None:
+            campos.append("peso_nascimento = %s"); valores.append(data.peso_nascimento)
+        if data.categoria is not None:
+            campos.append("categoria = %s"); valores.append(data.categoria)
+        if data.aptidao_manejo is not None:
+            campos.append("aptidao_manejo = %s"); valores.append(data.aptidao_manejo)
         if data.raca is not None:
             cur.execute(
                 "SELECT id FROM bovino_racas WHERE LOWER(nome) = LOWER(%s) LIMIT 1",
