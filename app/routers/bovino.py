@@ -448,13 +448,15 @@ def registrar_pesagem(data: PesagemIn):
             INSERT INTO bovino_pesagens (animal_id, data, peso_kg, motivo, observacoes)
             VALUES (%s,%s,%s,%s,%s) RETURNING *
         """, (data.animal_id, data.data, data.peso_kg, data.motivo, data.observacoes))
+        row = cur.fetchone()
         cur.execute("UPDATE bovino_animais SET updated_at=NOW() WHERE id=%s", (data.animal_id,))
         conn.commit()
-        return dict(cur.fetchone()) if cur.rowcount else {}
+        return dict(row) if row else {}
     finally:
         conn.close()
 
 @router.get("/pesagens/{animal_id}")
+
 def historico_pesagens(animal_id: int):
     conn = get_db()
     try:
@@ -536,10 +538,12 @@ def registrar_abate(data: AbateIn):
             "doacao": "descartado",
             "permuta": "descartado",
         }
+        row = cur.fetchone()
         novo_status = MAPA_STATUS_BAIXA.get(data.tipo, "descartado")
         cur.execute("UPDATE bovino_animais SET status=%s, updated_at=NOW() WHERE id=%s", (novo_status, data.animal_id))
         conn.commit()
-        return dict(cur.fetchone()) if cur.rowcount else {}
+        return dict(row) if row else {}
+
     finally:
         conn.close()
 
