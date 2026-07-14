@@ -1,14 +1,15 @@
-# deploy: 2026-05-23
+# deploy: 2026-07-14  ← VERSÃO CORRIGIDA
 # =============================================================
 # RURALCAIXA — Módulo de Contratos Rurais
 # Arquivo: contratos_api.py
-# Stack: FastAPI + psycopg2 (mesmo padrão do main_api.py)
-# =============================================================
-# Como integrar ao main_api.py:
-#   1. Copie este arquivo para C:\ruralcaixa\contratos_api.py
-#   2. Adicione no main_api.py:
-#        from contratos_api import router as contratos_router
-#        app.include_router(contratos_router)
+# Stack: FastAPI + psycopg2
+#
+# CORREÇÕES APLICADAS:
+#   1. percentual_outorgante/outorgado agora são Optional[float]
+#      — condomínio e comodato não exigem esses campos
+#   2. Validator aceita None para tipos sem divisão percentual
+#   3. Tolerância de ±0.01 na soma dos percentuais (evita erro de float)
+#   4. Condomínio usa área em hectares — percentual calculado pelo sistema
 # =============================================================
 
 from fastapi import APIRouter, HTTPException, Request
@@ -22,6 +23,9 @@ import hashlib
 import json
 
 router = APIRouter(prefix="/contratos", tags=["Contratos Rurais"])
+
+# Tipos que NÃO usam divisão percentual outorgante/outorgado
+TIPOS_SEM_PERCENTUAL = {"condominio", "comodato"}
 
 def get_db():
     return psycopg2.connect(
@@ -56,31 +60,58 @@ class ParceiroExterno(BaseModel):
 
 class ContratoCreate(BaseModel):
     fazenda_id: int
-    tipo: str                          # agricola | pecuaria | agroindustrial | extrativa
+    tipo: str
     outorgante_socio_id: Optional[int] = None
     outorgante_externo: Optional[ParceiroExterno] = None
     outorgado_socio_id: Optional[int] = None
     outorgado_externo: Optional[ParceiroExterno] = None
     data_inicio: str                   # YYYY-MM-DD
     data_fim: str
-    percentual_outorgante: float
-    percentual_outorgado: float
+    # ✅ CORREÇÃO 1: Optional — condomínio e comodato não usam esses campos
+    percentual_outorgante: Optional[float] = None
+    percentual_outorgado: Optional[float] = None
     frequencia_pagamento: str = "safra"
     area_parceria_hectares: Optional[float] = None
     clausulas_adicionais: Optional[dict] = {}
 
     @validator("tipo")
     def tipo_valido(cls, v):
-        validos = ["agricola", "pecuaria", "agroindustrial", "extrativa"]
+        validos = [
+            "agricola", "pecuaria", "agroindustrial", "extrativa",
+            "condominio", "arrendamento", "comodato", "compra_venda",
+            "parceria", "integracao_agroindustrial"
+        ]
         if v not in validos:
             raise ValueError(f"tipo deve ser um de: {validos}")
         return v
 
-    @validator("percentual_outorgado")
-    def percentuais_somam_100(cls, v, values):
-        ote = values.get("percentual_outorgante", 0)
-        if round(ote + v, 2) != 100.0:
-            raise ValueError("percentual_outorgante + percentual_outorgado deve ser 100")
+    # ✅ CORREÇÃO 2: Validator aceita None para condomínio e comodato
+    @validator("percentual_outorgado", pre=True, always=True)
+    def validar_percentuais(cls, v, values):
+        tipo = values.get("tipo", "")
+
+        # Condomínio e Comodato não usam percentual outorgante/outorgado
+        if tipo in TIPOS_SEM_PERCENTUAL:
+            return v  # aceita None sem validação
+
+        # Para os demais tipos, os percentuais são obrigatórios
+        if v is None:
+            raise ValueError(
+                f"percentual_outorgado é obrigatório para contratos do tipo '{tipo}'."
+            )
+        ote = values.get("percentual_outorgante")
+        if ote is None:
+            raise ValueError(
+                f"percentual_outorgante é obrigatório para contratos do tipo '{tipo}'."
+            )
+
+        # ✅ CORREÇÃO 3: Tolerância de ±0.01 para evitar erro de ponto flutuante
+        soma = float(ote) + float(v)
+        if abs(soma - 100.0) > 0.01:
+            raise ValueError(
+                f"percentual_outorgante ({ote}) + percentual_outorgado ({v}) = {soma:.2f}. "
+                f"A soma deve ser 100%."
+            )
         return v
 
 class AssinarRequest(BaseModel):
@@ -88,11 +119,25 @@ class AssinarRequest(BaseModel):
     otp: str
     geolocalizacao: Optional[dict] = None
 
+# ✅ CORREÇÃO 4: Condomínio usa área em hectares
+class CondomininoAdd(BaseModel):
+    produtor_id: Optional[int] = None
+    parceiro_externo: Optional[ParceiroExterno] = None
+    area_hectares: float          # área do condômino em hectares
+    data_entrada: Optional[str] = None
+
+    @validator("area_hectares")
+    def area_positiva(cls, v):
+        if v <= 0:
+            raise ValueError("area_hectares deve ser maior que zero")
+        return v
+
 
 # -------------------------------------------------------------
 # GET /contratos
-# Lista contratos com filtros opcionais
 # -------------------------------------------------------------
+_STATIC_PATHS = {"acerto", "novo", "resumo", "relatorio"}
+
 @router.get("/")
 def listar_contratos(
     fazenda_id: Optional[int] = None,
@@ -131,15 +176,9 @@ def listar_contratos(
 
 # -------------------------------------------------------------
 # GET /contratos/{id}
-# Detalhe + assinaturas
 # -------------------------------------------------------------
-# Rotas estáticas que devem ser tratadas ANTES do parâmetro dinâmico {contrato_id}
-# (ex: /contratos/acerto — rota do frontend Next.js)
-_STATIC_PATHS = {"acerto", "novo", "resumo", "relatorio"}
-
 @router.get("/{contrato_id}")
 def detalhe_contrato(contrato_id: str):
-    # Evitar que caminhos estáticos do frontend sejam interpretados como UUID
     if contrato_id in _STATIC_PATHS:
         raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
     conn = get_db()
@@ -174,7 +213,6 @@ def detalhe_contrato(contrato_id: str):
 
 # -------------------------------------------------------------
 # POST /contratos
-# Cria novo contrato (status: rascunho)
 # -------------------------------------------------------------
 @router.post("/", status_code=201)
 def criar_contrato(body: ContratoCreate, request: Request):
@@ -257,7 +295,6 @@ def criar_contrato(body: ContratoCreate, request: Request):
 
 # -------------------------------------------------------------
 # POST /contratos/{id}/enviar
-# Envia para assinatura — gera OTP e notifica via WhatsApp
 # -------------------------------------------------------------
 @router.post("/{contrato_id}/enviar")
 def enviar_para_assinatura(contrato_id: str, request: Request):
@@ -275,13 +312,11 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
             raise HTTPException(status_code=400,
                 detail=f"Contrato já está em status '{contrato['status']}'")
 
-        # Mudar status
         cur.execute("""
             UPDATE contratos SET status = 'aguardando_assinaturas', atualizado_em = NOW()
             WHERE id = %s
         """, (contrato_id,))
 
-        # Resolver partes
         partes = _resolver_partes(cur, contrato)
         partes_notificadas = []
 
@@ -315,8 +350,7 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
                 if len(t) >= 6:
                     return t[:4] + "•" * (len(t) - 6) + t[-2:]
                 return "•" * len(t)
-                
-            # Enviar WhatsApp se tiver telefone
+
             if parte.get("telefone"):
                 _enviar_whatsapp_otp(parte["telefone"], parte["nome"], otp, link)
 
@@ -346,7 +380,6 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
 
 # -------------------------------------------------------------
 # POST /contratos/{id}/assinar
-# Valida OTP e registra assinatura
 # -------------------------------------------------------------
 @router.post("/{contrato_id}/assinar")
 def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
@@ -366,28 +399,23 @@ def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
             raise HTTPException(status_code=404,
                 detail="Assinatura não encontrada ou já concluída")
 
-        # OTP expirado
         if datetime.now() > assinatura["token_expira_em"].replace(tzinfo=None):
             log_auditoria(cur, contrato_id, "otp_expirado", ip=str(request.client.host))
             conn.commit()
             raise HTTPException(status_code=400, detail="OTP expirado. Solicite novo envio.")
 
-        # Muitas tentativas
         if assinatura["token_tentativas"] >= 5:
             raise HTTPException(status_code=429, detail="Muitas tentativas. Solicite novo OTP.")
 
-        # Validar OTP
         otp_valido = hash_otp(body.otp) == assinatura["token_otp"]
 
         if not otp_valido:
-            cur.execute("""
-                UPDATE assinaturas SET token_tentativas = token_tentativas + 1 WHERE id = %s
-            """, (assinatura["id"],))
+            cur.execute("UPDATE assinaturas SET token_tentativas = token_tentativas + 1 WHERE id = %s",
+                        (assinatura["id"],))
             log_auditoria(cur, contrato_id, "otp_falhou", ip=str(request.client.host))
             conn.commit()
             raise HTTPException(status_code=400, detail="OTP inválido")
 
-        # Registrar assinatura
         cur.execute("""
             UPDATE assinaturas SET
                 status = 'assinado',
@@ -410,7 +438,6 @@ def assinar_contrato(contrato_id: str, body: AssinarRequest, request: Request):
                      str(request.client.host),
                      {"geolocalizacao": body.geolocalizacao})
 
-        # Verificar se todos assinaram → ativar contrato
         cur.execute("""
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN status = 'assinado' THEN 1 ELSE 0 END) AS assinadas
@@ -462,7 +489,7 @@ def auditoria_contrato(contrato_id: str):
 
 
 # -------------------------------------------------------------
-# DELETE /contratos/{id}  — só rascunho
+# DELETE /contratos/{id}
 # -------------------------------------------------------------
 @router.delete("/{contrato_id}")
 def deletar_contrato(contrato_id: str):
@@ -490,18 +517,10 @@ def deletar_contrato(contrato_id: str):
         conn.close()
 
 
-
-
 # -------------------------------------------------------------
 # POST /contratos/{id}/condominos
-# Adiciona condômino a um contrato do tipo condominio
+# ✅ CORREÇÃO 4: usa área em hectares — percentual calculado pelo sistema
 # -------------------------------------------------------------
-class CondomininoAdd(BaseModel):
-    produtor_id: Optional[int] = None
-    parceiro_externo: Optional[ParceiroExterno] = None
-    percentual_cota: float
-    data_entrada: Optional[str] = None
-
 @router.post("/{contrato_id}/condominos", status_code=201)
 def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request):
     if contrato_id in _STATIC_PATHS:
@@ -509,12 +528,35 @@ def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT tipo, status FROM contratos WHERE id = %s", (contrato_id,))
+        cur.execute("SELECT tipo, status, area_parceria_hectares FROM contratos WHERE id = %s",
+                    (contrato_id,))
         c = cur.fetchone()
         if not c:
-            raise HTTPException(404, "Contrato nao encontrado")
+            raise HTTPException(404, "Contrato não encontrado")
         if c["tipo"] != "condominio":
-            raise HTTPException(400, "Este contrato nao e do tipo condominio")
+            raise HTTPException(400, "Este contrato não é do tipo condomínio")
+
+        # Calcular percentual com base na área total do imóvel
+        area_total = float(c["area_parceria_hectares"] or 0)
+        if area_total <= 0:
+            raise HTTPException(400,
+                "O contrato precisa ter area_parceria_hectares definida para calcular percentuais")
+
+        # Verificar soma das áreas já alocadas
+        cur.execute("""
+            SELECT COALESCE(SUM(area_hectares), 0) AS total_alocado
+            FROM contrato_condominos
+            WHERE contrato_id = %s AND ativo = TRUE
+        """, (contrato_id,))
+        total_alocado = float(cur.fetchone()["total_alocado"])
+
+        if total_alocado + body.area_hectares > area_total + 0.01:
+            disponivel = area_total - total_alocado
+            raise HTTPException(400,
+                f"Área insuficiente. Disponível: {disponivel:.2f} ha. "
+                f"Solicitado: {body.area_hectares:.2f} ha.")
+
+        percentual_calculado = round((body.area_hectares / area_total) * 100, 4)
 
         parceiro_id = None
         if body.parceiro_externo:
@@ -530,18 +572,27 @@ def adicionar_condomino(contrato_id: str, body: CondomininoAdd, request: Request
 
         cur.execute("""
             INSERT INTO contrato_condominos
-                (contrato_id, produtor_id, parceiro_id, percentual_cota, data_entrada, ativo)
-            VALUES (%s,%s,%s,%s,%s,TRUE)
-            RETURNING id
+                (contrato_id, produtor_id, parceiro_id, area_hectares,
+                 percentual_cota, data_entrada, ativo)
+            VALUES (%s,%s,%s,%s,%s,%s,TRUE)
+            RETURNING id, percentual_cota
         """, (contrato_id, body.produtor_id, parceiro_id,
-              body.percentual_cota, body.data_entrada or None))
+              body.area_hectares, percentual_calculado,
+              body.data_entrada or None))
         row = cur.fetchone()
 
         log_auditoria(cur, contrato_id, "condomino_adicionado",
-                      f"Condomino adicionado: perc={body.percentual_cota}",
+                      f"Condômino adicionado: {body.area_hectares} ha "
+                      f"({percentual_calculado}%)",
                       str(request.client.host))
         conn.commit()
-        return {"id": str(row["id"])}
+        return {
+            "id": str(row["id"]),
+            "area_hectares": body.area_hectares,
+            "percentual_calculado": percentual_calculado,
+            "area_total_imovel": area_total,
+            "area_total_alocada": round(total_alocado + body.area_hectares, 2),
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -561,23 +612,43 @@ def listar_condominos(contrato_id: str):
     conn = get_db()
     try:
         cur = conn.cursor()
+
+        # Buscar área total do contrato
+        cur.execute("SELECT area_parceria_hectares FROM contratos WHERE id = %s", (contrato_id,))
+        c = cur.fetchone()
+        area_total = float(c["area_parceria_hectares"] or 0) if c else 0
+
         cur.execute("""
-            SELECT cc.id, cc.percentual_cota, cc.data_entrada, cc.ativo,
+            SELECT cc.id,
+                   cc.area_hectares,
+                   cc.percentual_cota,
+                   cc.data_entrada,
+                   cc.ativo,
                    p.nome  AS produtor_nome,  p.cpf  AS produtor_cpf,
                    pe.nome AS parceiro_nome, pe.documento AS parceiro_doc
             FROM contrato_condominos cc
-            LEFT JOIN produtores p       ON p.id  = cc.produtor_id
-            LEFT JOIN parceiros_externos pe ON pe.id = cc.parceiro_id
+            LEFT JOIN produtores p           ON p.id  = cc.produtor_id
+            LEFT JOIN parceiros_externos pe  ON pe.id = cc.parceiro_id
             WHERE cc.contrato_id = %s AND cc.ativo = TRUE
             ORDER BY cc.criado_em
         """, (contrato_id,))
         rows = [dict(r) for r in cur.fetchall()]
+
+        total_area = sum(float(r["area_hectares"] or 0) for r in rows)
         total_perc = sum(float(r["percentual_cota"] or 0) for r in rows)
-        return {"condominos": rows, "total_percentual": round(total_perc, 2)}
+
+        return {
+            "condominos": rows,
+            "area_total_imovel": area_total,
+            "area_total_alocada": round(total_area, 2),
+            "area_disponivel": round(area_total - total_area, 2),
+            "total_percentual": round(total_perc, 2),
+        }
     except Exception as e:
         raise HTTPException(500, str(e))
     finally:
         conn.close()
+
 
 # -------------------------------------------------------------
 # HELPERS INTERNOS
