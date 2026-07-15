@@ -218,10 +218,14 @@ export default function ContratosRurais() {
     tipo: "", descricao: "", valor: "",
     data_inicio: "", data_fim: "",
     percentual_outorgante: "50",
+    quantidade_animais: "",
+    valor_investido_outorgante: "",
+    valor_investido_outorgado: "",
   });
   const imovelId = getImovelId();
 
   const semPartes = TIPOS_SEM_PARTES.includes(form.tipo);
+  const ehPecuaria = form.tipo === "pecuaria";
 
   const load = async () => {
     setLoading(true);
@@ -265,6 +269,13 @@ export default function ContratosRurais() {
         percentual_outorgado:  semPartes ? 0 : 100 - percOut,
         frequencia_pagamento: "safra",
         area_parceria_hectares: form.valor ? Number(form.valor) : undefined,
+        clausulas_adicionais: ehPecuaria && (form.quantidade_animais || form.valor_investido_outorgante || form.valor_investido_outorgado)
+          ? {
+              quantidade_animais: form.quantidade_animais ? Number(form.quantidade_animais) : undefined,
+              valor_investido_outorgante: form.valor_investido_outorgante ? Number(form.valor_investido_outorgante) : undefined,
+              valor_investido_outorgado: form.valor_investido_outorgado ? Number(form.valor_investido_outorgado) : undefined,
+            }
+          : undefined,
       };
       const novo = await apiFetch<{ data: ContratoRural }>(semPartes ? "/contratos/" : "/contratos/", {
         method: "POST",
@@ -272,7 +283,11 @@ export default function ContratosRurais() {
       });
       setContratos((prev) => [novo.data ?? novo as unknown as ContratoRural, ...prev]);
       setShowNew(false);
-      setForm({ tipo: "", descricao: "", valor: "", data_inicio: "", data_fim: "", percentual_outorgante: "50" });
+      setForm({
+        tipo: "", descricao: "", valor: "", data_inicio: "", data_fim: "",
+        percentual_outorgante: "50", quantidade_animais: "",
+        valor_investido_outorgante: "", valor_investido_outorgado: "",
+      });
       toast.success("Contrato criado com sucesso");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Erro ao criar contrato");
@@ -726,15 +741,47 @@ export default function ContratosRurais() {
                     onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
                 </div>
                 {!semPartes && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label>% Outorgante</Label>
-                      <Input type="number" min={0} max={100} value={form.percentual_outorgante}
-                        onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
+                  <div className="space-y-3">
+                    {ehPecuaria && (
+                      <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2.5">
+                        💡 Em parceria pecuária, "outorgante" e "outorgado" não têm papel fixo —
+                        pode ser quem tem as instalações (curral, infraestrutura), quem cede a
+                        área de pastagem, ou qualquer outra combinação. Defina os percentuais
+                        conforme o que cada lado realmente está contribuindo.
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>% Outorgante</Label>
+                        <Input type="number" min={0} max={100} value={form.percentual_outorgante}
+                          onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>% Outorgado</Label>
+                        <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
+                      </div>
                     </div>
+                  </div>
+                )}
+                {ehPecuaria && (
+                  <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+                    <p className="text-xs font-medium text-muted-foreground">Aquisição do plantel inicial</p>
                     <div className="space-y-1.5">
-                      <Label>% Outorgado</Label>
-                      <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
+                      <Label>Quantidade de animais</Label>
+                      <Input type="number" min={0} placeholder="Ex: 30" value={form.quantidade_animais}
+                        onChange={(e) => setForm({ ...form, quantidade_animais: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Valor investido — Outorgante</Label>
+                        <Input type="number" min={0} placeholder="R$ 0,00" value={form.valor_investido_outorgante}
+                          onChange={(e) => setForm({ ...form, valor_investido_outorgante: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Valor investido — Outorgado</Label>
+                        <Input type="number" min={0} placeholder="R$ 0,00" value={form.valor_investido_outorgado}
+                          onChange={(e) => setForm({ ...form, valor_investido_outorgado: e.target.value })} />
+                      </div>
                     </div>
                   </div>
                 )}
