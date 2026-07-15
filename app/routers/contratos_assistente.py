@@ -191,15 +191,19 @@ def _calcular_recomendacao(respostas: RespostasQuestionario, tipos_disponiveis: 
             "alertas_inconsistencia": [],
         }
 
-    # 1) RELAÇÃO — define o universo
+    # 1) RELAÇÃO — define o universo (portão definitivo, não passa pra remuneração)
     if respostas.relacao == "transferencia_definitiva":
         for slug in scores:
             scores[slug] = 100 if slug == "compra_venda" else 0
         return {"alerta_vinculo": None, "scores": scores, "alertas_inconsistencia": []}
 
     if respostas.relacao == "co_propriedade":
+        # Condomínio: cada condômino tem sua própria área (igual ou não),
+        # não há um lado "cedendo uso" pro outro — não é parceria nem
+        # arrendamento, mesmo que a atividade seja agrícola/pecuária/etc.
         for slug in scores:
-            scores[slug] = 100 if slug == "condominio" else max(0, scores[slug] - 40)
+            scores[slug] = 100 if slug == "condominio" else 0
+        return {"alerta_vinculo": None, "scores": scores, "alertas_inconsistencia": []}
 
     # 2) REMUNERAÇÃO — eliminatório (zera TODOS os tipos não alinhados, não só alguns)
     rem = respostas.remuneracao
@@ -269,9 +273,17 @@ def _gerar_justificativa(slug_recomendado: str, respostas: RespostasQuestionario
     nome = tipos_por_slug.get(slug_recomendado, {}).get("nome", slug_recomendado)
     partes = [f"Recomendado: {nome}."]
     if respostas.relacao == "co_propriedade":
-        partes.append("Vocês são coproprietários da mesma área, não há um lado cedendo pro outro.")
+        partes.append(
+            "Vocês são coproprietários da mesma área — em condomínio rural, cada "
+            "condômino tem sua própria cota (igual ou não), sem um lado cedendo "
+            "uso pro outro."
+        )
+    elif respostas.relacao == "transferencia_definitiva":
+        partes.append("Há transferência definitiva de propriedade.")
     elif respostas.remuneracao == "divisao_resultado":
         partes.append("A remuneração combinada é uma divisão do resultado (produção/lucro), não um valor fixo.")
+        if respostas.atividade:
+            partes.append(f"Atividade envolvida: {respostas.atividade}.")
     elif respostas.remuneracao == "valor_fixo":
         partes.append("A remuneração combinada é um valor fixo, independente do resultado da safra.")
     elif respostas.remuneracao == "gratuito":
@@ -280,8 +292,6 @@ def _gerar_justificativa(slug_recomendado: str, respostas: RespostasQuestionario
         partes.append("Há transferência definitiva de propriedade mediante um preço único.")
     elif respostas.remuneracao == "por_servico_executado":
         partes.append("O pagamento é por um serviço executado, não pelo uso da terra nem por resultado de produção.")
-    if respostas.atividade:
-        partes.append(f"Atividade envolvida: {respostas.atividade}.")
     return " ".join(partes)
 
 
