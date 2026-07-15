@@ -209,7 +209,7 @@ export default function ContratosRurais() {
   const [saving, setSaving] = useState(false);
   const [modoNovo, setModoNovo] = useState<"seletor" | "assistente" | "form">("seletor");
   const [respostasAssist, setRespostasAssist] = useState<RespostasAssistente>({});
-  const [perguntaIdx, setPerguntaIdx] = useState(0);
+  const [ordemRespondida, setOrdemRespondida] = useState<(keyof RespostasAssistente)[]>([]);
   const [resultadoAssist, setResultadoAssist] = useState<ResultadoAssistente | null>(null);
   const [enviandoAssist, setEnviandoAssist] = useState(false);
   const [form, setForm] = useState({
@@ -293,28 +293,43 @@ export default function ContratosRurais() {
   const abrirNovoContrato = () => {
     setModoNovo("seletor");
     setRespostasAssist({});
-    setPerguntaIdx(0);
+    setOrdemRespondida([]);
     setResultadoAssist(null);
     setShowNew(true);
   };
 
+  // Lista de perguntas que se aplicam ao estado atual das respostas
+  // (a pergunta "atividade" só entra se remuneracao === "divisao_resultado").
   const perguntasAtivas = PERGUNTAS_ASSISTENTE.filter(
     (p) => !p.mostrar || p.mostrar(respostasAssist)
   );
 
+  // A pergunta a exibir é sempre derivada diretamente das respostas já
+  // dadas — a primeira pergunta ativa que ainda não tem resposta. Isso evita
+  // qualquer dessincronia entre "que número de pergunta estou" e "qual
+  // pergunta esse número aponta", que existia com um índice numérico
+  // separado quando a lista de perguntas ativas muda de tamanho (pergunta
+  // condicional de atividade).
+  const perguntaAtual = perguntasAtivas.find(
+    (p) => respostasAssist[p.campo] === undefined
+  );
+  const posicaoAtual = ordemRespondida.length + 1;
+
   const responderPergunta = (campo: keyof RespostasAssistente, valor: string) => {
     const novasRespostas = { ...respostasAssist, [campo]: valor };
+    const novaOrdem = [...ordemRespondida, campo];
     setRespostasAssist(novasRespostas);
+    setOrdemRespondida(novaOrdem);
 
     const ativasDepois = PERGUNTAS_ASSISTENTE.filter(
       (p) => !p.mostrar || p.mostrar(novasRespostas)
     );
-    const proximoIdx = perguntaIdx + 1;
+    const proximaPendente = ativasDepois.find(
+      (p) => novasRespostas[p.campo] === undefined
+    );
 
-    if (proximoIdx >= ativasDepois.length) {
+    if (!proximaPendente) {
       enviarAssistente(novasRespostas);
-    } else {
-      setPerguntaIdx(proximoIdx);
     }
   };
 
@@ -335,8 +350,15 @@ export default function ContratosRurais() {
   };
 
   const voltarPergunta = () => {
-    if (perguntaIdx > 0) setPerguntaIdx(perguntaIdx - 1);
-    else setModoNovo("seletor");
+    if (ordemRespondida.length === 0) {
+      setModoNovo("seletor");
+      return;
+    }
+    const campoRemovido = ordemRespondida[ordemRespondida.length - 1];
+    const novasRespostas = { ...respostasAssist };
+    delete novasRespostas[campoRemovido];
+    setRespostasAssist(novasRespostas);
+    setOrdemRespondida(ordemRespondida.slice(0, -1));
   };
 
   const usarRecomendacao = (slug: string) => {
@@ -346,7 +368,7 @@ export default function ContratosRurais() {
 
   const recomecarAssistente = () => {
     setRespostasAssist({});
-    setPerguntaIdx(0);
+    setOrdemRespondida([]);
     setResultadoAssist(null);
   };
 
@@ -549,17 +571,17 @@ export default function ContratosRurais() {
                 <div className="py-10 text-center text-sm text-muted-foreground">Analisando suas respostas...</div>
               )}
 
-              {!enviandoAssist && !resultadoAssist && perguntasAtivas[perguntaIdx] && (
+              {!enviandoAssist && !resultadoAssist && perguntaAtual && (
                 <div className="space-y-4 py-2">
                   <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                    Pergunta {perguntaIdx + 1} de {perguntasAtivas.length}
+                    Pergunta {posicaoAtual} de {perguntasAtivas.length}
                   </p>
-                  <p className="text-sm font-medium">{perguntasAtivas[perguntaIdx].pergunta}</p>
+                  <p className="text-sm font-medium">{perguntaAtual.pergunta}</p>
                   <div className="space-y-2">
-                    {perguntasAtivas[perguntaIdx].opcoes.map((op) => (
+                    {perguntaAtual.opcoes.map((op) => (
                       <button
                         key={op.value}
-                        onClick={() => responderPergunta(perguntasAtivas[perguntaIdx].campo, op.value)}
+                        onClick={() => responderPergunta(perguntaAtual.campo, op.value)}
                         className="w-full p-3 rounded-lg border text-left text-sm hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
                       >
                         {op.label}
