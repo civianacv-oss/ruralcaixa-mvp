@@ -58,6 +58,7 @@ interface ResultadoAssistente {
 const PERGUNTAS_ASSISTENTE: {
   campo: keyof RespostasAssistente;
   pergunta: string;
+  dica?: string;
   opcoes: { value: string; label: string }[];
   mostrar?: (r: RespostasAssistente) => boolean;
 }[] = [
@@ -71,10 +72,11 @@ const PERGUNTAS_ASSISTENTE: {
   },
   {
     campo: "relacao",
-    pergunta: "Qual a natureza da relação?",
+    pergunta: "Sobre ESSE contrato específico que você está criando agora:",
+    dica: "Já são condôminos/sócios de uma área maior, mas isso aqui é um acordo à parte pra uma atividade específica (ex: dois de vários condôminos vão criar animais juntos)? A resposta certa é a primeira opção — o fato de já serem condôminos de outra coisa não muda a natureza DESSE contrato.",
     opcoes: [
-      { value: "cede_uso", label: "Uma parte cede o uso da terra/bem pra outra usar" },
-      { value: "co_propriedade", label: "As partes são donas juntas da mesma área" },
+      { value: "cede_uso", label: "Uma parte está usando/explorando a área ou bem da outra (mesmo que já sejam sócios/condôminos de algo maior), dividindo resultado, pagando aluguel, ou outro acordo" },
+      { value: "co_propriedade", label: "Vocês estão formalizando uma propriedade NOVA em conjunto (comprando junto, ou registrando uma copropriedade que ainda não existe)" },
       { value: "transferencia_definitiva", label: "Uma parte está vendendo/transferindo definitivamente pra outra" },
     ],
   },
@@ -577,6 +579,11 @@ export default function ContratosRurais() {
                     Pergunta {posicaoAtual} de {perguntasAtivas.length}
                   </p>
                   <p className="text-sm font-medium">{perguntaAtual.pergunta}</p>
+                  {perguntaAtual.dica && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2.5">
+                      💡 {perguntaAtual.dica}
+                    </p>
+                  )}
                   <div className="space-y-2">
                     {perguntaAtual.opcoes.map((op) => (
                       <button
