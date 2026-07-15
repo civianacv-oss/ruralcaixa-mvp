@@ -20,3 +20,4 @@ Pillow>=10.0.0
 
 # cache bust 3
 openpyxl>=3.1.0
+python-docx
