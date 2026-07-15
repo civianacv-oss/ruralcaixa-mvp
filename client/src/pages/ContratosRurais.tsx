@@ -1,7 +1,7 @@
 "use client";
 // build-20260712131406
 import { useState, useEffect } from "react";
-import { Plus, FileSignature, Search, RefreshCw, Trash2, Download } from "lucide-react";
+import { Plus, FileSignature, Search, RefreshCw, Trash2, Download, Sparkles, ArrowLeft, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,6 +27,109 @@ interface ContratoRural {
   percentual_outorgado?: number;
   area_parceria_hectares?: number;
 }
+
+interface TipoAssistente {
+  slug: string;
+  nome: string;
+  emoji?: string;
+  score: number;
+  clausulas?: { titulo: string; descricao?: string; obrigatoria: boolean }[];
+  alertas?: { texto: string; nivel: string }[];
+}
+
+interface RespostasAssistente {
+  vinculo?: string;
+  relacao?: string;
+  remuneracao?: string;
+  atividade?: string;
+  prazo?: string;
+  risco?: string;
+  infraestrutura?: string;
+}
+
+interface ResultadoAssistente {
+  recomendado: TipoAssistente | null;
+  alerta_vinculo: string | null;
+  alternativas: TipoAssistente[];
+  alertas_inconsistencia?: string[];
+  justificativa: string | null;
+}
+
+const PERGUNTAS_ASSISTENTE: {
+  campo: keyof RespostasAssistente;
+  pergunta: string;
+  opcoes: { value: string; label: string }[];
+  mostrar?: (r: RespostasAssistente) => boolean;
+}[] = [
+  {
+    campo: "vinculo",
+    pergunta: "Como é o vínculo entre as partes?",
+    opcoes: [
+      { value: "autonomo", label: "Cada parte age com autonomia, sem subordinação" },
+      { value: "subordinado_remuneracao_fixa", label: "Uma parte trabalha sob ordens diretas, com remuneração fixa periódica" },
+    ],
+  },
+  {
+    campo: "relacao",
+    pergunta: "Qual a natureza da relação?",
+    opcoes: [
+      { value: "cede_uso", label: "Uma parte cede o uso da terra/bem pra outra usar" },
+      { value: "co_propriedade", label: "As partes são donas juntas da mesma área" },
+      { value: "transferencia_definitiva", label: "Uma parte está vendendo/transferindo definitivamente pra outra" },
+    ],
+  },
+  {
+    campo: "remuneracao",
+    pergunta: "Como funciona o pagamento?",
+    opcoes: [
+      { value: "divisao_resultado", label: "Divisão do resultado da produção (lucro e prejuízo compartilhados)" },
+      { value: "valor_fixo", label: "Valor fixo combinado, independente do resultado" },
+      { value: "gratuito", label: "Não há cobrança nenhuma" },
+      { value: "rateio_cotas", label: "Cada um paga/recebe proporcional à cota de propriedade" },
+      { value: "preco_unico", label: "Um preço único pela transferência definitiva" },
+      { value: "por_servico_executado", label: "Pagamento por um serviço específico executado" },
+    ],
+  },
+  {
+    campo: "atividade",
+    pergunta: "Qual a atividade principal?",
+    opcoes: [
+      { value: "agricola", label: "🌱 Agrícola (lavoura)" },
+      { value: "pecuaria", label: "🐄 Pecuária" },
+      { value: "agroindustrial", label: "🏭 Agroindustrial" },
+      { value: "extrativa", label: "🌲 Extrativa" },
+    ],
+    mostrar: (r) => r.remuneracao === "divisao_resultado",
+  },
+  {
+    campo: "prazo",
+    pergunta: "Qual o prazo pretendido?",
+    opcoes: [
+      { value: "curto", label: "Curto (menos de 1 ano / 1 safra)" },
+      { value: "medio", label: "Médio (1 a 3 anos)" },
+      { value: "longo", label: "Longo (mais de 3 anos)" },
+      { value: "indeterminado", label: "Prazo indeterminado" },
+    ],
+  },
+  {
+    campo: "risco",
+    pergunta: "Quem assume o risco (clima, mercado, perdas)?",
+    opcoes: [
+      { value: "proprietario", label: "Só o proprietário" },
+      { value: "terceiro", label: "Só o terceiro/parceiro" },
+      { value: "dividido", label: "Dividido entre as partes" },
+    ],
+  },
+  {
+    campo: "infraestrutura",
+    pergunta: "Quem fornece a infraestrutura (máquinas, insumos, benfeitorias)?",
+    opcoes: [
+      { value: "proprietario", label: "Só o proprietário" },
+      { value: "terceiro", label: "Só o terceiro/parceiro" },
+      { value: "ambos", label: "Os dois contribuem" },
+    ],
+  },
+];
 
 function authHeaders(): Record<string, string> {
   const token = getRcToken();
@@ -104,6 +207,11 @@ export default function ContratosRurais() {
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [modoNovo, setModoNovo] = useState<"seletor" | "assistente" | "form">("seletor");
+  const [respostasAssist, setRespostasAssist] = useState<RespostasAssistente>({});
+  const [perguntaIdx, setPerguntaIdx] = useState(0);
+  const [resultadoAssist, setResultadoAssist] = useState<ResultadoAssistente | null>(null);
+  const [enviandoAssist, setEnviandoAssist] = useState(false);
   const [form, setForm] = useState({
     tipo: "", descricao: "", valor: "",
     data_inicio: "", data_fim: "",
@@ -182,6 +290,66 @@ export default function ContratosRurais() {
     }
   };
 
+  const abrirNovoContrato = () => {
+    setModoNovo("seletor");
+    setRespostasAssist({});
+    setPerguntaIdx(0);
+    setResultadoAssist(null);
+    setShowNew(true);
+  };
+
+  const perguntasAtivas = PERGUNTAS_ASSISTENTE.filter(
+    (p) => !p.mostrar || p.mostrar(respostasAssist)
+  );
+
+  const responderPergunta = (campo: keyof RespostasAssistente, valor: string) => {
+    const novasRespostas = { ...respostasAssist, [campo]: valor };
+    setRespostasAssist(novasRespostas);
+
+    const ativasDepois = PERGUNTAS_ASSISTENTE.filter(
+      (p) => !p.mostrar || p.mostrar(novasRespostas)
+    );
+    const proximoIdx = perguntaIdx + 1;
+
+    if (proximoIdx >= ativasDepois.length) {
+      enviarAssistente(novasRespostas);
+    } else {
+      setPerguntaIdx(proximoIdx);
+    }
+  };
+
+  const enviarAssistente = async (respostas: RespostasAssistente) => {
+    setEnviandoAssist(true);
+    try {
+      const resultado = await apiFetch<ResultadoAssistente>("/contratos-assistente/recomendar", {
+        method: "POST",
+        body: JSON.stringify({ respostas, imovel_id: imovelId }),
+      });
+      setResultadoAssist(resultado);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao consultar o assistente");
+      setModoNovo("seletor");
+    } finally {
+      setEnviandoAssist(false);
+    }
+  };
+
+  const voltarPergunta = () => {
+    if (perguntaIdx > 0) setPerguntaIdx(perguntaIdx - 1);
+    else setModoNovo("seletor");
+  };
+
+  const usarRecomendacao = (slug: string) => {
+    setForm({ ...form, tipo: slug });
+    setModoNovo("form");
+  };
+
+  const recomecarAssistente = () => {
+    setRespostasAssist({});
+    setPerguntaIdx(0);
+    setResultadoAssist(null);
+  };
+
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const handleDownload = async (c: ContratoRural) => {
@@ -223,7 +391,7 @@ export default function ContratosRurais() {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
-          <Button size="sm" onClick={() => setShowNew(true)} style={{ background: "oklch(0.42 0.14 145)" }}>
+          <Button size="sm" onClick={abrirNovoContrato} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Contrato
           </Button>
@@ -322,63 +490,252 @@ export default function ContratosRurais() {
       )}
 
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Novo Contrato Rural</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Tipo *</Label>
-              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })} >
-                <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
-                <SelectContent>
-                  {TIPOS_FORM.map(({ value, label }) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Descrição</Label>
-              <Input placeholder="Descrição do contrato" value={form.descricao}
-                onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
-            </div>
-            {!semPartes && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>% Outorgante</Label>
-                  <Input type="number" min={0} max={100} value={form.percentual_outorgante}
-                    onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>% Outorgado</Label>
-                  <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
+        <DialogContent className="max-w-lg">
+
+          {/* ── MODO SELETOR: grade rápida + CTA do assistente ── */}
+          {modoNovo === "seletor" && (
+            <>
+              <DialogHeader><DialogTitle>Novo Contrato Rural</DialogTitle></DialogHeader>
+              <p className="text-sm text-muted-foreground -mt-2">
+                Escolha o tipo ou use o assistente pra descobrir o mais adequado.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2">
+                {TIPOS_FORM.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => { setForm({ ...form, tipo: value }); setModoNovo("form"); }}
+                    className="p-3 rounded-lg border text-left hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
+                  >
+                    <div className="text-xl mb-1">{TIPO_ICONS[value] ?? "📄"}</div>
+                    <div className="text-[11px] font-medium leading-tight">{label}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+                <div className="relative flex justify-center">
+                  <span className="bg-background px-3 text-[10px] text-muted-foreground uppercase tracking-wide">ou</span>
                 </div>
               </div>
-            )}
-            <div className="space-y-1.5">
-              <Label>Área (hectares)</Label>
-              <Input type="number" placeholder="0,00" value={form.valor}
-                onChange={(e) => setForm({ ...form, valor: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Data Início</Label>
-                <Input type="date" value={form.data_inicio}
-                  onChange={(e) => setForm({ ...form, data_inicio: e.target.value })} />
+              <button
+                onClick={() => { recomecarAssistente(); setModoNovo("assistente"); }}
+                className="w-full p-4 rounded-lg border-2 border-dashed hover:border-emerald-500 hover:bg-emerald-50 transition-colors text-left flex items-center gap-3"
+              >
+                <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold">Não sabe qual escolher?</div>
+                  <div className="text-xs text-muted-foreground">Responda 7 perguntas e descubra o contrato mais adequado</div>
+                </div>
+              </button>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {/* ── MODO ASSISTENTE: questionário ou resultado ── */}
+          {modoNovo === "assistente" && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  Assistente Inteligente
+                </DialogTitle>
+              </DialogHeader>
+
+              {enviandoAssist && (
+                <div className="py-10 text-center text-sm text-muted-foreground">Analisando suas respostas...</div>
+              )}
+
+              {!enviandoAssist && !resultadoAssist && perguntasAtivas[perguntaIdx] && (
+                <div className="space-y-4 py-2">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                    Pergunta {perguntaIdx + 1} de {perguntasAtivas.length}
+                  </p>
+                  <p className="text-sm font-medium">{perguntasAtivas[perguntaIdx].pergunta}</p>
+                  <div className="space-y-2">
+                    {perguntasAtivas[perguntaIdx].opcoes.map((op) => (
+                      <button
+                        key={op.value}
+                        onClick={() => responderPergunta(perguntasAtivas[perguntaIdx].campo, op.value)}
+                        className="w-full p-3 rounded-lg border text-left text-sm hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
+                      >
+                        {op.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={voltarPergunta}>
+                    <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Voltar
+                  </Button>
+                </div>
+              )}
+
+              {!enviandoAssist && resultadoAssist?.alerta_vinculo && (
+                <div className="py-2 space-y-4">
+                  <div className="flex gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-900">{resultadoAssist.alerta_vinculo}</p>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setModoNovo("seletor")}>Escolher manualmente</Button>
+                    <Button onClick={recomecarAssistente} style={{ background: "oklch(0.42 0.14 145)" }}>
+                      Refazer perguntas
+                    </Button>
+                  </DialogFooter>
+                </div>
+              )}
+
+              {!enviandoAssist && resultadoAssist?.recomendado && (
+                <div className="py-2 space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+                  <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+                      <span className="font-semibold text-emerald-900">
+                        {resultadoAssist.recomendado.emoji} {resultadoAssist.recomendado.nome}
+                      </span>
+                    </div>
+                    {resultadoAssist.justificativa && (
+                      <p className="text-xs text-emerald-800 mt-1.5">{resultadoAssist.justificativa}</p>
+                    )}
+                  </div>
+
+                  {resultadoAssist.alertas_inconsistencia && resultadoAssist.alertas_inconsistencia.length > 0 && (
+                    <div className="space-y-1.5">
+                      {resultadoAssist.alertas_inconsistencia.map((a, i) => (
+                        <div key={i} className="flex gap-2 p-2.5 rounded-md bg-amber-50 border border-amber-200">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <p className="text-xs text-amber-900">{a}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {resultadoAssist.recomendado.alertas && resultadoAssist.recomendado.alertas.length > 0 && (
+                    <div className="space-y-1.5">
+                      {resultadoAssist.recomendado.alertas.map((a, i) => (
+                        <div key={i} className={`flex gap-2 p-2.5 rounded-md border ${
+                          a.nivel === "proibicao" ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+                        }`}>
+                          <AlertTriangle className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${a.nivel === "proibicao" ? "text-red-600" : "text-blue-600"}`} />
+                          <p className={`text-xs ${a.nivel === "proibicao" ? "text-red-900" : "text-blue-900"}`}>{a.texto}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {resultadoAssist.recomendado.clausulas && resultadoAssist.recomendado.clausulas.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Cláusulas essenciais</p>
+                      <ul className="space-y-1">
+                        {resultadoAssist.recomendado.clausulas.map((c, i) => (
+                          <li key={i} className="text-xs">
+                            <span className="font-medium">{c.titulo}</span>
+                            {c.descricao && <span className="text-muted-foreground"> — {c.descricao}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {resultadoAssist.alternativas.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Alternativas</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {resultadoAssist.alternativas.map((a) => (
+                          <button
+                            key={a.slug}
+                            onClick={() => usarRecomendacao(a.slug)}
+                            className="text-xs px-2.5 py-1 rounded-full border hover:border-emerald-500 hover:bg-emerald-50"
+                          >
+                            {a.emoji} {a.nome}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={recomecarAssistente}>Refazer</Button>
+                    <Button onClick={() => usarRecomendacao(resultadoAssist.recomendado!.slug)}
+                      style={{ background: "oklch(0.42 0.14 145)" }}>
+                      Usar este tipo
+                    </Button>
+                  </DialogFooter>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── MODO FORM: formulário de criação (existente) ── */}
+          {modoNovo === "form" && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <button onClick={() => setModoNovo("seletor")} className="text-muted-foreground hover:text-foreground">
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  Novo Contrato Rural
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label>Tipo *</Label>
+                  <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })} >
+                    <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
+                    <SelectContent>
+                      {TIPOS_FORM.map(({ value, label }) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Descrição</Label>
+                  <Input placeholder="Descrição do contrato" value={form.descricao}
+                    onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
+                </div>
+                {!semPartes && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>% Outorgante</Label>
+                      <Input type="number" min={0} max={100} value={form.percentual_outorgante}
+                        onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>% Outorgado</Label>
+                      <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label>Área (hectares)</Label>
+                  <Input type="number" placeholder="0,00" value={form.valor}
+                    onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Data Início</Label>
+                    <Input type="date" value={form.data_inicio}
+                      onChange={(e) => setForm({ ...form, data_inicio: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Data Fim</Label>
+                    <Input type="date" value={form.data_fim}
+                      onChange={(e) => setForm({ ...form, data_fim: e.target.value })} />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Data Fim</Label>
-                <Input type="date" value={form.data_fim}
-                  onChange={(e) => setForm({ ...form, data_fim: e.target.value })} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={saving}
-              style={{ background: "oklch(0.42 0.14 145)" }}>
-              {saving ? "Salvando..." : "Criar Contrato"}
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
+                <Button onClick={handleCreate} disabled={saving}
+                  style={{ background: "oklch(0.42 0.14 145)" }}>
+                  {saving ? "Salvando..." : "Criar Contrato"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
