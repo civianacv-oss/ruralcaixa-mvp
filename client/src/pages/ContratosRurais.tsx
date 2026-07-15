@@ -1,6 +1,7 @@
 "use client";
+// build-20260712131406
 import { useState, useEffect } from "react";
-import { Plus, FileSignature, Search, RefreshCw, Trash2, Eye } from "lucide-react";
+import { Plus, FileSignature, Search, RefreshCw, Trash2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,11 +71,11 @@ const TIPO_ICONS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  ativo:     "bg-emerald-100 text-emerald-700",
-  encerrado: "bg-gray-100 text-gray-600",
-  pendente:  "bg-yellow-100 text-yellow-700",
-  vencido:   "bg-red-100 text-red-700",
-  rascunho:  "bg-blue-100 text-blue-700",
+  ativo:                  "bg-emerald-100 text-emerald-700",
+  encerrado:              "bg-gray-100 text-gray-600",
+  pendente:               "bg-yellow-100 text-yellow-700",
+  vencido:                "bg-red-100 text-red-700",
+  rascunho:               "bg-blue-100 text-blue-700",
   aguardando_assinaturas: "bg-purple-100 text-purple-700",
 };
 
@@ -88,6 +89,9 @@ const TIPOS_FORM = [
   { value: "comodato",       label: "Comodato" },
   { value: "compra_venda",   label: "Compra e Venda" },
 ];
+
+// Tipos que NÃO usam outorgante/outorgado
+const TIPOS_SEM_PARTES = ["condominio"];
 
 function fmtDate(s?: string) {
   if (!s) return null;
@@ -107,16 +111,16 @@ export default function ContratosRurais() {
   });
   const imovelId = getImovelId();
 
+  const semPartes = TIPOS_SEM_PARTES.includes(form.tipo);
+
   const load = async () => {
     setLoading(true);
     try {
-      // Tenta endpoint contratos_rurais primeiro (novo), fallback para contratos legado
       let data: ContratoRural[] = [];
       try {
         const r = await apiFetch<ContratoRural[]>(`/contratos-rurais?imovel_id=${imovelId}`);
         data = Array.isArray(r) ? r : [];
       } catch {
-        // fallback: endpoint legado
         const r2 = await apiFetch<{ data: ContratoRural[] }>(`/contratos/?fazenda_id=${imovelId}`);
         data = Array.isArray(r2.data) ? r2.data : [];
       }
@@ -141,18 +145,18 @@ export default function ContratosRurais() {
     if (!form.tipo) { toast.error("Selecione o tipo de contrato"); return; }
     setSaving(true);
     try {
-      // Usa o endpoint legado /contratos/ que já tem toda a lógica de partes
+      const percOut = Number(form.percentual_outorgante) || 50;
       const body: Record<string, unknown> = {
         fazenda_id: imovelId,
         tipo: form.tipo,
         data_inicio: form.data_inicio || undefined,
         data_fim: form.data_fim || undefined,
-        percentual_outorgante: form.percentual_outorgante ? Number(form.percentual_outorgante) : 50,
-        percentual_outorgado: 100 - (Number(form.percentual_outorgante) || 50),
+        percentual_outorgante: semPartes ? 0 : percOut,
+        percentual_outorgado:  semPartes ? 0 : 100 - percOut,
         frequencia_pagamento: "safra",
         area_parceria_hectares: form.valor ? Number(form.valor) : undefined,
       };
-      const novo = await apiFetch<{ data: ContratoRural }>("/contratos/", {
+      const novo = await apiFetch<{ data: ContratoRural }>(semPartes ? "/contratos/" : "/contratos/", {
         method: "POST",
         body: JSON.stringify(body),
       });
@@ -175,6 +179,35 @@ export default function ContratosRurais() {
       toast.success("Contrato excluído");
     } catch {
       toast.error("Erro ao excluir contrato");
+    }
+  };
+
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const handleDownload = async (c: ContratoRural) => {
+    setDownloadingId(c.id);
+    try {
+      const res = await fetch(`${API_BASE}/contratos/${c.id}/documento`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        const msg = typeof err.detail === "string" ? err.detail : `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contrato_${TIPO_LABELS[c.tipo] ?? c.tipo}_${c.id}.docx`.replace(/\s+/g, "_");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar documento");
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -249,7 +282,6 @@ export default function ContratosRurais() {
                           </span>
                         )}
                       </div>
-                      {/* partes */}
                       {(c.outorgante_nome || c.outorgado_nome) && (
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {c.outorgante_nome ?? "—"} → {c.outorgado_nome ?? "—"}
@@ -268,7 +300,15 @@ export default function ContratosRurais() {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="sm"><Eye className="w-4 h-4" /></Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDownload(c)}
+                      disabled={downloadingId === c.id}
+                      title="Baixar contrato em Word"
+                    >
+                      <Download className={`w-4 h-4 ${downloadingId === c.id ? "animate-pulse" : ""}`} />
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)}
                       className="text-red-500 hover:text-red-700">
                       <Trash2 className="w-4 h-4" />
@@ -287,7 +327,7 @@ export default function ContratosRurais() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label>Tipo *</Label>
-              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+              <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })} >
                 <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                 <SelectContent>
                   {TIPOS_FORM.map(({ value, label }) => (
@@ -301,7 +341,7 @@ export default function ContratosRurais() {
               <Input placeholder="Descrição do contrato" value={form.descricao}
                 onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
             </div>
-            {form.tipo !== "condominio" && (
+            {!semPartes && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>% Outorgante</Label>
@@ -344,5 +384,3 @@ export default function ContratosRurais() {
     </div>
   );
 }
-// fix-modal-cond-20260712125711
-// fix-modal-cond-20260712125827

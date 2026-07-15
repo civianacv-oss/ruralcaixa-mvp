@@ -12,16 +12,17 @@
 #   4. Condomínio usa área em hectares — percentual calculado pelo sistema
 # =============================================================
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import psycopg2
 import psycopg2.extras
 import random
 import hashlib
 import json
 import os
+import io
 
 router = APIRouter(prefix="/contratos", tags=["Contratos Rurais"])
 
@@ -234,6 +235,152 @@ def detalhe_contrato(contrato_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------------------
+# GET /contratos/{id}/documento — gera o .docx do contrato sob demanda
+# -------------------------------------------------------------
+
+TIPO_LABELS_DOC = {
+    "agricola": "Contrato de Parceria Agrícola",
+    "pecuaria": "Contrato de Parceria Pecuária",
+    "agroindustrial": "Contrato de Parceria Agroindustrial",
+    "extrativa": "Contrato de Parceria Extrativa",
+    "condominio": "Contrato de Condomínio Rural",
+    "arrendamento": "Contrato de Arrendamento Rural",
+    "comodato": "Contrato de Comodato Rural",
+    "compra_venda": "Contrato de Compra e Venda Rural",
+    "integracao_agroindustrial": "Contrato de Integração Agroindustrial",
+}
+
+
+def _fmt_data_doc(d) -> str:
+    if not d:
+        return "Prazo indeterminado"
+    try:
+        if isinstance(d, (datetime, date)):
+            return d.strftime("%d/%m/%Y")
+        return datetime.strptime(str(d)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return str(d)
+
+
+def _gerar_docx_contrato(c: dict) -> bytes:
+    """Gera um .docx a partir dos dados de um contrato (linha de
+    vw_contratos_resumo). Layout simples e genérico — serve como minuta
+    inicial; não substitui revisão jurídica antes da assinatura formal."""
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+
+    tipo = c.get("tipo") or ""
+    titulo = TIPO_LABELS_DOC.get(tipo, f"Contrato Rural — {tipo}")
+
+    h = doc.add_heading(titulo, level=1)
+    h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph(
+        f"Pelo presente instrumento particular, as partes abaixo qualificadas "
+        f"celebram o presente {titulo.lower()}, que se regerá pelas cláusulas "
+        f"e condições a seguir estabelecidas."
+    )
+
+    doc.add_heading("Partes", level=2)
+    p_out = doc.add_paragraph()
+    p_out.add_run("Outorgante: ").bold = True
+    p_out.add_run(c.get("outorgante_nome") or "não informado")
+    p_outd = doc.add_paragraph()
+    p_outd.add_run("Outorgado: ").bold = True
+    p_outd.add_run(c.get("outorgado_nome") or "não informado")
+
+    doc.add_heading("Objeto e Condições", level=2)
+    tabela = doc.add_table(rows=0, cols=2)
+    tabela.style = "Light Grid Accent 1"
+    tabela.autofit = True
+
+    def add_row(label, valor):
+        cells = tabela.add_row().cells
+        cells[0].text = label
+        cells[1].text = str(valor) if valor not in (None, "") else "—"
+
+    add_row("Data de início", _fmt_data_doc(c.get("data_inicio")))
+    add_row("Data de término", _fmt_data_doc(c.get("data_fim")))
+
+    if c.get("percentual_outorgante") is not None:
+        add_row("Percentual do outorgante", f"{c['percentual_outorgante']}%")
+        add_row("Percentual do outorgado", f"{c['percentual_outorgado']}%")
+
+    if c.get("area_parceria_hectares") is not None:
+        add_row("Área objeto do contrato", f"{c['area_parceria_hectares']} ha")
+
+    if c.get("frequencia_pagamento"):
+        add_row("Frequência de pagamento", c["frequencia_pagamento"])
+
+    add_row("Status atual", (c.get("status") or "rascunho").replace("_", " ").title())
+
+    clausulas = c.get("clausulas_adicionais")
+    if clausulas:
+        if isinstance(clausulas, str):
+            try:
+                clausulas = json.loads(clausulas)
+            except Exception:
+                clausulas = {"Observações": clausulas}
+        if isinstance(clausulas, dict) and clausulas:
+            doc.add_heading("Cláusulas Adicionais", level=2)
+            for chave, valor in clausulas.items():
+                p = doc.add_paragraph()
+                p.add_run(f"{chave}: ").bold = True
+                p.add_run(str(valor))
+
+    doc.add_heading("Assinaturas", level=2)
+    doc.add_paragraph()
+    doc.add_paragraph("_" * 40)
+    doc.add_paragraph(f"Outorgante: {c.get('outorgante_nome') or ''}")
+    doc.add_paragraph()
+    doc.add_paragraph("_" * 40)
+    doc.add_paragraph(f"Outorgado: {c.get('outorgado_nome') or ''}")
+
+    aviso = doc.add_paragraph()
+    aviso.add_run(
+        "Documento gerado automaticamente pelo RuralCaixa a partir dos dados "
+        "cadastrados. Recomenda-se revisão antes da assinatura formal."
+    ).italic = True
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/{contrato_id}/documento")
+def gerar_documento_contrato(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM vw_contratos_resumo WHERE id = %s", (contrato_id,))
+        contrato = cur.fetchone()
+        if not contrato:
+            raise HTTPException(status_code=404, detail="Contrato não encontrado")
+        contrato = dict(contrato)
+
+        docx_bytes = _gerar_docx_contrato(contrato)
+
+        tipo_slug = (contrato.get("tipo") or "contrato").replace(" ", "_")
+        nome_arquivo = f"contrato_{tipo_slug}_{contrato_id[:8]}.docx"
+
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar documento: {e}")
     finally:
         conn.close()
 
