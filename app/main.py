@@ -304,8 +304,14 @@ try:
     print('CONDOMINIO ROUTER LOADED OK')
 except Exception as _e:
     print(f'CONDOMINIO ROUTER FAILED: {_e}')
-
+try:
+    from app.routers.contratos_assistente import router as contratos_assistente_router
+    app.include_router(contratos_assistente_router)
+    print('CONTRATOS_ASSISTENTE ROUTER LOADED OK')
+except Exception as _e:
+    print(f'CONTRATOS_ASSISTENTE ROUTER FAILED: {_e}')
 from app.middleware.auth_middleware import AuthMiddleware
+
 app.add_middleware(AuthMiddleware)
 
 # CORS executa PRIMEIRO (adicionado por ultimo) — intercepta OPTIONS antes do Auth
