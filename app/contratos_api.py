@@ -412,6 +412,12 @@ def gerar_documento_contrato(contrato_id: str):
             raise HTTPException(status_code=404, detail="Contrato não encontrado")
         contrato = dict(contrato)
 
+        # vw_contratos_resumo não expõe clausulas_adicionais — busca direto da tabela
+        cur.execute("SELECT clausulas_adicionais FROM contratos WHERE id = %s", (contrato_id,))
+        row_extra = cur.fetchone()
+        if row_extra:
+            contrato["clausulas_adicionais"] = row_extra["clausulas_adicionais"]
+
         docx_bytes = _gerar_docx_contrato(contrato)
 
         tipo_slug = (contrato.get("tipo") or "contrato").replace(" ", "_")
