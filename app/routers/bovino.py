@@ -229,18 +229,21 @@ def criar_lote(data: LoteIn):
 
 # ── ANIMAIS ──────────────────────────────────────────────────
 @router.get("/animais/{imovel_id}")
+@router.get("/animais/{imovel_id}")
 def listar_animais(
     imovel_id: int,
     aptidao: Optional[str] = None,
-    status: str = "ativo",
+    status: Optional[str] = None,
     categoria: Optional[str] = None,
     lote_id: Optional[int] = None
 ):
     conn = get_db()
     try:
         cur = conn.cursor()
-        conds = ["a.imovel_id = %s", "a.status = %s"]
-        params = [imovel_id, status]
+        conds = ["a.imovel_id = %s"]
+        params = [imovel_id]
+        if status:
+            conds.append("a.status = %s"); params.append(status)
         if aptidao:
             conds.append("a.aptidao_manejo = %s"); params.append(aptidao)
         if categoria:
