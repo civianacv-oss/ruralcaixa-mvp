@@ -680,7 +680,7 @@ export default function Rebanhos() {
                     <Button
                       variant="ghost" size="icon"
                       className="w-8 h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                      title="Excluir animal"
+                      title="Remover animal"
                       onClick={() => setDeleteId(a.id)}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -1158,33 +1158,32 @@ export default function Rebanhos() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Confirmar Exclusão ──────────────────────────────────────── */}
+      {/* ── Dialog: Não é possível excluir — redireciona para Dar Baixa ──────── */}
       <Dialog open={deleteId !== null} onOpenChange={(o) => { if (!o) setDeleteId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
-              <Trash2 className="w-5 h-5" /> Excluir Animal
+              <Trash2 className="w-5 h-5" /> Remover Animal
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            Tem certeza que deseja excluir este animal? Esta ação não pode ser desfeita.
+            A exclusão direta não é permitida. Para remover este animal do rebanho ativo, registre
+            a baixa (venda, morte, abate, doação ou permuta) usando o botão "Dar Baixa".
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
             <Button
-              variant="destructive"
-              disabled={deleteAnimal.isPending}
               onClick={() => {
-                if (!deleteId || !imovelId) return;
-                deleteAnimal.mutate({ animalId: deleteId, imovelId: imovelId!, especie: especieAtual.trpc });
+                const animal = filtered.find((a: any) => a.id === deleteId);
+                if (animal) abrirDialogBaixa(animal);
+                setDeleteId(null);
               }}
             >
-              {deleteAnimal.isPending ? "Excluindo..." : "Excluir"}
+              Dar Baixa
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       {/* ── Dialog: Produção × Insumos (GMD/custo por kg, ou litros/dia e custo/litro) ──── */}
       <Dialog open={producaoAnimalId !== null} onOpenChange={(o) => { if (!o) setProducaoAnimalId(null); }}>
         <DialogContent className="max-w-sm">
