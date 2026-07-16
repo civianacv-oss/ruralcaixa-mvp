@@ -1,7 +1,7 @@
 "use client";
 // build-20260712131406
-import { useState, useEffect } from "react";
-import { Plus, FileSignature, Search, RefreshCw, Trash2, Download, Sparkles, ArrowLeft, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, FileSignature, Search, RefreshCw, Trash2, Download, Sparkles, ArrowLeft, AlertTriangle, CheckCircle2, Upload, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -459,6 +459,75 @@ export default function ContratosRurais() {
     }
   };
 
+  const [uploadingFinalId, setUploadingFinalId] = useState<number | null>(null);
+  const [contratoAlvoUpload, setContratoAlvoUpload] = useState<number | null>(null);
+  const fileInputFinalRef = useRef<HTMLInputElement>(null);
+
+  const abrirSeletorDocxCorrigido = (contratoId: number) => {
+    setContratoAlvoUpload(contratoId);
+    fileInputFinalRef.current?.click();
+  };
+
+  const handleArquivoDocxCorrigidoSelecionado = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const contratoId = contratoAlvoUpload;
+    e.target.value = "";
+    if (!file || !contratoId) return;
+
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      toast.error("Envie um arquivo .docx (o mesmo baixado, editado no Word)");
+      return;
+    }
+
+    setUploadingFinalId(contratoId);
+    try {
+      const formData = new FormData();
+      formData.append("arquivo", file, file.name);
+      const token = getRcToken();
+      const res = await fetch(`${API_BASE}/contratos/${contratoId}/documento-final`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        const msg = typeof err.detail === "string" ? err.detail : `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      toast.success("Documento final gerado — já pode enviar para assinatura");
+      load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao processar documento final");
+    } finally {
+      setUploadingFinalId(null);
+      setContratoAlvoUpload(null);
+    }
+  };
+
+  const [enviandoAssinaturaId, setEnviandoAssinaturaId] = useState<number | null>(null);
+
+  const handleEnviarParaAssinatura = async (contratoId: number) => {
+    if (!confirm("Enviar este contrato para assinatura? Cada parte receberá um código por WhatsApp.")) return;
+    setEnviandoAssinaturaId(contratoId);
+    try {
+      const resultado = await apiFetch<{ partes_notificadas: { nome: string; whatsapp_enviado: boolean }[] }>(
+        `/contratos/${contratoId}/enviar`,
+        { method: "POST" }
+      );
+      const semWhatsapp = resultado.partes_notificadas.filter((p) => !p.whatsapp_enviado);
+      if (semWhatsapp.length > 0) {
+        toast.warning(`Enviado, mas sem telefone cadastrado para: ${semWhatsapp.map((p) => p.nome).join(", ")}`);
+      } else {
+        toast.success("Enviado para assinatura! Cada parte recebeu um código por WhatsApp.");
+      }
+      load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao enviar para assinatura");
+    } finally {
+      setEnviandoAssinaturaId(null);
+    }
+  };
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -557,6 +626,29 @@ export default function ContratosRurais() {
                     >
                       <Download className={`w-4 h-4 ${downloadingId === c.id ? "animate-pulse" : ""}`} />
                     </Button>
+                    {(!c.status || c.status === "rascunho") && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => abrirSeletorDocxCorrigido(c.id)}
+                          disabled={uploadingFinalId === c.id}
+                          title="Enviar .docx corrigido (gera o PDF final)"
+                        >
+                          <Upload className={`w-4 h-4 ${uploadingFinalId === c.id ? "animate-pulse" : ""}`} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEnviarParaAssinatura(c.id)}
+                          disabled={enviandoAssinaturaId === c.id}
+                          title="Enviar para assinatura (código por WhatsApp)"
+                          className="text-emerald-600 hover:text-emerald-700"
+                        >
+                          <Send className={`w-4 h-4 ${enviandoAssinaturaId === c.id ? "animate-pulse" : ""}`} />
+                        </Button>
+                      </>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)}
                       className="text-red-500 hover:text-red-700">
                       <Trash2 className="w-4 h-4" />
@@ -568,6 +660,13 @@ export default function ContratosRurais() {
           ))}
         </div>
       )}
+      <input
+        ref={fileInputFinalRef}
+        type="file"
+        accept=".docx"
+        className="hidden"
+        onChange={handleArquivoDocxCorrigidoSelecionado}
+      />
 
       <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
