@@ -309,17 +309,35 @@ def _gerar_docx_contrato(c: dict) -> bytes:
     add_row("Data de início", _fmt_data_doc(c.get("data_inicio")))
     add_row("Data de término", _fmt_data_doc(c.get("data_fim")))
 
+    _clausulas_raw = c.get("clausulas_adicionais")
+    if isinstance(_clausulas_raw, str):
+        try:
+            _clausulas_raw = json.loads(_clausulas_raw)
+        except Exception:
+            _clausulas_raw = {}
+    _aviso_previo = (_clausulas_raw or {}).get("aviso_previo_rescisao_dias")
+    if not c.get("data_fim") and _aviso_previo:
+        add_row("Aviso prévio para rescisão", f"{_aviso_previo} dias")
+
     if c.get("percentual_outorgante") is not None:
         add_row("Percentual do outorgante", f"{c['percentual_outorgante']}%")
         add_row("Percentual do outorgado", f"{c['percentual_outorgado']}%")
 
     if c.get("area_parceria_hectares") is not None:
-        add_row("Área objeto do contrato", f"{c['area_parceria_hectares']} ha")
+        add_row("Área objeto do contrato", f"{float(c['area_parceria_hectares']):.2f} ha")
 
     if c.get("frequencia_pagamento"):
-        add_row("Frequência de pagamento", c["frequencia_pagamento"])
+        FREQ_LABELS = {
+            "safra": "Por safra", "mensal": "Mensal", "anual": "Anual",
+            "semestral": "Semestral", "apos_abate": "Após abate",
+            "ao_termino": "Ao término do contrato",
+        }
+        freq_bruta = c["frequencia_pagamento"]
+        add_row("Frequência de pagamento", FREQ_LABELS.get(freq_bruta, freq_bruta))
 
-    add_row("Status atual", (c.get("status") or "rascunho").replace("_", " ").title())
+    status_bruto = c.get("status") or "rascunho"
+    status_label_doc = {"rascunho": "Pendente de Assinatura"}.get(status_bruto, status_bruto.replace("_", " ").title())
+    add_row("Status atual", status_label_doc)
 
     clausulas = c.get("clausulas_adicionais")
     if clausulas:
@@ -328,12 +346,39 @@ def _gerar_docx_contrato(c: dict) -> bytes:
                 clausulas = json.loads(clausulas)
             except Exception:
                 clausulas = {"Observações": clausulas}
+        ROTULOS_CLAUSULAS = {
+            "quantidade_animais": "Quantidade de animais",
+            "valor_investido_outorgante": "Valor investido na aquisição — Outorgante",
+            "valor_investido_outorgado": "Valor investido na aquisição — Outorgado",
+            "modalidade_parceria": "Modalidade da parceria",
+            "especie_raca": "Espécie / Raça",
+            "peso_medio_entrada_kg": "Peso médio de entrada (kg)",
+        }
+        CHAVES_JA_MOSTRADAS = {"aviso_previo_rescisao_dias"}
+        MODALIDADE_LABELS = {
+            "pastagem": "Parceria de pastagem", "confinamento": "Confinamento",
+            "integracao": "Integração (área + instalação + animais)",
+        }
+        CHAVES_MOEDA = {"valor_investido_outorgante", "valor_investido_outorgado"}
         if isinstance(clausulas, dict) and clausulas:
-            doc.add_heading("Cláusulas Adicionais", level=2)
-            for chave, valor in clausulas.items():
-                p = doc.add_paragraph()
-                p.add_run(f"{chave}: ").bold = True
-                p.add_run(str(valor))
+            itens_visiveis = {
+                k: v for k, v in clausulas.items()
+                if k not in CHAVES_JA_MOSTRADAS and v not in (None, "")
+            }
+            if itens_visiveis:
+                doc.add_heading("Cláusulas Adicionais", level=2)
+                for chave, valor in itens_visiveis.items():
+                    rotulo = ROTULOS_CLAUSULAS.get(chave, chave.replace("_", " ").capitalize())
+                    if chave == "modalidade_parceria":
+                        valor = MODALIDADE_LABELS.get(str(valor), str(valor))
+                    elif chave in CHAVES_MOEDA:
+                        try:
+                            valor = f"R$ {float(valor):,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+                        except (TypeError, ValueError):
+                            pass
+                    p = doc.add_paragraph()
+                    p.add_run(f"{rotulo}: ").bold = True
+                    p.add_run(str(valor))
 
     doc.add_heading("Assinaturas", level=2)
     doc.add_paragraph()

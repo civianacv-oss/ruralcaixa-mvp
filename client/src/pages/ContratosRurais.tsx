@@ -224,6 +224,12 @@ export default function ContratosRurais() {
     modalidade_parceria: "",
     especie_raca: "",
     peso_medio_entrada: "",
+    outorgante_nome: "",
+    outorgante_documento: "",
+    outorgado_nome: "",
+    outorgado_documento: "",
+    frequencia_pagamento: "safra",
+    clausula_denuncia_dias: "",
   });
   const imovelId = getImovelId();
 
@@ -264,9 +270,18 @@ export default function ContratosRurais() {
       toast.error("Data Fim não pode ser anterior à Data Início");
       return;
     }
+    if (!semPartes) {
+      if (!form.outorgante_nome.trim()) { toast.error("Informe o nome do Outorgante"); return; }
+      if (!form.outorgado_nome.trim()) { toast.error("Informe o nome do Outorgado"); return; }
+    }
+    if (!form.data_fim && !form.clausula_denuncia_dias) {
+      toast.error("Prazo indeterminado precisa do aviso prévio de rescisão (em dias) — sem data fim, isso é obrigatório");
+      return;
+    }
     setSaving(true);
     try {
       const percOut = Number(form.percentual_outorgante) || 50;
+      const tipoDocumento = (doc: string) => doc.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF";
       const body: Record<string, unknown> = {
         fazenda_id: imovelId,
         tipo: form.tipo,
@@ -274,18 +289,25 @@ export default function ContratosRurais() {
         data_fim: form.data_fim || undefined,
         percentual_outorgante: semPartes ? 0 : percOut,
         percentual_outorgado:  semPartes ? 0 : 100 - percOut,
-        frequencia_pagamento: "safra",
+        frequencia_pagamento: form.frequencia_pagamento,
         area_parceria_hectares: form.valor ? Number(form.valor) : undefined,
-        clausulas_adicionais: ehPecuaria && (form.quantidade_animais || form.valor_investido_outorgante || form.valor_investido_outorgado || form.modalidade_parceria || form.especie_raca || form.peso_medio_entrada)
-          ? {
-              quantidade_animais: form.quantidade_animais ? Number(form.quantidade_animais) : undefined,
-              valor_investido_outorgante: form.valor_investido_outorgante ? Number(form.valor_investido_outorgante) : undefined,
-              valor_investido_outorgado: form.valor_investido_outorgado ? Number(form.valor_investido_outorgado) : undefined,
-              modalidade_parceria: form.modalidade_parceria || undefined,
-              especie_raca: form.especie_raca || undefined,
-              peso_medio_entrada_kg: form.peso_medio_entrada ? Number(form.peso_medio_entrada) : undefined,
-            }
+        outorgante_externo: !semPartes && form.outorgante_nome
+          ? { nome: form.outorgante_nome, tipo_documento: tipoDocumento(form.outorgante_documento), documento: form.outorgante_documento || "não informado" }
           : undefined,
+        outorgado_externo: !semPartes && form.outorgado_nome
+          ? { nome: form.outorgado_nome, tipo_documento: tipoDocumento(form.outorgado_documento), documento: form.outorgado_documento || "não informado" }
+          : undefined,
+        clausulas_adicionais: {
+          ...(ehPecuaria ? {
+            quantidade_animais: form.quantidade_animais ? Number(form.quantidade_animais) : undefined,
+            valor_investido_outorgante: form.valor_investido_outorgante ? Number(form.valor_investido_outorgante) : undefined,
+            valor_investido_outorgado: form.valor_investido_outorgado ? Number(form.valor_investido_outorgado) : undefined,
+            modalidade_parceria: form.modalidade_parceria || undefined,
+            especie_raca: form.especie_raca || undefined,
+            peso_medio_entrada_kg: form.peso_medio_entrada ? Number(form.peso_medio_entrada) : undefined,
+          } : {}),
+          ...(form.clausula_denuncia_dias ? { aviso_previo_rescisao_dias: Number(form.clausula_denuncia_dias) } : {}),
+        },
       };
       const novo = await apiFetch<{ data: ContratoRural }>(semPartes ? "/contratos/" : "/contratos/", {
         method: "POST",
@@ -298,6 +320,9 @@ export default function ContratosRurais() {
         percentual_outorgante: "50", quantidade_animais: "",
         valor_investido_outorgante: "", valor_investido_outorgado: "",
         modalidade_parceria: "", especie_raca: "", peso_medio_entrada: "",
+        outorgante_nome: "", outorgante_documento: "",
+        outorgado_nome: "", outorgado_documento: "",
+        frequencia_pagamento: "safra", clausula_denuncia_dias: "",
       });
       toast.success("Contrato criado com sucesso");
     } catch (e: unknown) {
@@ -763,6 +788,30 @@ export default function ContratosRurais() {
                     )}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
+                        <Label>Outorgante *</Label>
+                        <Input placeholder="Nome completo" value={form.outorgante_nome}
+                          onChange={(e) => setForm({ ...form, outorgante_nome: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>CPF/CNPJ do Outorgante</Label>
+                        <Input placeholder="000.000.000-00" value={form.outorgante_documento}
+                          onChange={(e) => setForm({ ...form, outorgante_documento: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Outorgado *</Label>
+                        <Input placeholder="Nome completo" value={form.outorgado_nome}
+                          onChange={(e) => setForm({ ...form, outorgado_nome: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>CPF/CNPJ do Outorgado</Label>
+                        <Input placeholder="000.000.000-00" value={form.outorgado_documento}
+                          onChange={(e) => setForm({ ...form, outorgado_documento: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
                         <Label>% Outorgante</Label>
                         <Input type="number" min={0} max={100} value={form.percentual_outorgante}
                           onChange={(e) => setForm({ ...form, percentual_outorgante: e.target.value })} />
@@ -840,6 +889,40 @@ export default function ContratosRurais() {
                     <Input type="date" value={form.data_fim}
                       onChange={(e) => setForm({ ...form, data_fim: e.target.value })} />
                   </div>
+                </div>
+                {!form.data_fim && (
+                  <div className="space-y-1.5">
+                    <Label>Aviso prévio de rescisão (dias) *</Label>
+                    <Input type="number" min={1} placeholder="Ex: 90" value={form.clausula_denuncia_dias}
+                      onChange={(e) => setForm({ ...form, clausula_denuncia_dias: e.target.value })} />
+                    <p className="text-xs text-muted-foreground">
+                      Sem data fim (prazo indeterminado), é obrigatório definir com quantos dias de
+                      antecedência qualquer parte pode encerrar o contrato.
+                    </p>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label>Frequência de pagamento</Label>
+                  <Select value={form.frequencia_pagamento} onValueChange={(v) => setForm({ ...form, frequencia_pagamento: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ehPecuaria ? (
+                        <>
+                          <SelectItem value="apos_abate">Após abate</SelectItem>
+                          <SelectItem value="mensal">Mensal</SelectItem>
+                          <SelectItem value="semestral">Semestral</SelectItem>
+                          <SelectItem value="ao_termino">Ao término do contrato</SelectItem>
+                        </>
+                      ) : (
+                        <>
+                          <SelectItem value="safra">Por safra</SelectItem>
+                          <SelectItem value="mensal">Mensal</SelectItem>
+                          <SelectItem value="anual">Anual</SelectItem>
+                          <SelectItem value="ao_termino">Ao término do contrato</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <DialogFooter>
