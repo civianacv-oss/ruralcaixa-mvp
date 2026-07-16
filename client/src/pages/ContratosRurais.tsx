@@ -431,6 +431,17 @@ export default function ContratosRurais() {
     "fiscal ou recibo, o valor excedente será reembolsado pela outra parte " +
     "antes da apuração do lucro a ser dividido.";
 
+  const CLAUSULA_RISCOS_PADRAO_PARCERIA =
+    "Os riscos inerentes à atividade serão suportados proporcionalmente pelas " +
+    "partes, na mesma proporção do percentual de divisão estabelecido neste " +
+    "contrato, observado o seguinte: (i) morte de animal por causa natural ou " +
+    "acidente — mediante comunicação imediata à outra parte e, quando " +
+    "possível, laudo veterinário; (ii) roubo ou furto — mediante boletim de " +
+    "ocorrência registrado em até 48 (quarenta e oito) horas; (iii) doenças de " +
+    "notificação obrigatória — o descumprimento do protocolo sanitário " +
+    "combinado entre as partes transfere à parte que descumpriu a " +
+    "responsabilidade integral pelo prejuízo decorrente.";
+
   const escolherTipo = (tipoValue: string) => {
     const ehParceria = TIPOS_PARCERIA.includes(tipoValue);
     setForm((prev) => ({
@@ -440,6 +451,10 @@ export default function ContratosRurais() {
         ehParceria && !prev.responsabilidade_custos
           ? CLAUSULA_CUSTOS_PADRAO_PARCERIA
           : prev.responsabilidade_custos,
+      responsabilidade_riscos:
+        ehParceria && !prev.responsabilidade_riscos
+          ? CLAUSULA_RISCOS_PADRAO_PARCERIA
+          : prev.responsabilidade_riscos,
     }));
   };
 
