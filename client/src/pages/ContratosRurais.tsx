@@ -221,6 +221,9 @@ export default function ContratosRurais() {
     quantidade_animais: "",
     valor_investido_outorgante: "",
     valor_investido_outorgado: "",
+    modalidade_parceria: "",
+    especie_raca: "",
+    peso_medio_entrada: "",
   });
   const imovelId = getImovelId();
 
@@ -257,6 +260,10 @@ export default function ContratosRurais() {
 
   const handleCreate = async () => {
     if (!form.tipo) { toast.error("Selecione o tipo de contrato"); return; }
+    if (form.data_inicio && form.data_fim && form.data_fim < form.data_inicio) {
+      toast.error("Data Fim não pode ser anterior à Data Início");
+      return;
+    }
     setSaving(true);
     try {
       const percOut = Number(form.percentual_outorgante) || 50;
@@ -269,11 +276,14 @@ export default function ContratosRurais() {
         percentual_outorgado:  semPartes ? 0 : 100 - percOut,
         frequencia_pagamento: "safra",
         area_parceria_hectares: form.valor ? Number(form.valor) : undefined,
-        clausulas_adicionais: ehPecuaria && (form.quantidade_animais || form.valor_investido_outorgante || form.valor_investido_outorgado)
+        clausulas_adicionais: ehPecuaria && (form.quantidade_animais || form.valor_investido_outorgante || form.valor_investido_outorgado || form.modalidade_parceria || form.especie_raca || form.peso_medio_entrada)
           ? {
               quantidade_animais: form.quantidade_animais ? Number(form.quantidade_animais) : undefined,
               valor_investido_outorgante: form.valor_investido_outorgante ? Number(form.valor_investido_outorgante) : undefined,
               valor_investido_outorgado: form.valor_investido_outorgado ? Number(form.valor_investido_outorgado) : undefined,
+              modalidade_parceria: form.modalidade_parceria || undefined,
+              especie_raca: form.especie_raca || undefined,
+              peso_medio_entrada_kg: form.peso_medio_entrada ? Number(form.peso_medio_entrada) : undefined,
             }
           : undefined,
       };
@@ -287,6 +297,7 @@ export default function ContratosRurais() {
         tipo: "", descricao: "", valor: "", data_inicio: "", data_fim: "",
         percentual_outorgante: "50", quantidade_animais: "",
         valor_investido_outorgante: "", valor_investido_outorgado: "",
+        modalidade_parceria: "", especie_raca: "", peso_medio_entrada: "",
       });
       toast.success("Contrato criado com sucesso");
     } catch (e: unknown) {
@@ -759,6 +770,34 @@ export default function ContratosRurais() {
                       <div className="space-y-1.5">
                         <Label>% Outorgado</Label>
                         <Input disabled value={100 - (Number(form.percentual_outorgante) || 50)} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {ehPecuaria && (
+                  <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+                    <p className="text-xs font-medium text-muted-foreground">Detalhes da parceria pecuária</p>
+                    <div className="space-y-1.5">
+                      <Label>Modalidade</Label>
+                      <Select value={form.modalidade_parceria} onValueChange={(v) => setForm({ ...form, modalidade_parceria: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione a modalidade" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pastagem">Parceria de pastagem (só área)</SelectItem>
+                          <SelectItem value="confinamento">Confinamento (só instalação)</SelectItem>
+                          <SelectItem value="integracao">Integração (área + instalação + animais)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Espécie / Raça</Label>
+                        <Input placeholder="Ex: Bovino Nelore" value={form.especie_raca}
+                          onChange={(e) => setForm({ ...form, especie_raca: e.target.value })} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Peso médio de entrada (kg)</Label>
+                        <Input type="number" min={0} placeholder="Ex: 220" value={form.peso_medio_entrada}
+                          onChange={(e) => setForm({ ...form, peso_medio_entrada: e.target.value })} />
                       </div>
                     </div>
                   </div>
