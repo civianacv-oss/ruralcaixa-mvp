@@ -288,13 +288,25 @@ def _gerar_docx_contrato(c: dict) -> bytes:
         f"e condições a seguir estabelecidas."
     )
 
+    from docx.shared import RGBColor
+
     doc.add_heading("Partes", level=2)
     p_out = doc.add_paragraph()
     p_out.add_run("Outorgante: ").bold = True
-    p_out.add_run(c.get("outorgante_nome") or "não informado")
+    if c.get("outorgante_nome"):
+        p_out.add_run(c["outorgante_nome"])
+    else:
+        r = p_out.add_run("[DADO PENDENTE — CADASTRAR OUTORGANTE ANTES DA ASSINATURA]")
+        r.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+        r.bold = True
     p_outd = doc.add_paragraph()
     p_outd.add_run("Outorgado: ").bold = True
-    p_outd.add_run(c.get("outorgado_nome") or "não informado")
+    if c.get("outorgado_nome"):
+        p_outd.add_run(c["outorgado_nome"])
+    else:
+        r = p_outd.add_run("[DADO PENDENTE — CADASTRAR OUTORGADO ANTES DA ASSINATURA]")
+        r.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+        r.bold = True
 
     doc.add_heading("Objeto e Condições", level=2)
     tabela = doc.add_table(rows=0, cols=2)
@@ -354,7 +366,7 @@ def _gerar_docx_contrato(c: dict) -> bytes:
             "especie_raca": "Espécie / Raça",
             "peso_medio_entrada_kg": "Peso médio de entrada (kg)",
         }
-        CHAVES_JA_MOSTRADAS = {"aviso_previo_rescisao_dias"}
+        CHAVES_JA_MOSTRADAS = {"aviso_previo_rescisao_dias", "responsabilidade_custos", "responsabilidade_riscos"}
         MODALIDADE_LABELS = {
             "pastagem": "Parceria de pastagem", "confinamento": "Confinamento",
             "integracao": "Integração (área + instalação + animais)",
@@ -379,6 +391,32 @@ def _gerar_docx_contrato(c: dict) -> bytes:
                     p = doc.add_paragraph()
                     p.add_run(f"{rotulo}: ").bold = True
                     p.add_run(str(valor))
+
+    if not c.get("data_fim") and _aviso_previo:
+        doc.add_heading("Da Vigência e Rescisão", level=2)
+        doc.add_paragraph(
+            f"O prazo de vigência deste contrato é indeterminado, podendo qualquer "
+            f"das partes denunciá-lo mediante comunicação por escrito à outra parte, "
+            f"com antecedência mínima de {_aviso_previo} dias."
+        )
+
+    freq_bruta_final = c.get("frequencia_pagamento")
+    if freq_bruta_final == "safra":
+        doc.add_paragraph(
+            "Entende-se como \"safra\", para fins deste contrato, o ciclo completo "
+            "de manejo do rebanho até o momento definido para apuração e divisão "
+            "dos resultados entre as partes."
+        )
+
+    custos_operacionais = (_clausulas_raw or {}).get("responsabilidade_custos")
+    if custos_operacionais:
+        doc.add_heading("Dos Custos e Despesas Operacionais", level=2)
+        doc.add_paragraph(str(custos_operacionais))
+
+    riscos_perdas = (_clausulas_raw or {}).get("responsabilidade_riscos")
+    if riscos_perdas:
+        doc.add_heading("Dos Riscos e Perdas", level=2)
+        doc.add_paragraph(str(riscos_perdas))
 
     doc.add_heading("Assinaturas", level=2)
     doc.add_paragraph()
