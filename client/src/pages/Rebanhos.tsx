@@ -56,6 +56,7 @@ export default function Rebanhos() {
   }, [window.location.search]);
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("todos");
 
   // ── Dialogs ───────────────────────────────────────────────────────────────
   const [showNew,    setShowNew]    = useState(false);
@@ -507,9 +508,12 @@ export default function Rebanhos() {
   };
 
   const filtered = (animais as any[]).filter((a) =>
-    a.brinco?.toLowerCase().includes(search.toLowerCase()) ||
-    a.nome?.toLowerCase().includes(search.toLowerCase()) ||
-    (a.raca ?? a.raca_nome ?? "").toLowerCase().includes(search.toLowerCase())
+    (statusFilter === "todos" || a.status === statusFilter) &&
+    (
+      a.brinco?.toLowerCase().includes(search.toLowerCase()) ||
+      a.nome?.toLowerCase().includes(search.toLowerCase()) ||
+      (a.raca ?? a.raca_nome ?? "").toLowerCase().includes(search.toLowerCase())
+    )
   );
   const ativos = (animais as any[]).filter((a) => a.status === "ativo").length;
 
@@ -584,6 +588,21 @@ export default function Rebanhos() {
           className="pl-9"
         />
       </div>
+
+      {/* Filtro de status */}
+      <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <SelectTrigger className="w-40">
+          <SelectValue placeholder="Status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="todos">Todos</SelectItem>
+          <SelectItem value="ativo">Ativo</SelectItem>
+          <SelectItem value="vendido">Vendido</SelectItem>
+          <SelectItem value="morto">Morto</SelectItem>
+          <SelectItem value="abatido">Abatido</SelectItem>
+          <SelectItem value="transferido">Transferido</SelectItem>
+        </SelectContent>
+      </Select>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
