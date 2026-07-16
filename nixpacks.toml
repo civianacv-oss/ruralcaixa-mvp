@@ -1,0 +1,10 @@
+# nixpacks.toml — configuração de build do Railway (backend Python)
+#
+# Adiciona o LibreOffice Writer ao container, necessário pra conversão
+# docx -> pdf (endpoint POST /contratos/{id}/documento-final).
+# Usamos só "libreoffice-writer" (não o pacote "libreoffice" completo) pra
+# manter a imagem menor — não precisamos de Calc/Impress/etc, só do
+# componente de conversão de texto via `soffice --headless --convert-to pdf`.
+
+[phases.setup]
+aptPkgs = ["libreoffice-writer"]

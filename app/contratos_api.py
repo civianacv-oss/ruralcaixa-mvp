@@ -12,7 +12,7 @@
 #   4. Condomínio usa área em hectares — percentual calculado pelo sistema
 # =============================================================
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
 from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
 from typing import Optional
 from datetime import datetime, timedelta, date
@@ -470,6 +470,129 @@ def gerar_documento_contrato(contrato_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar documento: {e}")
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------------------
+# POST /contratos/{id}/documento-final — recebe o .docx editado pelo
+# produtor, converte pra PDF (LibreOffice headless) e trava o hash.
+# GET  /contratos/{id}/pdf — serve o PDF final gerado.
+# -------------------------------------------------------------
+
+def _docx_para_pdf(docx_bytes: bytes) -> bytes:
+    """Converte .docx em .pdf via LibreOffice headless (subprocess).
+    Levanta RuntimeError com mensagem clara se o LibreOffice não estiver
+    instalado no ambiente — isso precisa ser configurado no build do
+    Railway (nixpacks.toml com aptPkgs = ["libreoffice"])."""
+    import subprocess
+    import tempfile
+    import shutil
+
+    if shutil.which("soffice") is None:
+        raise RuntimeError(
+            "LibreOffice (soffice) não está instalado neste servidor. "
+            "Adicione 'libreoffice' aos pacotes de sistema do build "
+            "(nixpacks.toml) antes de usar esta funcionalidade."
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        docx_path = f"{tmp}/entrada.docx"
+        with open(docx_path, "wb") as f:
+            f.write(docx_bytes)
+
+        resultado = subprocess.run(
+            ["soffice", "--headless", "--convert-to", "pdf", "--outdir", tmp, docx_path],
+            capture_output=True, text=True, timeout=60,
+        )
+        pdf_path = f"{tmp}/entrada.pdf"
+        if resultado.returncode != 0 or not os.path.exists(pdf_path):
+            raise RuntimeError(f"Falha ao converter docx para PDF: {resultado.stderr or resultado.stdout}")
+
+        with open(pdf_path, "rb") as f:
+            return f.read()
+
+
+@router.post("/{contrato_id}/documento-final")
+async def enviar_documento_final(contrato_id: str, arquivo: UploadFile = File(...)):
+    """Recebe o .docx (baixado via /documento e editado pelo produtor no
+    Word), converte pra PDF, calcula o hash e trava como versão final do
+    contrato — pronta pra ser enviada pra assinatura (POST /enviar)."""
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
+
+    nome = (arquivo.filename or "").lower()
+    if not nome.endswith(".docx"):
+        raise HTTPException(status_code=400, detail="Envie um arquivo .docx (o mesmo baixado em /documento, editado no Word).")
+
+    conteudo_docx = await arquivo.read()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM contratos WHERE id = %s", (contrato_id,))
+        contrato = cur.fetchone()
+        if not contrato:
+            raise HTTPException(status_code=404, detail="Contrato não encontrado")
+        if contrato["status"] not in ("rascunho",):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Só é possível atualizar o documento final quando o contrato está em rascunho "
+                       f"(status atual: '{contrato['status']}').",
+            )
+
+        try:
+            pdf_bytes = _docx_para_pdf(conteudo_docx)
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
+        pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+        pdf_url = f"/contratos/{contrato_id}/pdf"
+
+        cur.execute("""
+            UPDATE contratos
+            SET pdf_bytes = %s, pdf_hash_sha256 = %s, pdf_url = %s,
+                pdf_gerado_em = NOW(), atualizado_em = NOW()
+            WHERE id = %s
+        """, (pdf_bytes, pdf_hash, pdf_url, contrato_id))
+        conn.commit()
+
+        return {
+            "ok": True,
+            "pdf_url": pdf_url,
+            "pdf_hash_sha256": pdf_hash,
+            "tamanho_bytes": len(pdf_bytes),
+            "mensagem": "Documento final gerado. Já pode enviar para assinatura (POST /contratos/{id}/enviar).",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao processar documento final: {e}")
+    finally:
+        conn.close()
+
+
+@router.get("/{contrato_id}/pdf")
+def obter_pdf_final(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT pdf_bytes FROM contratos WHERE id = %s", (contrato_id,))
+        row = cur.fetchone()
+        if not row or not row["pdf_bytes"]:
+            raise HTTPException(status_code=404, detail="PDF final ainda não foi gerado para este contrato.")
+        return Response(
+            content=bytes(row["pdf_bytes"]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="contrato_{contrato_id[:8]}.pdf"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 
