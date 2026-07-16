@@ -198,6 +198,11 @@ const TIPOS_FORM = [
 // Tipos que NÃO usam outorgante/outorgado
 const TIPOS_SEM_PARTES = ["condominio"];
 
+// Tipos de parceria (usados pra decidir quando pré-preencher a cláusula
+// padrão de rateio de custos — não faz sentido pra arrendamento/comodato/
+// compra_venda, que têm lógica de custo diferente)
+const TIPOS_PARCERIA = ["agricola", "pecuaria", "agroindustrial", "extrativa"];
+
 function fmtDate(s?: string) {
   if (!s) return null;
   return new Date(s + "T00:00:00").toLocaleDateString("pt-BR");
@@ -419,8 +424,27 @@ export default function ContratosRurais() {
     setOrdemRespondida(ordemRespondida.slice(0, -1));
   };
 
+  const CLAUSULA_CUSTOS_PADRAO_PARCERIA =
+    "Os custos operacionais serão rateados entre as partes na mesma proporção " +
+    "do percentual de divisão estabelecido neste contrato. Caso uma das partes " +
+    "desembolse valor superior à sua cota-parte, mediante comprovação por nota " +
+    "fiscal ou recibo, o valor excedente será reembolsado pela outra parte " +
+    "antes da apuração do lucro a ser dividido.";
+
+  const escolherTipo = (tipoValue: string) => {
+    const ehParceria = TIPOS_PARCERIA.includes(tipoValue);
+    setForm((prev) => ({
+      ...prev,
+      tipo: tipoValue,
+      responsabilidade_custos:
+        ehParceria && !prev.responsabilidade_custos
+          ? CLAUSULA_CUSTOS_PADRAO_PARCERIA
+          : prev.responsabilidade_custos,
+    }));
+  };
+
   const usarRecomendacao = (slug: string) => {
-    setForm({ ...form, tipo: slug });
+    escolherTipo(slug);
     setModoNovo("form");
   };
 
@@ -682,7 +706,7 @@ export default function ContratosRurais() {
                 {TIPOS_FORM.map(({ value, label }) => (
                   <button
                     key={value}
-                    onClick={() => { setForm({ ...form, tipo: value }); setModoNovo("form"); }}
+                    onClick={() => { escolherTipo(value); setModoNovo("form"); }}
                     className="p-3 rounded-lg border text-left hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
                   >
                     <div className="text-xl mb-1">{TIPO_ICONS[value] ?? "📄"}</div>
@@ -866,7 +890,7 @@ export default function ContratosRurais() {
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
                   <Label>Tipo *</Label>
-                  <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })} >
+                  <Select value={form.tipo} onValueChange={escolherTipo} >
                     <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                     <SelectContent>
                       {TIPOS_FORM.map(({ value, label }) => (
@@ -1034,7 +1058,7 @@ export default function ContratosRurais() {
                       <Label>Responsabilidade por custos operacionais</Label>
                       <textarea
                         className="w-full min-h-[70px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        placeholder="Ex: Ração e mão de obra por conta do Outorgado; vacina e insumos veterinários por conta do Outorgante. Custos deduzidos da receita bruta antes da divisão."
+                        placeholder="Ex: Os custos operacionais serão rateados entre as partes na mesma proporção do percentual de divisão estabelecido neste contrato. Caso uma das partes desembolse valor superior à sua cota-parte, mediante comprovação por nota fiscal ou recibo, o valor excedente será reembolsado pela outra parte antes da apuração do lucro a ser dividido."
                         value={form.responsabilidade_custos}
                         onChange={(e) => setForm({ ...form, responsabilidade_custos: e.target.value })}
                       />
