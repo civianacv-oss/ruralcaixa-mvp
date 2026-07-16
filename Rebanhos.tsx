@@ -995,10 +995,10 @@ export default function Rebanhos() {
                 onChange={(e) => setPesagemForm({ ...pesagemForm, motivo: e.target.value })}
               >
                 <option value="rotina">Rotina</option>
-                <option value="entrada_lote">Entrada de lote</option>
+                <option value="entrada">Entrada de lote</option>
                 <option value="nascimento">Nascimento</option>
                 <option value="desmame">Desmame</option>
-                <option value="pre_abate">Pré-abate</option>
+                <option value="saida">Pré-abate</option>
               </select>
             </div>
             <div>

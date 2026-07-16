@@ -12,7 +12,7 @@
 #   4. Condomínio usa área em hectares — percentual calculado pelo sistema
 # =============================================================
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
 from pydantic import BaseModel, Field, ConfigDict, validator, model_validator
 from typing import Optional
 from datetime import datetime, timedelta, date
@@ -288,13 +288,25 @@ def _gerar_docx_contrato(c: dict) -> bytes:
         f"e condições a seguir estabelecidas."
     )
 
+    from docx.shared import RGBColor
+
     doc.add_heading("Partes", level=2)
     p_out = doc.add_paragraph()
     p_out.add_run("Outorgante: ").bold = True
-    p_out.add_run(c.get("outorgante_nome") or "não informado")
+    if c.get("outorgante_nome"):
+        p_out.add_run(c["outorgante_nome"])
+    else:
+        r = p_out.add_run("[DADO PENDENTE — CADASTRAR OUTORGANTE ANTES DA ASSINATURA]")
+        r.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+        r.bold = True
     p_outd = doc.add_paragraph()
     p_outd.add_run("Outorgado: ").bold = True
-    p_outd.add_run(c.get("outorgado_nome") or "não informado")
+    if c.get("outorgado_nome"):
+        p_outd.add_run(c["outorgado_nome"])
+    else:
+        r = p_outd.add_run("[DADO PENDENTE — CADASTRAR OUTORGADO ANTES DA ASSINATURA]")
+        r.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+        r.bold = True
 
     doc.add_heading("Objeto e Condições", level=2)
     tabela = doc.add_table(rows=0, cols=2)
@@ -309,17 +321,35 @@ def _gerar_docx_contrato(c: dict) -> bytes:
     add_row("Data de início", _fmt_data_doc(c.get("data_inicio")))
     add_row("Data de término", _fmt_data_doc(c.get("data_fim")))
 
+    _clausulas_raw = c.get("clausulas_adicionais")
+    if isinstance(_clausulas_raw, str):
+        try:
+            _clausulas_raw = json.loads(_clausulas_raw)
+        except Exception:
+            _clausulas_raw = {}
+    _aviso_previo = (_clausulas_raw or {}).get("aviso_previo_rescisao_dias")
+    if not c.get("data_fim") and _aviso_previo:
+        add_row("Aviso prévio para rescisão", f"{_aviso_previo} dias")
+
     if c.get("percentual_outorgante") is not None:
         add_row("Percentual do outorgante", f"{c['percentual_outorgante']}%")
         add_row("Percentual do outorgado", f"{c['percentual_outorgado']}%")
 
     if c.get("area_parceria_hectares") is not None:
-        add_row("Área objeto do contrato", f"{c['area_parceria_hectares']} ha")
+        add_row("Área objeto do contrato", f"{float(c['area_parceria_hectares']):.2f} ha")
 
     if c.get("frequencia_pagamento"):
-        add_row("Frequência de pagamento", c["frequencia_pagamento"])
+        FREQ_LABELS = {
+            "safra": "Por safra", "mensal": "Mensal", "anual": "Anual",
+            "semestral": "Semestral", "apos_abate": "Após abate",
+            "ao_termino": "Ao término do contrato",
+        }
+        freq_bruta = c["frequencia_pagamento"]
+        add_row("Frequência de pagamento", FREQ_LABELS.get(freq_bruta, freq_bruta))
 
-    add_row("Status atual", (c.get("status") or "rascunho").replace("_", " ").title())
+    status_bruto = c.get("status") or "rascunho"
+    status_label_doc = {"rascunho": "Pendente de Assinatura"}.get(status_bruto, status_bruto.replace("_", " ").title())
+    add_row("Status atual", status_label_doc)
 
     clausulas = c.get("clausulas_adicionais")
     if clausulas:
@@ -328,12 +358,65 @@ def _gerar_docx_contrato(c: dict) -> bytes:
                 clausulas = json.loads(clausulas)
             except Exception:
                 clausulas = {"Observações": clausulas}
+        ROTULOS_CLAUSULAS = {
+            "quantidade_animais": "Quantidade de animais",
+            "valor_investido_outorgante": "Valor investido na aquisição — Outorgante",
+            "valor_investido_outorgado": "Valor investido na aquisição — Outorgado",
+            "modalidade_parceria": "Modalidade da parceria",
+            "especie_raca": "Espécie / Raça",
+            "peso_medio_entrada_kg": "Peso médio de entrada (kg)",
+        }
+        CHAVES_JA_MOSTRADAS = {"aviso_previo_rescisao_dias", "responsabilidade_custos", "responsabilidade_riscos"}
+        MODALIDADE_LABELS = {
+            "pastagem": "Parceria de pastagem", "confinamento": "Confinamento",
+            "integracao": "Integração (área + instalação + animais)",
+        }
+        CHAVES_MOEDA = {"valor_investido_outorgante", "valor_investido_outorgado"}
         if isinstance(clausulas, dict) and clausulas:
-            doc.add_heading("Cláusulas Adicionais", level=2)
-            for chave, valor in clausulas.items():
-                p = doc.add_paragraph()
-                p.add_run(f"{chave}: ").bold = True
-                p.add_run(str(valor))
+            itens_visiveis = {
+                k: v for k, v in clausulas.items()
+                if k not in CHAVES_JA_MOSTRADAS and v not in (None, "")
+            }
+            if itens_visiveis:
+                doc.add_heading("Cláusulas Adicionais", level=2)
+                for chave, valor in itens_visiveis.items():
+                    rotulo = ROTULOS_CLAUSULAS.get(chave, chave.replace("_", " ").capitalize())
+                    if chave == "modalidade_parceria":
+                        valor = MODALIDADE_LABELS.get(str(valor), str(valor))
+                    elif chave in CHAVES_MOEDA:
+                        try:
+                            valor = f"R$ {float(valor):,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+                        except (TypeError, ValueError):
+                            pass
+                    p = doc.add_paragraph()
+                    p.add_run(f"{rotulo}: ").bold = True
+                    p.add_run(str(valor))
+
+    if not c.get("data_fim") and _aviso_previo:
+        doc.add_heading("Da Vigência e Rescisão", level=2)
+        doc.add_paragraph(
+            f"O prazo de vigência deste contrato é indeterminado, podendo qualquer "
+            f"das partes denunciá-lo mediante comunicação por escrito à outra parte, "
+            f"com antecedência mínima de {_aviso_previo} dias."
+        )
+
+    freq_bruta_final = c.get("frequencia_pagamento")
+    if freq_bruta_final == "safra":
+        doc.add_paragraph(
+            "Entende-se como \"safra\", para fins deste contrato, o ciclo completo "
+            "de manejo do rebanho até o momento definido para apuração e divisão "
+            "dos resultados entre as partes."
+        )
+
+    custos_operacionais = (_clausulas_raw or {}).get("responsabilidade_custos")
+    if custos_operacionais:
+        doc.add_heading("Dos Custos e Despesas Operacionais", level=2)
+        doc.add_paragraph(str(custos_operacionais))
+
+    riscos_perdas = (_clausulas_raw or {}).get("responsabilidade_riscos")
+    if riscos_perdas:
+        doc.add_heading("Dos Riscos e Perdas", level=2)
+        doc.add_paragraph(str(riscos_perdas))
 
     doc.add_heading("Assinaturas", level=2)
     doc.add_paragraph()
@@ -367,6 +450,12 @@ def gerar_documento_contrato(contrato_id: str):
             raise HTTPException(status_code=404, detail="Contrato não encontrado")
         contrato = dict(contrato)
 
+        # vw_contratos_resumo não expõe clausulas_adicionais — busca direto da tabela
+        cur.execute("SELECT clausulas_adicionais FROM contratos WHERE id = %s", (contrato_id,))
+        row_extra = cur.fetchone()
+        if row_extra:
+            contrato["clausulas_adicionais"] = row_extra["clausulas_adicionais"]
+
         docx_bytes = _gerar_docx_contrato(contrato)
 
         tipo_slug = (contrato.get("tipo") or "contrato").replace(" ", "_")
@@ -381,6 +470,129 @@ def gerar_documento_contrato(contrato_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar documento: {e}")
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------------------
+# POST /contratos/{id}/documento-final — recebe o .docx editado pelo
+# produtor, converte pra PDF (LibreOffice headless) e trava o hash.
+# GET  /contratos/{id}/pdf — serve o PDF final gerado.
+# -------------------------------------------------------------
+
+def _docx_para_pdf(docx_bytes: bytes) -> bytes:
+    """Converte .docx em .pdf via LibreOffice headless (subprocess).
+    Levanta RuntimeError com mensagem clara se o LibreOffice não estiver
+    instalado no ambiente — isso precisa ser configurado no build do
+    Railway (nixpacks.toml com aptPkgs = ["libreoffice"])."""
+    import subprocess
+    import tempfile
+    import shutil
+
+    if shutil.which("soffice") is None:
+        raise RuntimeError(
+            "LibreOffice (soffice) não está instalado neste servidor. "
+            "Adicione 'libreoffice' aos pacotes de sistema do build "
+            "(nixpacks.toml) antes de usar esta funcionalidade."
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        docx_path = f"{tmp}/entrada.docx"
+        with open(docx_path, "wb") as f:
+            f.write(docx_bytes)
+
+        resultado = subprocess.run(
+            ["soffice", "--headless", "--convert-to", "pdf", "--outdir", tmp, docx_path],
+            capture_output=True, text=True, timeout=60,
+        )
+        pdf_path = f"{tmp}/entrada.pdf"
+        if resultado.returncode != 0 or not os.path.exists(pdf_path):
+            raise RuntimeError(f"Falha ao converter docx para PDF: {resultado.stderr or resultado.stdout}")
+
+        with open(pdf_path, "rb") as f:
+            return f.read()
+
+
+@router.post("/{contrato_id}/documento-final")
+async def enviar_documento_final(contrato_id: str, arquivo: UploadFile = File(...)):
+    """Recebe o .docx (baixado via /documento e editado pelo produtor no
+    Word), converte pra PDF, calcula o hash e trava como versão final do
+    contrato — pronta pra ser enviada pra assinatura (POST /enviar)."""
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
+
+    nome = (arquivo.filename or "").lower()
+    if not nome.endswith(".docx"):
+        raise HTTPException(status_code=400, detail="Envie um arquivo .docx (o mesmo baixado em /documento, editado no Word).")
+
+    conteudo_docx = await arquivo.read()
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM contratos WHERE id = %s", (contrato_id,))
+        contrato = cur.fetchone()
+        if not contrato:
+            raise HTTPException(status_code=404, detail="Contrato não encontrado")
+        if contrato["status"] not in ("rascunho",):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Só é possível atualizar o documento final quando o contrato está em rascunho "
+                       f"(status atual: '{contrato['status']}').",
+            )
+
+        try:
+            pdf_bytes = _docx_para_pdf(conteudo_docx)
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
+        pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+        pdf_url = f"/contratos/{contrato_id}/pdf"
+
+        cur.execute("""
+            UPDATE contratos
+            SET pdf_bytes = %s, pdf_hash_sha256 = %s, pdf_url = %s,
+                pdf_gerado_em = NOW(), atualizado_em = NOW()
+            WHERE id = %s
+        """, (pdf_bytes, pdf_hash, pdf_url, contrato_id))
+        conn.commit()
+
+        return {
+            "ok": True,
+            "pdf_url": pdf_url,
+            "pdf_hash_sha256": pdf_hash,
+            "tamanho_bytes": len(pdf_bytes),
+            "mensagem": "Documento final gerado. Já pode enviar para assinatura (POST /contratos/{id}/enviar).",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao processar documento final: {e}")
+    finally:
+        conn.close()
+
+
+@router.get("/{contrato_id}/pdf")
+def obter_pdf_final(contrato_id: str):
+    if contrato_id in _STATIC_PATHS:
+        raise HTTPException(status_code=404, detail="Rota de frontend — não é um contrato.")
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT pdf_bytes FROM contratos WHERE id = %s", (contrato_id,))
+        row = cur.fetchone()
+        if not row or not row["pdf_bytes"]:
+            raise HTTPException(status_code=404, detail="PDF final ainda não foi gerado para este contrato.")
+        return Response(
+            content=bytes(row["pdf_bytes"]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="contrato_{contrato_id[:8]}.pdf"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 
