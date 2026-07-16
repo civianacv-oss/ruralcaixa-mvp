@@ -230,6 +230,8 @@ export default function ContratosRurais() {
     outorgado_documento: "",
     frequencia_pagamento: "safra",
     clausula_denuncia_dias: "",
+    responsabilidade_custos: "",
+    responsabilidade_riscos: "",
   });
   const imovelId = getImovelId();
 
@@ -307,6 +309,8 @@ export default function ContratosRurais() {
             peso_medio_entrada_kg: form.peso_medio_entrada ? Number(form.peso_medio_entrada) : undefined,
           } : {}),
           ...(form.clausula_denuncia_dias ? { aviso_previo_rescisao_dias: Number(form.clausula_denuncia_dias) } : {}),
+          ...(!semPartes && form.responsabilidade_custos ? { responsabilidade_custos: form.responsabilidade_custos } : {}),
+          ...(!semPartes && form.responsabilidade_riscos ? { responsabilidade_riscos: form.responsabilidade_riscos } : {}),
         },
       };
       const novo = await apiFetch<{ data: ContratoRural }>(semPartes ? "/contratos/" : "/contratos/", {
@@ -323,6 +327,7 @@ export default function ContratosRurais() {
         outorgante_nome: "", outorgante_documento: "",
         outorgado_nome: "", outorgado_documento: "",
         frequencia_pagamento: "safra", clausula_denuncia_dias: "",
+        responsabilidade_custos: "", responsabilidade_riscos: "",
       });
       toast.success("Contrato criado com sucesso");
     } catch (e: unknown) {
@@ -565,7 +570,7 @@ export default function ContratosRurais() {
       )}
 
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
 
           {/* ── MODO SELETOR: grade rápida + CTA do assistente ── */}
           {modoNovo === "seletor" && (
@@ -924,6 +929,34 @@ export default function ContratosRurais() {
                     </SelectContent>
                   </Select>
                 </div>
+                {!semPartes && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label>Responsabilidade por custos operacionais</Label>
+                      <textarea
+                        className="w-full min-h-[70px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        placeholder="Ex: Ração e mão de obra por conta do Outorgado; vacina e insumos veterinários por conta do Outorgante. Custos deduzidos da receita bruta antes da divisão."
+                        value={form.responsabilidade_custos}
+                        onChange={(e) => setForm({ ...form, responsabilidade_custos: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Quem paga ração, vacina, mão de obra, instalações — e se isso é deduzido antes de dividir o resultado.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Responsabilidade por riscos e perdas</Label>
+                      <textarea
+                        className="w-full min-h-[70px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        placeholder="Ex: Morte por causa natural — prejuízo dividido proporcionalmente. Roubo/furto — comunicação imediata e boletim de ocorrência, prejuízo dividido. Doenças de notificação obrigatória — responsabilidade de quem descumprir o protocolo sanitário combinado."
+                        value={form.responsabilidade_riscos}
+                        onChange={(e) => setForm({ ...form, responsabilidade_riscos: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Um dos pontos mais litigiosos em parceria pecuária — quem assume morte, roubo ou doença do rebanho.
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
