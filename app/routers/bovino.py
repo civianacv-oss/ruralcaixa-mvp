@@ -441,6 +441,35 @@ def atualizar_status(animal_id: int, status: str):
     finally:
         conn.close()
 
+@router.delete("/animais/{animal_id}")
+def excluir_animal(animal_id: int):
+    """
+    Exclusao definitiva de um animal cadastrado por engano (brinco errado,
+    duplicidade, etc). Diferente de "dar baixa" (venda/morte/abate), que
+    preserva o historico — aqui o registro nunca deveria ter existido.
+    Bloqueia (409) se o animal ja tiver pesagens, abates ou outros
+    registros vinculados, para nao apagar historico por engano.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("DELETE FROM bovino_animais WHERE id=%s RETURNING id", (animal_id,))
+            row = cur.fetchone()
+            conn.commit()
+        except psycopg2.errors.ForeignKeyViolation:
+            conn.rollback()
+            raise HTTPException(
+                409,
+                "Este animal ja possui registros vinculados (pesagens, abates, etc.) "
+                "e nao pode ser excluido. Use 'Dar baixa' para registrar sua saida do rebanho."
+            )
+        if not row:
+            raise HTTPException(404, "Animal não encontrado")
+        return {"success": True, "id": animal_id}
+    finally:
+        conn.close()
+        
 # ── PESAGENS ─────────────────────────────────────────────────
 @router.post("/pesagens")
 def registrar_pesagem(data: PesagemIn):

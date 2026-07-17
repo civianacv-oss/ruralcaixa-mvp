@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
 import logging
 import sys
@@ -333,6 +334,35 @@ def listar_lotes(imovel_id: int = Query(...)):
             ORDER BY l.data_inicio DESC
         """, (imovel_id,))
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+@router.delete("/animais/{animal_id}")
+def excluir_animal(animal_id: int):
+    """
+    Exclusao definitiva de um animal cadastrado por engano (brinco errado,
+    duplicidade, etc). Diferente de "dar baixa" (venda/morte/abate), que
+    preserva o historico — aqui o registro nunca deveria ter existido.
+    Bloqueia (409) se o animal ja tiver pesagens, abates ou outros
+    registros vinculados, para nao apagar historico por engano.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("DELETE FROM ovino_animais WHERE id=%s RETURNING id", (animal_id,))
+            row = cur.fetchone()
+            conn.commit()
+        except psycopg2.errors.ForeignKeyViolation:
+            conn.rollback()
+            raise HTTPException(
+                409,
+                "Este animal ja possui registros vinculados (pesagens, abates, etc.) "
+                "e nao pode ser excluido. Use 'Dar baixa' para registrar sua saida do rebanho."
+            )
+        if not row:
+            raise HTTPException(404, "Animal não encontrado")
+        return {"success": True, "id": animal_id}
     finally:
         conn.close()
 
