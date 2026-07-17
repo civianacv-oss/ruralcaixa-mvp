@@ -453,7 +453,45 @@ export default function Rebanhos() {
           }
         }
 
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "", range: headerRowIndex });
+        const normLabel = (s: unknown) => String(s ?? "").trim().toLowerCase();
+        const headerRowRaw = (rawRows[headerRowIndex] || []) as unknown[];
+        const mergedHeader = [...headerRowRaw];
+        for (let offset = 1; offset <= 2; offset++) {
+          const subRow = rawRows[headerRowIndex + offset] as unknown[] | undefined;
+          if (!subRow) continue;
+          let achouSubCabecalho = false;
+          for (let col = 0; col < subRow.length; col++) {
+            const label = normLabel(subRow[col]);
+            if (label === "d" || label === "m" || label === "a") {
+              achouSubCabecalho = true;
+              let parentCol = col;
+              while (parentCol >= 0 && normLabel(headerRowRaw[parentCol]) === "") parentCol--;
+              const parentLabel = normLabel(headerRowRaw[parentCol]);
+              if (parentLabel.includes("nascimento")) {
+                const sufixo = label === "d" ? "Dia" : label === "m" ? "Mes" : "Ano";
+                mergedHeader[col] = `Data Nascimento ${sufixo}`;
+              }
+            }
+          }
+          if (achouSubCabecalho) break;
+        }
+
+        const rows: any[] = rawRows
+          .slice(headerRowIndex + 1)
+          .filter((r) => {
+            const vals = (r as unknown[]).map(normLabel).filter(Boolean);
+            if (vals.length > 0 && vals.every((v) => v === "d" || v === "m" || v === "a")) return false;
+            return (r as unknown[]).some((v) => String(v ?? "").trim() !== "");
+          })
+          .map((r) => {
+            const obj: Record<string, any> = {};
+            (r as unknown[]).forEach((v, i) => {
+              const key = String(mergedHeader[i] ?? "").trim();
+              if (key) obj[key] = v ?? "";
+            });
+            return obj;
+          });
+          
         if (rows.length === 0) { toast.error('Planilha vazia ou sem coluna de identificação reconhecível.'); return; }
 
         // Auto-detecta o tipo (só relevante pra bovino; outras espécies só têm
