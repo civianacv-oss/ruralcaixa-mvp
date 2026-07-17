@@ -31,7 +31,7 @@ class AnimalIn(BaseModel):
     raca_nome: Optional[str] = None  # usado na importação: resolve raca_id por nome/código se possível
     sexo: str
     aptidao_manejo: str
-    categoria: str
+    categoria: Optional[str] = None
     data_nascimento: Optional[date] = None
     peso_nascimento: Optional[float] = None
     mae_id: Optional[int] = None
@@ -276,6 +276,11 @@ def cadastrar_animal(data: AnimalIn):
         especie_id = cur.fetchone()['id']
 
         raca_id = data.raca_id
+        categoria = data.categoria
+        if not categoria:
+            idade_meses = _idade_em_meses(data.data_nascimento, date.today())
+            categoria = _categoria_por_idade(data.sexo, idade_meses)
+
         if raca_id is None and data.raca_nome:
             cur.execute(
                 "SELECT id FROM bovino_racas WHERE LOWER(nome) = LOWER(%s) LIMIT 1",
@@ -295,7 +300,7 @@ def cadastrar_animal(data: AnimalIn):
              nome_pai, nome_mae, registro_pai_externo, registro_mae_externo, composicao_racial)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
         """, (data.imovel_id, especie_id, data.brinco, data.nome, raca_id,
-              data.sexo, data.aptidao_manejo, data.categoria, data.data_nascimento,
+              data.sexo, data.aptidao_manejo, categoria, data.data_nascimento,
               data.peso_nascimento, data.mae_id, data.pai_id, data.lote_id,
               data.data_entrada or date.today(), data.origem,
               data.valor_aquisicao, data.observacoes,
@@ -469,7 +474,7 @@ def excluir_animal(animal_id: int):
         return {"success": True, "id": animal_id}
     finally:
         conn.close()
-        
+
 # ── PESAGENS ─────────────────────────────────────────────────
 @router.post("/pesagens")
 def registrar_pesagem(data: PesagemIn):
