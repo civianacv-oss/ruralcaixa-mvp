@@ -28,6 +28,13 @@ interface ContratoRural {
   area_parceria_hectares?: number;
 }
 
+interface Condomino {
+  nome: string;
+  documento: string;
+  area_ha: string;          // string no form, convertido pra number no envio
+  papel: "administrador" | "condomino" | "inventariante";
+}
+
 interface TipoAssistente {
   slug: string;
   nome: string;
@@ -242,6 +249,38 @@ export default function ContratosRurais() {
 
   const semPartes = TIPOS_SEM_PARTES.includes(form.tipo);
   const ehPecuaria = form.tipo === "pecuaria";
+  const ehCondominio = form.tipo === "condominio";
+
+  const [condominos, setCondominos] = useState<Condomino[]>([
+    { nome: "", documento: "", area_ha: "", papel: "administrador" },
+    { nome: "", documento: "", area_ha: "", papel: "condomino" },
+  ]);
+
+  const adicionarCondomino = () => {
+    setCondominos((prev) => [
+      ...prev,
+      { nome: "", documento: "", area_ha: "", papel: "condomino" },
+    ]);
+  };
+
+  const removerCondomino = (index: number) => {
+    if (condominos.length <= 2) {
+      toast.error("Um condomínio precisa de no mínimo 2 condôminos.");
+      return;
+    }
+    setCondominos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const atualizarCondomino = (index: number, campo: keyof Condomino, valor: string) => {
+    setCondominos((prev) =>
+      prev.map((c, i) => (i === index ? { ...c, [campo]: valor } : c))
+    );
+  };
+
+  const somaAreaCondominos = condominos.reduce(
+    (soma, c) => soma + (Number(c.area_ha) || 0), 0
+  );
+  const areaTotalCondominio = Number(form.valor) || 0;
 
   const load = async () => {
     setLoading(true);
@@ -281,6 +320,35 @@ export default function ContratosRurais() {
       if (!form.outorgante_nome.trim()) { toast.error("Informe o nome do Outorgante"); return; }
       if (!form.outorgado_nome.trim()) { toast.error("Informe o nome do Outorgado"); return; }
     }
+    if (ehCondominio) {
+      if (!form.data_fim) {
+        toast.error("Condomínio Rural exige Data Fim (não aceita prazo indeterminado).");
+        return;
+      }
+      if (!areaTotalCondominio || areaTotalCondominio <= 0) {
+        toast.error("Informe a Área total (hectares) do condomínio.");
+        return;
+      }
+      if (condominos.length < 2) {
+        toast.error("Um condomínio precisa de no mínimo 2 condôminos.");
+        return;
+      }
+      for (const c of condominos) {
+        if (!c.nome.trim()) { toast.error("Preencha o nome de todos os condôminos."); return; }
+        if (!c.area_ha || Number(c.area_ha) <= 0) {
+          toast.error(`Informe a área (ha) do condômino "${c.nome || "sem nome"}".`);
+          return;
+        }
+      }
+      if (somaAreaCondominos > areaTotalCondominio + 0.01) {
+        toast.error(
+          `A soma das áreas dos condôminos (${somaAreaCondominos.toFixed(2)} ha) ` +
+          `excede a área total do imóvel (${areaTotalCondominio.toFixed(2)} ha).`
+        );
+        return;
+      }
+    }
+
     if (!form.data_fim && !form.clausula_denuncia_dias) {
       toast.error("Prazo indeterminado precisa do aviso prévio de rescisão (em dias) — sem data fim, isso é obrigatório");
       return;
@@ -318,10 +386,32 @@ export default function ContratosRurais() {
           ...(!semPartes && form.responsabilidade_riscos ? { responsabilidade_riscos: form.responsabilidade_riscos } : {}),
         },
       };
-      const novo = await apiFetch<{ data: ContratoRural }>(semPartes ? "/contratos/" : "/contratos/", {
+      const endpoint = ehCondominio ? "/condominio/" : "/contratos/";
+      const bodyFinal = ehCondominio
+        ? {
+            fazenda_id: imovelId,
+            imovel_id: imovelId,
+            area_total_ha: areaTotalCondominio,
+            data_inicio: form.data_inicio,
+            data_fim: form.data_fim,
+            frequencia_pagamento: form.frequencia_pagamento,
+            clausulas_adicionais: {},
+            condominos: condominos.map((c) => ({
+              area_ha: Number(c.area_ha),
+              papel: c.papel,
+              parceiro_externo: {
+                nome: c.nome,
+                tipo_documento: c.documento.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF",
+                documento: c.documento || "não informado",
+              },
+            })),
+          }
+        : body;
+      const novo = await apiFetch<{ data: ContratoRural }>(endpoint, {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify(bodyFinal),
       });
+
       setContratos((prev) => [novo.data ?? novo as unknown as ContratoRural, ...prev]);
       setShowNew(false);
       setForm({
@@ -334,6 +424,10 @@ export default function ContratosRurais() {
         frequencia_pagamento: "safra", clausula_denuncia_dias: "",
         responsabilidade_custos: "", responsabilidade_riscos: "",
       });
+      setCondominos([
+        { nome: "", documento: "", area_ha: "", papel: "administrador" },
+        { nome: "", documento: "", area_ha: "", papel: "condomino" },
+      ]);
       toast.success("Contrato criado com sucesso");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Erro ao criar contrato");
@@ -1017,10 +1111,90 @@ export default function ContratosRurais() {
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label>Área (hectares)</Label>
+                  <Label>Área (hectares){ehCondominio ? " total do condomínio" : ""}</Label>
                   <Input type="number" placeholder="0,00" value={form.valor}
                     onChange={(e) => setForm({ ...form, valor: e.target.value })} />
                 </div>
+
+                {ehCondominio && (
+                  <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Condôminos ({condominos.length})
+                      </p>
+                      <button
+                        type="button"
+                        onClick={adicionarCondomino}
+                        className="text-xs font-medium text-emerald-700 hover:underline"
+                      >
+                        + Adicionar condômino
+                      </button>
+                    </div>
+
+                    {condominos.map((c, i) => (
+                      <div key={i} className="space-y-2 border-t pt-2 first:border-t-0 first:pt-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold">Condômino {i + 1}</span>
+                          {condominos.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => removerCondomino(i)}
+                              className="text-xs text-red-600 hover:underline"
+                            >
+                              Remover
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            placeholder="Nome completo"
+                            value={c.nome}
+                            onChange={(e) => atualizarCondomino(i, "nome", e.target.value)}
+                          />
+                          <Input
+                            placeholder="CPF/CNPJ"
+                            value={c.documento}
+                            onChange={(e) => atualizarCondomino(i, "documento", e.target.value)}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            placeholder="Área (ha)"
+                            value={c.area_ha}
+                            onChange={(e) => atualizarCondomino(i, "area_ha", e.target.value)}
+                          />
+                          <Select
+                            value={c.papel}
+                            onValueChange={(v) => atualizarCondomino(i, "papel", v)}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="administrador">Administrador</SelectItem>
+                              <SelectItem value="condomino">Condômino</SelectItem>
+                              <SelectItem value="inventariante">Inventariante</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {c.area_ha && areaTotalCondominio > 0 && (
+                          <p className="text-[11px] text-muted-foreground">
+                            ≈ {((Number(c.area_ha) / areaTotalCondominio) * 100).toFixed(1)}% de participação
+                          </p>
+                        )}
+                      </div>
+                    ))}
+
+                    <p className={`text-xs font-medium ${
+                      somaAreaCondominos > areaTotalCondominio + 0.01
+                        ? "text-red-600"
+                        : "text-muted-foreground"
+                    }`}>
+                      Soma das áreas: {somaAreaCondominos.toFixed(2)} ha
+                      {areaTotalCondominio > 0 && ` de ${areaTotalCondominio.toFixed(2)} ha total`}
+                    </p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Data Início</Label>
