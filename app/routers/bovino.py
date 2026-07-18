@@ -1069,6 +1069,95 @@ def resumo_ordenha(imovel_id: int, meses: int = Query(6, ge=1, le=24)):
     finally:
         conn.close()
 
+@router.get("/leiteiro/iofc/{produtor_id}")
+def iofc_mensal(produtor_id: int, meses: int = Query(12, ge=1, le=36)):
+    """IOFC (Income Over Feed Cost) mensal - nivel produtor.
+
+    Formula: IOFC = Receita de Leite - Custo de Racao (especifico do
+    rebanho leiteiro, codigo_conta 3.1.3.1.1).
+
+    Receita de Leite, em ordem de prioridade:
+      1. Lancamento financeiro real na subconta "Venda de Leite" (4.1.2),
+         se existir para o mes/produtor.
+      2. Fallback: volume_l vendido (bovino_ordenha) x preco medio CEPEA
+         do mes (cotacoes_mercado, produto='leite_litro_brasil').
+
+    LIMITACAO CONHECIDA (v1): calculado no nivel do PRODUTOR, nao por
+    propriedade individual. Isso porque, historicamente, lancamentos de
+    racao nao tem propriedade_id preenchido (bug de insercao ja mapeado
+    para correcao na Fase 2). Quando propriedade_id estiver confiavel
+    para todos os registros, criar uma v2 filtrando por imovel_id.
+
+    LIMITACAO CONHECIDA (CEPEA): o scraper atual so consegue capturar os
+    2 ultimos meses publicados na pagina publica do CEPEA (o restante do
+    historico fica atras de um endpoint AJAX separado). Meses fora dessa
+    janela ficam com receita_leite_final = null ate isso ser resolvido.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            WITH producao_mensal AS (
+                SELECT
+                    ir.produtor_id,
+                    date_trunc('month', o.data)::date AS mes,
+                    SUM(o.volume_l) AS volume_l
+                FROM bovino_ordenha o
+                JOIN imoveis_rurais ir ON ir.id = o.imovel_id
+                WHERE o.destinacao = 'venda'
+                  AND ir.produtor_id = %(produtor_id)s
+                  AND o.data >= CURRENT_DATE - (%(meses)s * 30)
+                GROUP BY ir.produtor_id, date_trunc('month', o.data)
+            ),
+            receita_real AS (
+                SELECT
+                    l.produtor_id,
+                    date_trunc('month', l.data)::date AS mes,
+                    SUM(l.valor) AS receita_leite_real
+                FROM lancamentos l
+                WHERE l.subconta_id = '1d3e0f2c-9bfb-49ab-a603-1c42fc434a75'
+                  AND l.produtor_id = %(produtor_id)s
+                GROUP BY l.produtor_id, date_trunc('month', l.data)
+            ),
+            preco_cepea AS (
+                SELECT data_referencia AS mes, valor AS preco_litro
+                FROM cotacoes_mercado
+                WHERE produto = 'leite_litro_brasil'
+            ),
+            custo_racao_leite AS (
+                SELECT
+                    l.produtor_id,
+                    date_trunc('month', l.data)::date AS mes,
+                    SUM(l.valor) AS custo_racao
+                FROM lancamentos l
+                JOIN subcontas s ON s.id = l.subconta_id
+                WHERE s.codigo_conta = '3.1.3.1.1'
+                  AND l.produtor_id = %(produtor_id)s
+                GROUP BY l.produtor_id, date_trunc('month', l.data)
+            )
+            SELECT
+                p.mes,
+                p.volume_l,
+                COALESCE(r.receita_leite_real, 0) AS receita_real,
+                pc.preco_litro AS preco_cepea_mes,
+                ROUND(
+                    COALESCE(r.receita_leite_real, p.volume_l * pc.preco_litro)::numeric, 2
+                ) AS receita_leite_final,
+                COALESCE(c.custo_racao, 0) AS custo_racao_leite,
+                ROUND(
+                    (COALESCE(r.receita_leite_real, p.volume_l * pc.preco_litro)
+                     - COALESCE(c.custo_racao, 0))::numeric, 2
+                ) AS iofc
+            FROM producao_mensal p
+            LEFT JOIN receita_real r ON r.produtor_id = p.produtor_id AND r.mes = p.mes
+            LEFT JOIN preco_cepea pc ON pc.mes = p.mes
+            LEFT JOIN custo_racao_leite c ON c.produtor_id = p.produtor_id AND c.mes = p.mes
+            ORDER BY p.mes DESC
+        """, {"produtor_id": produtor_id, "meses": meses})
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
 # ── IATF ─────────────────────────────────────────────────────
 @router.post("/leiteiro/iatf")
 def registrar_iatf(data: IatfIn):
@@ -1091,7 +1180,7 @@ def registrar_iatf(data: IatfIn):
         return {"ok": True, **row}
     finally:
         conn.close()
-
+        
 @router.get("/leiteiro/iatf/{imovel_id}")
 def listar_iatf(imovel_id: int):
     conn = get_db()
@@ -1422,18 +1511,48 @@ def _produtor_do_imovel_bovino(cur, imovel_id: int) -> Optional[int]:
     row = cur.fetchone()
     return row["produtor_id"] if row else None
 
-
 def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: float,
-                                    descricao: str, origem: str = "whatsapp_bovino"):
-    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py / ovino.py)."""
+                                    descricao: str, origem: str = "whatsapp_bovino",
+                                    codigo_conta: str = None, subconta_id_fixo: str = None):
+    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py / ovino.py).
+
+    Prioridade de escolha da subconta:
+      1. subconta_id_fixo - use quando voce ja sabe o UUID exato (mais seguro,
+         nao depende de nenhum outro dado - use isso sempre que possivel)
+      2. codigo_conta - use quando o codigo for UNICO entre as subcontas
+         (ex: '4.1.2' Venda de Leite, que so tem 1 subconta com esse codigo)
+      3. Fallback antigo por tipo (RECEITA/DESPESA) - mantido so por
+         compatibilidade, NAO USE em chamadas novas, e ambiguo.
+    """
     tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
     lcdpr_conn = None
     try:
         lcdpr_conn = get_db()
         with lcdpr_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1", (tipo_lancamento,))
-            sub = cur.fetchone()
-            subconta_id = sub["id"] if sub else None
+            subconta_id = subconta_id_fixo  # prioridade 1: ja vem pronto
+
+            if subconta_id is None and codigo_conta:
+                cur.execute(
+                    "SELECT id FROM subcontas WHERE codigo_conta = %s LIMIT 1",
+                    (codigo_conta,)
+                )
+                sub = cur.fetchone()
+                if sub:
+                    subconta_id = sub["id"]
+                else:
+                    logger.warning(
+                        "[BOVINO] codigo_conta '%s' nao encontrado; fallback por tipo.",
+                        codigo_conta
+                    )
+
+            if subconta_id is None:
+                cur.execute(
+                    "SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1",
+                    (tipo_lancamento,)
+                )
+                sub = cur.fetchone()
+                subconta_id = sub["id"] if sub else None
+
             cur.execute("""
                 INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
                 VALUES (%s, %s, %s, %s, %s) RETURNING id
@@ -1449,7 +1568,6 @@ def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: fl
     finally:
         if lcdpr_conn:
             lcdpr_conn.close()
-
 
 @router.post("/webhook-whatsapp")
 def webhook_whatsapp_bovino(payload: WhatsAppMensagemBovino):
@@ -1601,6 +1719,7 @@ def webhook_whatsapp_bovino(payload: WhatsAppMensagemBovino):
                         conn, produtor_id, entidades.get("data_evento"), "despesa",
                         valor_total, f"Compra de {qtd or '?'} bovino(s)"
                                      + (f" — {entidades['raca']}" if entidades.get("raca") else ""),
+                        subconta_id_fixo="456d01f4-e0b9-48e4-8b71-5ab8021fb50f",  # Animais
                     )
                     if lanc_id:
                         evento_id = lanc_id
@@ -1626,6 +1745,7 @@ def webhook_whatsapp_bovino(payload: WhatsAppMensagemBovino):
                         conn, produtor_id, entidades.get("data_evento"), "receita",
                         valor_total, f"Venda de {qtd or '?'} bovino(s)"
                                      + (f" — brinco {entidades['brinco']}" if entidades.get("brinco") else ""),
+                        subconta_id_fixo="93f28dea-0242-462c-a4ef-65eed3478815",  # Venda de Bovinos
                     )
                     if lanc_id:
                         evento_id = lanc_id
