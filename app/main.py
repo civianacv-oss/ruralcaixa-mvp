@@ -193,6 +193,15 @@ except Exception as e:
     apuracao_pj_router = None
 if apuracao_pj_router: app.include_router(apuracao_pj_router)
 
+# Painel Fiscal (resumo consolidado + histórico)
+fiscal_router = None
+try:
+    from app.routers.fiscal import router as fiscal_router
+    print("FISCAL ROUTER LOADED OK")
+except Exception as e:
+    print(f"FISCAL ROUTER FAILED: {e}")
+    fiscal_router = None
+if fiscal_router: app.include_router(fiscal_router)
 
 # Importação em lote
 importacao_router = None
