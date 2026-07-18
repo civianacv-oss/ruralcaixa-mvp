@@ -31,6 +31,7 @@ import Relatorios from "./pages/Relatorios";
 import ESocialRural from "./pages/ESocialRural";
 import EFDReinf from "./pages/EFDReinf";
 import DCTFWeb from "./pages/DCTFWeb";
+import LivroCaixa from "./pages/LivroCaixa";
 import Insumos from "./pages/Insumos";
 import AnaliseCustos from "./pages/AnaliseCustos";
 import RecomendacoesInsumos from "./pages/RecomendacoesInsumos";
@@ -123,6 +124,7 @@ function Router() {
       <Route path="/esocial-rural">{() => <ProtectedRoute component={ESocialRural} />}</Route>
       <Route path="/efd-reinf">{() => <ProtectedRoute component={EFDReinf} />}</Route>
       <Route path="/dctfweb">{() => <ProtectedRoute component={DCTFWeb} />}</Route>
+      <Route path="/livro-caixa">{() => <ProtectedRoute component={LivroCaixa} />}</Route>
       <Route path="/simulador-tributario">{() => <ProtectedRoute component={SimuladorTributacao} />}</Route>
 
       {/* Insumos */}
