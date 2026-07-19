@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { RefreshCw, BookOpen, Plus, Trash2, TrendingUp, TrendingDown, Scale, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId, getRcToken } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
+import { getImovelId } from "@/lib/api";
 
 interface Lancamento {
   id: number;
@@ -61,69 +62,14 @@ const CATEGORIAS = [
   "mao_de_obra", "manutencao", "combustivel", "financiamento", "outros",
 ];
 
-function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = getRcToken();
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  };
-}
-
-async function fetchLancamentos(imovelId: number, anoBase: number): Promise<Lancamento[]> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}?ano_base=${anoBase}`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
-}
-
-async function fetchApuracao(imovelId: number, anoBase: number): Promise<Apuracao> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/apuracao/${anoBase}`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) return {};
-  return res.json();
-}
-
-async function postFecharMes(imovelId: number, anoBase: number, mes: number): Promise<{ ok: boolean; linhas: number; aviso?: string }> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechar/${anoBase}/${mes}`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error("Erro ao fechar o mês");
-  return res.json();
-}
-
-async function fetchFechamento(imovelId: number, anoBase: number, mes: number): Promise<Fechamento> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) return { fechado: false, linhas: [] };
-  return res.json();
-}
-
-async function deleteReabrirMes(imovelId: number, anoBase: number, mes: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error("Erro ao reabrir o mês");
-}
-
 export default function LivroCaixa() {
   const anoAtual = new Date().getFullYear();
   const [anoBase, setAnoBase] = useState(anoAtual);
   const [mes, setMes] = useState(new Date().getMonth() + 1);
-  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
-  const [apuracao, setApuracao] = useState<Apuracao>({});
-  const [fechamento, setFechamento] = useState<Fechamento>({ fechado: false, linhas: [] });
-  const [loading, setLoading] = useState(true);
-  const [fechando, setFechando] = useState(false);
   const [showFechamento, setShowFechamento] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  const [saving, setSaving] = useState(false);
   const imovelId = getImovelId();
+  const utils = trpc.useUtils();
 
   const [form, setForm] = useState({
     data_lancamento: "",
@@ -134,120 +80,111 @@ export default function LivroCaixa() {
     deducao_irpf: true,
   });
 
-  const load = async () => {
-    if (!imovelId) return;
-    setLoading(true);
-    try {
-      const [l, a, f] = await Promise.all([
-        fetchLancamentos(imovelId, anoBase),
-        fetchApuracao(imovelId, anoBase),
-        fetchFechamento(imovelId, anoBase, mes),
-      ]);
-      setLancamentos(l);
-      setApuracao(a);
-      setFechamento(f);
-    } catch {
-      toast.error("Não foi possível carregar o Livro Caixa");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const lancamentosQuery = trpc.railway.livroCaixaLancamentos.useQuery(
+    { imovelId: imovelId!, anoBase },
+    { enabled: !!imovelId },
+  );
+  const apuracaoQuery = trpc.railway.livroCaixaApuracao.useQuery(
+    { imovelId: imovelId!, anoBase },
+    { enabled: !!imovelId },
+  );
+  const fechamentoQuery = trpc.railway.fechamentoLivroCaixa.useQuery(
+    { imovelId: imovelId!, anoBase, mes },
+    { enabled: !!imovelId },
+  );
 
-  useEffect(() => { load(); }, [imovelId, anoBase, mes]);
+  const lancamentos = (lancamentosQuery.data ?? []) as Lancamento[];
+  const apuracao = (apuracaoQuery.data ?? {}) as Apuracao;
+  const fechamento = (fechamentoQuery.data ?? { fechado: false, linhas: [] }) as Fechamento;
+  const loading = lancamentosQuery.isLoading || apuracaoQuery.isLoading;
 
-  const handleFecharMes = async () => {
-    if (!imovelId) return;
-    setFechando(true);
-    try {
-      const resultado = await postFecharMes(imovelId, anoBase, mes);
+  function invalidateAll() {
+    utils.railway.livroCaixaLancamentos.invalidate({ imovelId: imovelId!, anoBase });
+    utils.railway.livroCaixaApuracao.invalidate({ imovelId: imovelId!, anoBase });
+    utils.railway.fechamentoLivroCaixa.invalidate({ imovelId: imovelId!, anoBase, mes });
+  }
+
+  const criarLancamento = trpc.railway.criarLancamentoLivroCaixa.useMutation({
+    onSuccess: () => {
+      toast.success("Lançamento criado com sucesso");
+      setShowNew(false);
+      setForm({ data_lancamento: "", tipo: "receita", categoria: "", descricao: "", valor: "", deducao_irpf: true });
+      invalidateAll();
+    },
+    onError: (e) => toast.error(e.message || "Erro ao criar lançamento"),
+  });
+
+  const excluirLancamento = trpc.railway.excluirLancamentoLivroCaixa.useMutation({
+    onSuccess: () => {
+      toast.success("Lançamento excluído");
+      invalidateAll();
+    },
+    onError: () => toast.error("Erro ao excluir lançamento"),
+  });
+
+  const fecharMes = trpc.railway.fecharMesLivroCaixa.useMutation({
+    onSuccess: (resultado) => {
       if (resultado.linhas === 0) {
         toast.error(resultado.aviso || "Nenhum lançamento encontrado nesse mês.");
         return;
       }
       toast.success(`Mês fechado: ${resultado.linhas} categoria(s) consolidada(s)`);
-      const f = await fetchFechamento(imovelId, anoBase, mes);
-      setFechamento(f);
+      utils.railway.fechamentoLivroCaixa.invalidate({ imovelId: imovelId!, anoBase, mes });
       setShowFechamento(true);
-    } catch {
-      toast.error("Erro ao fechar o mês");
-    } finally {
-      setFechando(false);
-    }
-  };
+    },
+    onError: () => toast.error("Erro ao fechar o mês"),
+  });
 
-  const handleReabrirMes = async () => {
-    if (!imovelId) return;
-    if (!confirm(`Reabrir ${MESES[mes - 1]}/${anoBase}? O resumo consolidado será apagado — você pode corrigir os lançamentos e fechar de novo depois.`)) return;
-    setFechando(true);
-    try {
-      await deleteReabrirMes(imovelId, anoBase, mes);
+  const reabrirMes = trpc.railway.reabrirMesLivroCaixa.useMutation({
+    onSuccess: () => {
       toast.success("Mês reaberto para retificação");
-      setFechamento({ fechado: false, linhas: [] });
+      utils.railway.fechamentoLivroCaixa.invalidate({ imovelId: imovelId!, anoBase, mes });
       setShowFechamento(false);
-    } catch {
-      toast.error("Erro ao reabrir o mês");
-    } finally {
-      setFechando(false);
-    }
-  };
+    },
+    onError: () => toast.error("Erro ao reabrir o mês"),
+  });
 
   const fmt = (v?: number) =>
     (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const handleCreate = async () => {
+  const handleFecharMes = () => {
+    if (!imovelId) return;
+    fecharMes.mutate({ imovelId, anoBase, mes });
+  };
+
+  const handleReabrirMes = () => {
+    if (!imovelId) return;
+    if (!confirm(`Reabrir ${MESES[mes - 1]}/${anoBase}? O resumo consolidado será apagado — você pode corrigir os lançamentos e fechar de novo depois.`)) return;
+    reabrirMes.mutate({ imovelId, anoBase, mes });
+  };
+
+  const handleCreate = () => {
     if (!imovelId) return;
     if (!form.data_lancamento) { toast.error("Informe a data do lançamento"); return; }
     if (!form.categoria) { toast.error("Selecione a categoria"); return; }
     if (!form.descricao.trim()) { toast.error("Informe a descrição"); return; }
     if (!form.valor || Number(form.valor) <= 0) { toast.error("Informe um valor válido"); return; }
 
-    setSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/livro-caixa/`, {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          imovel_id: imovelId,
-          ano_base: anoBase,
-          data_lancamento: form.data_lancamento,
-          tipo: form.tipo,
-          categoria: form.categoria,
-          descricao: form.descricao,
-          valor: Number(form.valor),
-          origem: "manual",
-          deducao_irpf: form.deducao_irpf,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Erro ao criar lançamento");
-      }
-      toast.success("Lançamento criado com sucesso");
-      setShowNew(false);
-      setForm({ data_lancamento: "", tipo: "receita", categoria: "", descricao: "", valor: "", deducao_irpf: true });
-      load();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao criar lançamento");
-    } finally {
-      setSaving(false);
-    }
+    criarLancamento.mutate({
+      imovelId,
+      anoBase,
+      dataLancamento: form.data_lancamento,
+      tipo: form.tipo,
+      categoria: form.categoria,
+      descricao: form.descricao,
+      valor: Number(form.valor),
+      deducaoIrpf: form.deducao_irpf,
+    });
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
+    if (!imovelId) return;
     if (!confirm("Excluir este lançamento?")) return;
-    try {
-      const res = await fetch(`${API_BASE}/livro-caixa/${id}`, {
-        method: "DELETE",
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error();
-      setLancamentos((prev) => prev.filter((l) => l.id !== id));
-      toast.success("Lançamento excluído");
-      load();
-    } catch {
-      toast.error("Erro ao excluir lançamento");
-    }
+    excluirLancamento.mutate({ imovelId, id });
   };
+
+  const fechando = fecharMes.isPending || reabrirMes.isPending;
+  const saving = criarLancamento.isPending;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -275,7 +212,7 @@ export default function LivroCaixa() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={invalidateAll} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
@@ -295,7 +232,6 @@ export default function LivroCaixa() {
         </div>
       </div>
 
-      {/* Status do fechamento do mês selecionado */}
       {fechamento.fechado && (
         <Card className="border-blue-200 bg-blue-50 cursor-pointer" onClick={() => setShowFechamento(true)}>
           <CardContent className="p-4 flex items-center justify-between">
@@ -312,7 +248,6 @@ export default function LivroCaixa() {
         </Card>
       )}
 
-      {/* Apuração anual */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Receita Bruta", value: apuracao.receita_bruta, icon: <TrendingUp className="w-4 h-4 text-emerald-600" /> },
@@ -349,7 +284,6 @@ export default function LivroCaixa() {
         </Card>
       )}
 
-      {/* Lista de lançamentos */}
       {loading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
       ) : lancamentos.length === 0 ? (
@@ -406,7 +340,6 @@ export default function LivroCaixa() {
         </div>
       )}
 
-      {/* Modal de novo lançamento */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -465,7 +398,7 @@ export default function LivroCaixa() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Modal de detalhe do fechamento */}
+
       <Dialog open={showFechamento} onOpenChange={setShowFechamento}>
         <DialogContent className="max-w-md">
           <DialogHeader>
