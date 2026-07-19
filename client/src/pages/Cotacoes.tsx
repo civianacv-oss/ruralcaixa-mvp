@@ -172,7 +172,9 @@ export default function Cotacoes() {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {c.quantidade} {c.unidade} · {c.total_respondidos ?? 0}/{c.total_fornecedores ?? 0} fornecedor(es) responderam
+                        Solicitado em {new Date(c.data_solicitacao + "T00:00:00").toLocaleDateString("pt-BR")}
+                        {" · "}{c.quantidade} {c.unidade} · {c.total_respondidos ?? 0}/{c.total_fornecedores ?? 0} fornecedor(es) responderam
+                        {c.data_limite_resposta && ` · responder até ${new Date(c.data_limite_resposta + "T00:00:00").toLocaleDateString("pt-BR")}`}
                       </p>
                     </div>
                     {c.menor_preco != null && (
@@ -269,8 +271,10 @@ export default function Cotacoes() {
           ) : detalheQuery.data ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                {detalheQuery.data.cotacao.quantidade} {detalheQuery.data.cotacao.unidade}
+                Solicitado em {new Date(detalheQuery.data.cotacao.data_solicitacao + "T00:00:00").toLocaleDateString("pt-BR")}
+                {" · "}{detalheQuery.data.cotacao.quantidade} {detalheQuery.data.cotacao.unidade}
                 {detalheQuery.data.cotacao.observacoes && ` · ${detalheQuery.data.cotacao.observacoes}`}
+                {detalheQuery.data.cotacao.data_limite_resposta && ` · responder até ${new Date(detalheQuery.data.cotacao.data_limite_resposta + "T00:00:00").toLocaleDateString("pt-BR")}`}
               </p>
 
               <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -286,6 +290,11 @@ export default function Cotacoes() {
                     </div>
                     {f.prazo_entrega_dias != null && (
                       <p className="text-xs text-muted-foreground mt-0.5">Prazo: {f.prazo_entrega_dias} dias</p>
+                    )}
+                    {f.respondido_em && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Respondeu em {new Date(f.respondido_em).toLocaleDateString("pt-BR")}
+                      </p>
                     )}
                     {f.observacao_resposta && (
                       <p className="text-xs text-muted-foreground mt-0.5">"{f.observacao_resposta}"</p>
