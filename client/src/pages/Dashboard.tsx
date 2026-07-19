@@ -12,7 +12,8 @@ const SPECIES = [
   { key: "bovinos", label: "Bovinos", emoji: "🐄", color: "oklch(0.55 0.14 60)", chartColor: "#fb923c" },
 ] as const;
 
-function fmt(v: number) {
+function fmt(v: number | null | undefined) {
+  if (v === null || v === undefined) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 }
 
@@ -96,16 +97,18 @@ export default function Dashboard() {
   }));
 
   const iofcSerie = [...(iofc.data ?? [])]
-    .filter((m) => m.iofc !== null)
     .sort((a, b) => a.mes.localeCompare(b.mes))
     .map((m) => ({
       mes: new Date(m.mes + "T00:00:00").toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
-      iofc: Number(m.iofc),
-      receita: Number(m.receita_leite_final ?? 0),
+      iofc: m.iofc !== null ? Number(m.iofc) : null,
+      receita: m.receita_leite_final !== null ? Number(m.receita_leite_final) : null,
       custoRacao: Number(m.custo_racao_leite ?? 0),
     }));
 
-  const iofcMesAtual = iofcSerie[iofcSerie.length - 1];
+  // "Mês mais recente" é o último com IOFC calculado de fato — meses sem
+  // preço CEPEA ou sem lançamento de venda ficam no gráfico (com um vazio
+  // na linha do IOFC), mas não viram o número em destaque.
+  const iofcMesAtual = [...iofcSerie].reverse().find((m) => m.iofc !== null);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -252,7 +255,7 @@ export default function Dashboard() {
               {iofcMesAtual && (
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Mês mais recente ({iofcMesAtual.mes})</p>
-                  <p className="text-xl font-bold" style={{ color: iofcMesAtual.iofc >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)" }}>
+                  <p className="text-xl font-bold" style={{ color: (iofcMesAtual.iofc ?? 0) >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)" }}>
                     {fmt(iofcMesAtual.iofc)}
                   </p>
                 </div>
@@ -270,7 +273,7 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0.01 145)" />
                 <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number, name: string) => [fmt(v), name === "iofc" ? "IOFC" : name === "receita" ? "Receita de leite" : "Custo de ração"]} />
+                <Tooltip formatter={(v: number | null, name: string) => [fmt(v), name === "iofc" ? "IOFC" : name === "receita" ? "Receita de leite" : "Custo de ração"]} />
                 <Legend
                   formatter={(v) => (v === "iofc" ? "IOFC" : v === "receita" ? "Receita de leite" : "Custo de ração")}
                   iconType="circle"
