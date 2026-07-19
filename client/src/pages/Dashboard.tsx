@@ -3,6 +3,7 @@ import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
 import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors, Milk } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SPECIES = [
   { key: "ovinos", label: "Ovinos", emoji: "🐑", color: "oklch(0.42 0.14 145)", chartColor: "#4ade80" },
@@ -57,6 +58,7 @@ function SpeciesCard({ species, count, loading }: { species: typeof SPECIES[numb
 
 export default function Dashboard() {
   const { produtorId, imovelId, produtorNome } = useRuralAuth();
+  const [iofcMeses, setIofcMeses] = useState(12);
 
   // Stable inputs for tRPC queries (avoid infinite re-render)
   const imovelInput = useMemo(() => ({ imovelId: imovelId ?? 0 }), [imovelId]);
@@ -67,7 +69,7 @@ export default function Dashboard() {
   // All data goes through the secure server-side proxy
   const ovinoDash = trpc.railway.ovinoDashboard.useQuery(imovelInput, { enabled });
   const resumo = trpc.railway.produtorResumo.useQuery(produtorInput, { enabled });
-  const iofc = trpc.railway.iofcMensal.useQuery({ produtorId: produtorId ?? 0, meses: 12 }, { enabled });
+  const iofc = trpc.railway.iofcMensal.useQuery({ produtorId: produtorId ?? 0, meses: iofcMeses }, { enabled });
 
   const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "ovinos" }, { enabled });
   const caprinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "caprinos" }, { enabled });
@@ -236,14 +238,26 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground">Receita de leite menos custo de ração, por mês</p>
               </div>
             </div>
-            {iofcMesAtual && (
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">Mês mais recente ({iofcMesAtual.mes})</p>
-                <p className="text-xl font-bold" style={{ color: iofcMesAtual.iofc >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)" }}>
-                  {fmt(iofcMesAtual.iofc)}
-                </p>
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              <Select value={String(iofcMeses)} onValueChange={(v) => setIofcMeses(Number(v))}>
+                <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="3">Últimos 3 meses</SelectItem>
+                  <SelectItem value="6">Últimos 6 meses</SelectItem>
+                  <SelectItem value="12">Últimos 12 meses</SelectItem>
+                  <SelectItem value="24">Últimos 24 meses</SelectItem>
+                  <SelectItem value="36">Últimos 36 meses</SelectItem>
+                </SelectContent>
+              </Select>
+              {iofcMesAtual && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Mês mais recente ({iofcMesAtual.mes})</p>
+                  <p className="text-xl font-bold" style={{ color: iofcMesAtual.iofc >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)" }}>
+                    {fmt(iofcMesAtual.iofc)}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {iofc.isLoading ? (
