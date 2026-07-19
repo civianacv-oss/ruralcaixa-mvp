@@ -847,7 +847,15 @@ def _montar_mensagem_cotacao(produto: str, quantidade: float, unidade: str,
 
 
 async def _enviar_cotacao_fornecedor(fornecedor: dict, mensagem: str) -> tuple[bool, str]:
-    """Retorna (enviado, canal)."""
+    """Retorna (enviado, canal). Tenta WhatsApp real primeiro, depois Telegram."""
+    if fornecedor.get("whatsapp"):
+        try:
+            from app.services.whatsapp_service import enviar_whatsapp_async
+            if await enviar_whatsapp_async(fornecedor["whatsapp"], mensagem):
+                return True, "whatsapp"
+        except Exception as e:
+            logger.error(f"WhatsApp cotação fornecedor {fornecedor.get('id')}: {e}")
+
     if fornecedor.get("telegram") and TELEGRAM_BOT_TOKEN:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -860,21 +868,19 @@ async def _enviar_cotacao_fornecedor(fornecedor: dict, mensagem: str) -> tuple[b
         except Exception as e:
             logger.error(f"Telegram envio cotação: {e}")
 
-    # Fallback: avisa o grupo interno (mesmo padrão do pedidos_compra)
+    # Fallback final: avisa o grupo interno (mesmo padrão do pedidos_compra)
     if TELEGRAM_BOT_TOKEN:
         try:
-            msg_grupo = f"📋 *Cotação solicitada*\nFornecedor: {fornecedor.get('nome','?')}\nWhatsApp: {fornecedor.get('whatsapp','?')}\n\n{mensagem}"
+            msg_grupo = f"📋 *Cotação solicitada — sem WhatsApp/Telegram do fornecedor*\nFornecedor: {fornecedor.get('nome','?')}\nWhatsApp: {fornecedor.get('whatsapp','?')}\n\n{mensagem}"
             async with httpx.AsyncClient(timeout=10) as client:
                 await client.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
                     json={"chat_id": TELEGRAM_GROUP_ID, "text": msg_grupo, "parse_mode": "Markdown"},
                 )
-            return True, "nao_enviado"  # não chegou no fornecedor, só no grupo interno
         except Exception as e:
             logger.error(f"Telegram grupo cotação: {e}")
 
     return False, "nao_enviado"
-
 
 @router.post("/cotacoes/")
 async def criar_cotacao(body: CotacaoCreate, request: Request):
