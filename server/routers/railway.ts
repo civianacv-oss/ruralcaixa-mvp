@@ -2529,4 +2529,22 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+  .input(z.object({ produtorId: z.number(), meses: z.number().optional().default(12) }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    // Sem checagem de imóvel aqui de propósito — o endpoint é por produtor.
+    return railwayFetch<{
+      mes: string;
+      volume_l: number;
+      receita_real: number;
+      preco_cepea_mes: number | null;
+      receita_leite_final: number | null;
+      custo_racao_leite: number;
+      iofc: number | null;
+    }[]>(
+      `/bovino/leiteiro/iofc/${input.produtorId}?meses=${input.meses}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
 });

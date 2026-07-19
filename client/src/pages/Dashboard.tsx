@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
-import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors, Milk } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 
 const SPECIES = [
   { key: "ovinos", label: "Ovinos", emoji: "🐑", color: "oklch(0.42 0.14 145)", chartColor: "#4ade80" },
@@ -67,6 +67,7 @@ export default function Dashboard() {
   // All data goes through the secure server-side proxy
   const ovinoDash = trpc.railway.ovinoDashboard.useQuery(imovelInput, { enabled });
   const resumo = trpc.railway.produtorResumo.useQuery(produtorInput, { enabled });
+  const iofc = trpc.railway.iofcMensal.useQuery({ produtorId: produtorId ?? 0, meses: 12 }, { enabled });
 
   const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "ovinos" }, { enabled });
   const caprinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "caprinos" }, { enabled });
@@ -91,6 +92,18 @@ export default function Dashboard() {
     value: counts[s.key],
     color: s.chartColor,
   }));
+
+  const iofcSerie = [...(iofc.data ?? [])]
+    .filter((m) => m.iofc !== null)
+    .sort((a, b) => a.mes.localeCompare(b.mes))
+    .map((m) => ({
+      mes: new Date(m.mes + "T00:00:00").toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+      iofc: Number(m.iofc),
+      receita: Number(m.receita_leite_final ?? 0),
+      custoRacao: Number(m.custo_racao_leite ?? 0),
+    }));
+
+  const iofcMesAtual = iofcSerie[iofcSerie.length - 1];
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -209,6 +222,59 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* IOFC — Margem Leiteira (Income Over Feed Cost) */}
+      {(iofc.isLoading || iofcSerie.length > 0) && (
+        <div className="rounded-2xl p-5 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "oklch(0.95 0.05 250)" }}>
+                <Milk className="w-4.5 h-4.5" style={{ color: "oklch(0.5 0.15 250)" }} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "oklch(0.22 0.06 145)" }}>IOFC — Margem Leiteira</p>
+                <p className="text-xs text-muted-foreground">Receita de leite menos custo de ração, por mês</p>
+              </div>
+            </div>
+            {iofcMesAtual && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Mês mais recente ({iofcMesAtual.mes})</p>
+                <p className="text-xl font-bold" style={{ color: iofcMesAtual.iofc >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)" }}>
+                  {fmt(iofcMesAtual.iofc)}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {iofc.isLoading ? (
+            <div className="h-56 flex items-center justify-center">
+              <div className="text-sm text-muted-foreground">Carregando...</div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={iofcSerie} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0.01 145)" />
+                <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: number, name: string) => [fmt(v), name === "iofc" ? "IOFC" : name === "receita" ? "Receita de leite" : "Custo de ração"]} />
+                <Legend
+                  formatter={(v) => (v === "iofc" ? "IOFC" : v === "receita" ? "Receita de leite" : "Custo de ração")}
+                  iconType="circle"
+                  iconSize={8}
+                />
+                <Line type="monotone" dataKey="receita" stroke="#60a5fa" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="custoRacao" stroke="#f472b6" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="iofc" stroke="oklch(0.42 0.14 145)" strokeWidth={2.5} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          <p className="text-[11px] text-muted-foreground mt-2">
+            IOFC = Receita de Leite − Custo de Ração do rebanho leiteiro. Quando não houver lançamento
+            de venda de leite no período, a receita é estimada pelo volume ordenhado × preço médio CEPEA do mês.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
