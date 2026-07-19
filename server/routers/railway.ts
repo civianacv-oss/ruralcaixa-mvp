@@ -2424,4 +2424,109 @@ export const railwayRouter = router({
         claims.produtorId,
       );
     }),
+// ── Livro Caixa ──────────────────────────────────────────────────────────────
+livroCaixaLancamentos: publicProcedure
+  .input(z.object({ imovelId: z.number(), anoBase: z.number() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch<unknown[]>(
+      `/livro-caixa/${input.imovelId}?ano_base=${input.anoBase}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
+
+livroCaixaApuracao: publicProcedure
+  .input(z.object({ imovelId: z.number(), anoBase: z.number() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch<unknown>(
+      `/livro-caixa/${input.imovelId}/apuracao/${input.anoBase}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
+
+criarLancamentoLivroCaixa: publicProcedure
+  .input(z.object({
+    imovelId: z.number(),
+    anoBase: z.number(),
+    dataLancamento: z.string(),
+    tipo: z.enum(["receita", "despesa"]),
+    categoria: z.string(),
+    descricao: z.string(),
+    valor: z.number(),
+    deducaoIrpf: z.boolean().default(true),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/livro-caixa/`, "POST", {
+      imovel_id: input.imovelId,
+      ano_base: input.anoBase,
+      data_lancamento: input.dataLancamento,
+      tipo: input.tipo,
+      categoria: input.categoria,
+      descricao: input.descricao,
+      valor: input.valor,
+      origem: "manual",
+      deducao_irpf: input.deducaoIrpf,
+    }, claims.produtorId);
+  }),
+
+excluirLancamentoLivroCaixa: publicProcedure
+  .input(z.object({ imovelId: z.number(), id: z.number() }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    await railwayMutate(`/livro-caixa/${input.id}`, "DELETE", undefined, claims.produtorId);
+    return { success: true };
+  }),
+
+fecharMesLivroCaixa: publicProcedure
+  .input(z.object({ imovelId: z.number(), anoBase: z.number(), mes: z.number() }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate<{ ok: boolean; linhas: number; aviso?: string }>(
+      `/livro-caixa/${input.imovelId}/fechar/${input.anoBase}/${input.mes}`,
+      "POST",
+      undefined,
+      claims.produtorId,
+    );
+  }),
+
+fechamentoLivroCaixa: publicProcedure
+  .input(z.object({ imovelId: z.number(), anoBase: z.number(), mes: z.number() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch<{
+      fechado: boolean;
+      fechado_em?: string;
+      receitas?: number;
+      despesas?: number;
+      saldo?: number;
+      linhas: { tipo: string; categoria: string; total: number; fechado_em: string }[];
+    }>(
+      `/livro-caixa/${input.imovelId}/fechamento/${input.anoBase}/${input.mes}`,
+      undefined,
+      claims.produtorId,
+    ).catch(() => ({ fechado: false, linhas: [] }));
+  }),
+
+reabrirMesLivroCaixa: publicProcedure
+  .input(z.object({ imovelId: z.number(), anoBase: z.number(), mes: z.number() }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate<{ ok: boolean; linhas_removidas: number }>(
+      `/livro-caixa/${input.imovelId}/fechamento/${input.anoBase}/${input.mes}`,
+      "DELETE",
+      undefined,
+      claims.produtorId,
+    );
+  }),
 });
