@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId } from "@/lib/api";
+import { API_BASE, getImovelId, getRcToken } from "@/lib/api";
 
 interface Lancamento {
   id: number;
@@ -61,33 +61,53 @@ const CATEGORIAS = [
   "mao_de_obra", "manutencao", "combustivel", "financiamento", "outros",
 ];
 
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getRcToken();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
+}
+
 async function fetchLancamentos(imovelId: number, anoBase: number): Promise<Lancamento[]> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}?ano_base=${anoBase}`);
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}?ano_base=${anoBase}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : [];
 }
 
 async function fetchApuracao(imovelId: number, anoBase: number): Promise<Apuracao> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/apuracao/${anoBase}`);
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/apuracao/${anoBase}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return {};
   return res.json();
 }
 
 async function postFecharMes(imovelId: number, anoBase: number, mes: number): Promise<{ ok: boolean; linhas: number; aviso?: string }> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechar/${anoBase}/${mes}`, { method: "POST" });
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechar/${anoBase}/${mes}`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Erro ao fechar o mês");
   return res.json();
 }
 
 async function fetchFechamento(imovelId: number, anoBase: number, mes: number): Promise<Fechamento> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`);
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return { fechado: false, linhas: [] };
   return res.json();
 }
 
 async function deleteReabrirMes(imovelId: number, anoBase: number, mes: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`, { method: "DELETE" });
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Erro ao reabrir o mês");
 }
 
@@ -185,7 +205,7 @@ export default function LivroCaixa() {
     try {
       const res = await fetch(`${API_BASE}/livro-caixa/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           imovel_id: imovelId,
           ano_base: anoBase,
@@ -216,7 +236,10 @@ export default function LivroCaixa() {
   const handleDelete = async (id: number) => {
     if (!confirm("Excluir este lançamento?")) return;
     try {
-      const res = await fetch(`${API_BASE}/livro-caixa/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/livro-caixa/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
       if (!res.ok) throw new Error();
       setLancamentos((prev) => prev.filter((l) => l.id !== id));
       toast.success("Lançamento excluído");
