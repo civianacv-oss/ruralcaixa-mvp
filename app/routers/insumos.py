@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel, validator
 import httpx
 
+from app.services.whatsapp_service import enviar_whatsapp_async
 from app.services.estoque_insumos import (
     aplicar_movimentacao_insumo, custos_por_origem, TIPOS_VALIDOS,
 )
@@ -109,6 +110,12 @@ class PedidoCreate(BaseModel):
     data_entrega_desejada: Optional[date] = None
     observacao: Optional[str] = None
     modo_geracao: str = "manual"
+
+class SolicitarCotacaoBody(BaseModel):
+    fornecedor_ids: list[int] = Field(..., min_length=1, description="IDs dos fornecedores que vão receber a cotação")
+    quantidade: float = Field(..., gt=0)
+    observacao: Optional[str] = None
+    data_entrega_desejada: Optional[date] = None
 
 
 # ── FORNECEDORES ──────────────────────────────────────────────────────
@@ -638,6 +645,132 @@ async def enviar_pedido(pid: int, request: Request):
 
 
 # ── FUNÇÃO INTERNA: reposição automática ─────────────────────────────
+
+@router.post("/insumos/{iid}/solicitar-cotacao")
+async def solicitar_cotacao(iid: int, body: SolicitarCotacaoBody, request: Request):
+    """
+    Dispara uma solicitação de cotação de preço para N fornecedores de
+    uma vez. Cria um pedido_compra (modo_geracao='cotacao') por
+    fornecedor e tenta enviar a mensagem por WhatsApp (real, via
+    whatsapp_service) e, na falta de WhatsApp, por Telegram.
+
+    Diferente de /pedidos-compra/{pid}/enviar (que confirma um pedido
+    já fechado), esta mensagem pede PREÇO — não confirma compra.
+    """
+    fazenda_id = _auth(request)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM insumos WHERE id=%s AND fazenda_id=%s",
+                (iid, fazenda_id)
+            )
+            insumo = cur.fetchone()
+            if not insumo:
+                raise HTTPException(404, "Insumo não encontrado")
+
+            data_entrega = body.data_entrega_desejada or (
+                date.today() + timedelta(days=insumo.get("lead_time_dias") or 7)
+            )
+
+            resultados = []
+
+            for fornecedor_id in body.fornecedor_ids:
+                cur.execute(
+                    "SELECT * FROM fornecedores WHERE id=%s AND fazenda_id=%s AND ativo=true",
+                    (fornecedor_id, fazenda_id)
+                )
+                fornecedor = cur.fetchone()
+                if not fornecedor:
+                    resultados.append({
+                        "fornecedor_id": fornecedor_id,
+                        "nome": None,
+                        "sucesso": False,
+                        "canal": None,
+                        "motivo": "Fornecedor não encontrado ou inativo",
+                    })
+                    continue
+
+                # Cria o pedido de compra vinculado (modo_geracao='cotacao')
+                cur.execute("""
+                    INSERT INTO pedidos_compra
+                        (fazenda_id, insumo_id, fornecedor_id, quantidade,
+                         data_entrega_desejada, observacao, modo_geracao, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'cotacao', 'aguardando_resposta')
+                    RETURNING id
+                """, (
+                    fazenda_id, iid, fornecedor_id, body.quantidade,
+                    data_entrega, body.observacao,
+                ))
+                pedido_id = cur.fetchone()["id"]
+
+                entrega_str = data_entrega.strftime("%d/%m/%Y")
+                msg = (
+                    f"🌾 *Solicitação de Cotação — RuralCaixa*\n\n"
+                    f"Olá, {fornecedor.get('nome', 'Fornecedor')}!\n\n"
+                    f"Gostaríamos de uma cotação de preço para:\n"
+                    f"📦 Produto: {insumo['nome']}\n"
+                    f"📊 Quantidade: {body.quantidade} {insumo['unidade']}\n"
+                    f"📅 Entrega desejada: {entrega_str}\n\n"
+                    f"Poderia nos informar o valor e prazo de entrega?"
+                )
+
+                canal_usado = None
+                sucesso = False
+
+                # 1) Tenta WhatsApp de verdade primeiro
+                if fornecedor.get("whatsapp"):
+                    try:
+                        sucesso = await enviar_whatsapp_async(fornecedor["whatsapp"], msg)
+                        if sucesso:
+                            canal_usado = "whatsapp"
+                    except Exception as e:
+                        logger.error(f"WhatsApp cotacao fornecedor {fornecedor_id}: {e}")
+
+                # 2) Fallback: Telegram, se WhatsApp não configurado/falhou
+                if not sucesso and fornecedor.get("telegram") and TELEGRAM_BOT_TOKEN:
+                    try:
+                        async with httpx.AsyncClient(timeout=10) as client:
+                            r = await client.post(
+                                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                                json={"chat_id": fornecedor["telegram"], "text": msg, "parse_mode": "Markdown"},
+                            )
+                            if r.status_code == 200:
+                                sucesso = True
+                                canal_usado = "telegram"
+                    except Exception as e:
+                        logger.error(f"Telegram cotacao fornecedor {fornecedor_id}: {e}")
+
+                # Atualiza o pedido com o resultado do envio
+                cur.execute("""
+                    UPDATE pedidos_compra
+                    SET mensagem_enviada=%s,
+                        status=%s,
+                        atualizado_em=NOW()
+                    WHERE id=%s
+                """, (
+                    msg,
+                    "enviado" if sucesso else "falha_envio",
+                    pedido_id,
+                ))
+
+                resultados.append({
+                    "fornecedor_id": fornecedor_id,
+                    "nome": fornecedor.get("nome"),
+                    "pedido_id": pedido_id,
+                    "sucesso": sucesso,
+                    "canal": canal_usado,
+                    "motivo": None if sucesso else "Sem WhatsApp/Telegram configurado ou falha no envio",
+                })
+
+            conn.commit()
+
+            enviados = sum(1 for r in resultados if r["sucesso"])
+            return {
+                "ok": True,
+                "total_solicitados": len(body.fornecedor_ids),
+                "enviados_com_sucesso": enviados,
+                "resultados": resultados,
+            }
 
 def _verificar_reposicao_automatica(insumo: dict, alerta: dict, fazenda_id: int, cur, conn):
     """Verifica se deve gerar pedido automático de reposição."""
