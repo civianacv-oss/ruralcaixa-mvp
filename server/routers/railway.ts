@@ -2529,6 +2529,7 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+  iofcMensal: publicProcedure
   .input(z.object({ produtorId: z.number(), meses: z.number().optional().default(12) }))
   .query(async ({ ctx, input }) => {
     const claims = await requireClaims(ctx.req);
