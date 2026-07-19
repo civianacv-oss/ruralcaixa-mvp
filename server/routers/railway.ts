@@ -2529,4 +2529,40 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+.mutation(async () => {
+    const { getDb } = await import("../db");
+    const { produtorImovel } = await import("../../drizzle/schema");
+    const { eq, and } = await import("drizzle-orm");
+
+    const db = await getDb();
+    if (!db) return { ok: false, erro: "Banco Node indisponível (getDb retornou null)" };
+
+    const FELIPE = 7;
+    const IMOVEL_DUPLICADO = 10;
+    const IMOVEL_REAL = 6;
+
+    const jaTem = await db
+      .select()
+      .from(produtorImovel)
+      .where(and(eq(produtorImovel.produtorId, FELIPE), eq(produtorImovel.imovelId, IMOVEL_REAL)))
+      .limit(1);
+
+    let acaoAcesso = "já existia";
+    if (jaTem.length === 0) {
+      const linhaAntiga = await db
+        .select()
+        .from(produtorImovel)
+        .where(and(eq(produtorImovel.produtorId, FELIPE), eq(produtorImovel.imovelId, IMOVEL_DUPLICADO)))
+        .limit(1);
+      const token = linhaAntiga[0]?.railwayToken ?? null;
+      await db.insert(produtorImovel).values({ produtorId: FELIPE, imovelId: IMOVEL_REAL, railwayToken: token });
+      acaoAcesso = token ? "criado com token preservado" : "criado sem token (Felipe precisa logar de novo)";
+    }
+
+    await db
+      .delete(produtorImovel)
+      .where(and(eq(produtorImovel.produtorId, FELIPE), eq(produtorImovel.imovelId, IMOVEL_DUPLICADO)));
+
+    return { ok: true, acesso_imovel_6: acaoAcesso, linha_antiga_imovel_10: "removida" };
+  }),
 });
