@@ -167,26 +167,26 @@ def _status_dctfweb(cur, imovel_id: int) -> dict:
 
 
 def _status_livro_caixa(cur, imovel_id: int) -> dict:
-    # Usa a tabela real "lancamentos" (produtor_id, subconta_id, valor, data, origem)
-    # TODO: confirmar se filtro deve ser por imovel_id ou por produtor_id —
-    # lancamentos hoje é indexado por produtor_id, então talvez precise
-    # de join com produtores/imoveis_rurais para filtrar por imovel_id
+    # Corrigido: o módulo real de Livro Caixa (app/routers/livro_caixa.py)
+    # lê da tabela livro_caixa_lancamentos, filtrada por imovel_id — não
+    # da tabela "lancamentos" comum. Elas agora ficam sincronizadas via
+    # trigger (migration_021_sync_livro_caixa.sql).
+    ano_atual = date.today().year
     cur.execute(
         """
         SELECT
-            COALESCE(SUM(CASE WHEN valor > 0 THEN valor ELSE 0 END), 0) AS receitas,
-            COALESCE(SUM(CASE WHEN valor < 0 THEN valor ELSE 0 END), 0) AS despesas,
-            MAX(data) AS ultimo_lancamento
-        FROM lancamentos
-        WHERE produtor_id = %s
-          AND date_trunc('year', data) = date_trunc('year', CURRENT_DATE)
+            COALESCE(SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END), 0) AS receitas,
+            COALESCE(SUM(CASE WHEN tipo = 'despesa' THEN valor ELSE 0 END), 0) AS despesas,
+            MAX(data_lancamento) AS ultimo_lancamento
+        FROM livro_caixa_lancamentos
+        WHERE imovel_id = %s AND ano_base = %s
         """,
-        (imovel_id,),
+        (imovel_id, ano_atual),
     )
     row = cur.fetchone()
     receitas = float(row["receitas"] or 0)
     despesas = float(row["despesas"] or 0)
-    saldo = receitas + despesas  # despesas já negativas
+    saldo = receitas - despesas
     ultimo = row["ultimo_lancamento"]
 
     return {
@@ -323,18 +323,18 @@ def historico_fiscal(modulo: str, imovel_id: int):
         elif modulo == "livrocaixa":
             cur.execute(
                 """
-                SELECT data, valor, origem
-                FROM lancamentos
-                WHERE produtor_id = %s
-                ORDER BY data DESC
+                SELECT data_lancamento, valor, tipo, categoria
+                FROM livro_caixa_lancamentos
+                WHERE imovel_id = %s
+                ORDER BY data_lancamento DESC
                 LIMIT 50
                 """,
                 (imovel_id,),
             )
             linhas = [
                 {
-                    "label": f"{r['data'].strftime('%d/%m/%Y')} · {r['origem'] or '—'}",
-                    "valor": f"R$ {float(r['valor']):.2f}",
+                    "label": f"{r['data_lancamento'].strftime('%d/%m/%Y')} · {r['categoria']}",
+                    "valor": f"{'+' if r['tipo'] == 'receita' else '-'}R$ {float(r['valor']):.2f}",
                 }
                 for r in cur.fetchall()
             ]
@@ -351,6 +351,9 @@ def historico_fiscal(modulo: str, imovel_id: int):
         return {"linhas": [], "aviso": str(e).split("\n")[0][:120]}
     finally:
         conn.close()
+
+
+@router.get("/resumo/{imovel_id}")
 def resumo_fiscal(imovel_id: int):
     """
     Devolve o status consolidado das 6 obrigações fiscais pra um imóvel,
