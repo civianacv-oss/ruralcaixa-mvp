@@ -2548,4 +2548,97 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+listarCotacoes: publicProcedure
+  .input(z.object({ imovelId: z.number(), status: z.string().optional() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const qs = input.status ? `&status=${input.status}` : "";
+    return railwayFetch<any[]>(`/cotacoes/?fazenda_id=${input.imovelId}${qs}`, undefined, claims.produtorId);
+  }),
+
+obterCotacao: publicProcedure
+  .input(z.object({ imovelId: z.number(), cotacaoId: z.number() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch<{ cotacao: any; fornecedores: any[] }>(
+      `/cotacoes/${input.cotacaoId}?fazenda_id=${input.imovelId}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
+
+criarCotacao: publicProcedure
+  .input(z.object({
+    imovelId: z.number(),
+    insumoId: z.number().optional(),
+    descricaoProduto: z.string(),
+    quantidade: z.number(),
+    unidade: z.string().default("unidade"),
+    observacoes: z.string().optional(),
+    fornecedorIds: z.array(z.number()).min(1),
+    dataLimiteResposta: z.string().optional(),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/cotacoes/?fazenda_id=${input.imovelId}`, "POST", {
+      insumo_id: input.insumoId,
+      descricao_produto: input.descricaoProduto,
+      quantidade: input.quantidade,
+      unidade: input.unidade,
+      observacoes: input.observacoes,
+      fornecedor_ids: input.fornecedorIds,
+      data_limite_resposta: input.dataLimiteResposta,
+    }, claims.produtorId);
+  }),
+
+registrarRespostaCotacao: publicProcedure
+  .input(z.object({
+    imovelId: z.number(),
+    cotacaoId: z.number(),
+    fornecedorId: z.number(),
+    precoUnitario: z.number(),
+    prazoEntregaDias: z.number().optional(),
+    observacaoResposta: z.string().optional(),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(
+      `/cotacoes/${input.cotacaoId}/fornecedores/${input.fornecedorId}?fazenda_id=${input.imovelId}`,
+      "PUT",
+      {
+        preco_unitario: input.precoUnitario,
+        prazo_entrega_dias: input.prazoEntregaDias,
+        observacao_resposta: input.observacaoResposta,
+      },
+      claims.produtorId,
+    );
+  }),
+
+fecharCotacao: publicProcedure
+  .input(z.object({
+    imovelId: z.number(),
+    cotacaoId: z.number(),
+    fornecedorVencedorId: z.number(),
+    criarPedidoCompra: z.boolean().default(false),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/cotacoes/${input.cotacaoId}/fechar?fazenda_id=${input.imovelId}`, "POST", {
+      fornecedor_vencedor_id: input.fornecedorVencedorId,
+      criar_pedido_compra: input.criarPedidoCompra,
+    }, claims.produtorId);
+  }),
+
+cancelarCotacao: publicProcedure
+  .input(z.object({ imovelId: z.number(), cotacaoId: z.number() }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/cotacoes/${input.cotacaoId}/cancelar?fazenda_id=${input.imovelId}`, "POST", undefined, claims.produtorId);
+  }),
 });

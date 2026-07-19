@@ -109,6 +109,7 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: DollarSign,  label: "Financeiro",          path: "/financeiro" },
       { icon: BarChart3,   label: "Relatórios",           path: "/relatorios" },
       { icon: Package,     label: "Insumos",              path: "/insumos" },
+      { icon: FileText, label: "Cotações", path: "/insumos/cotacoes" },	
       { icon: ShoppingCart, label: "Compra e Venda",      path: "/compra-venda" },
     ],
   },
