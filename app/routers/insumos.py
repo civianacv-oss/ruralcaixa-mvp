@@ -18,7 +18,7 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, Field
 import httpx
 
 from app.services.whatsapp_service import enviar_whatsapp_async
