@@ -2529,6 +2529,7 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+consolidarEmboqueFelipe: publicProcedure
 .mutation(async () => {
     const { getDb } = await import("../db");
     const { produtorImovel } = await import("../../drizzle/schema");
