@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, BookOpen, Plus, Trash2, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import { RefreshCw, BookOpen, Plus, Trash2, TrendingUp, TrendingDown, Scale, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +35,27 @@ interface Apuracao {
   economia_regime_real?: number;
 }
 
+interface FechamentoLinha {
+  tipo: "receita" | "despesa";
+  categoria: string;
+  total: number;
+  fechado_em: string;
+}
+
+interface Fechamento {
+  fechado: boolean;
+  fechado_em?: string;
+  receitas?: number;
+  despesas?: number;
+  saldo?: number;
+  linhas: FechamentoLinha[];
+}
+
+const MESES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
 const CATEGORIAS = [
   "venda_producao", "arrendamento", "funrural", "insumos",
   "mao_de_obra", "manutencao", "combustivel", "financiamento", "outros",
@@ -53,12 +74,33 @@ async function fetchApuracao(imovelId: number, anoBase: number): Promise<Apuraca
   return res.json();
 }
 
+async function postFecharMes(imovelId: number, anoBase: number, mes: number): Promise<{ ok: boolean; linhas: number; aviso?: string }> {
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechar/${anoBase}/${mes}`, { method: "POST" });
+  if (!res.ok) throw new Error("Erro ao fechar o mês");
+  return res.json();
+}
+
+async function fetchFechamento(imovelId: number, anoBase: number, mes: number): Promise<Fechamento> {
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`);
+  if (!res.ok) return { fechado: false, linhas: [] };
+  return res.json();
+}
+
+async function deleteReabrirMes(imovelId: number, anoBase: number, mes: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/livro-caixa/${imovelId}/fechamento/${anoBase}/${mes}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Erro ao reabrir o mês");
+}
+
 export default function LivroCaixa() {
   const anoAtual = new Date().getFullYear();
   const [anoBase, setAnoBase] = useState(anoAtual);
+  const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [apuracao, setApuracao] = useState<Apuracao>({});
+  const [fechamento, setFechamento] = useState<Fechamento>({ fechado: false, linhas: [] });
   const [loading, setLoading] = useState(true);
+  const [fechando, setFechando] = useState(false);
+  const [showFechamento, setShowFechamento] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [saving, setSaving] = useState(false);
   const imovelId = getImovelId();
@@ -76,12 +118,14 @@ export default function LivroCaixa() {
     if (!imovelId) return;
     setLoading(true);
     try {
-      const [l, a] = await Promise.all([
+      const [l, a, f] = await Promise.all([
         fetchLancamentos(imovelId, anoBase),
         fetchApuracao(imovelId, anoBase),
+        fetchFechamento(imovelId, anoBase, mes),
       ]);
       setLancamentos(l);
       setApuracao(a);
+      setFechamento(f);
     } catch {
       toast.error("Não foi possível carregar o Livro Caixa");
     } finally {
@@ -89,7 +133,43 @@ export default function LivroCaixa() {
     }
   };
 
-  useEffect(() => { load(); }, [imovelId, anoBase]);
+  useEffect(() => { load(); }, [imovelId, anoBase, mes]);
+
+  const handleFecharMes = async () => {
+    if (!imovelId) return;
+    setFechando(true);
+    try {
+      const resultado = await postFecharMes(imovelId, anoBase, mes);
+      if (resultado.linhas === 0) {
+        toast.error(resultado.aviso || "Nenhum lançamento encontrado nesse mês.");
+        return;
+      }
+      toast.success(`Mês fechado: ${resultado.linhas} categoria(s) consolidada(s)`);
+      const f = await fetchFechamento(imovelId, anoBase, mes);
+      setFechamento(f);
+      setShowFechamento(true);
+    } catch {
+      toast.error("Erro ao fechar o mês");
+    } finally {
+      setFechando(false);
+    }
+  };
+
+  const handleReabrirMes = async () => {
+    if (!imovelId) return;
+    if (!confirm(`Reabrir ${MESES[mes - 1]}/${anoBase}? O resumo consolidado será apagado — você pode corrigir os lançamentos e fechar de novo depois.`)) return;
+    setFechando(true);
+    try {
+      await deleteReabrirMes(imovelId, anoBase, mes);
+      toast.success("Mês reaberto para retificação");
+      setFechamento({ fechado: false, linhas: [] });
+      setShowFechamento(false);
+    } catch {
+      toast.error("Erro ao reabrir o mês");
+    } finally {
+      setFechando(false);
+    }
+  };
 
   const fmt = (v?: number) =>
     (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -156,6 +236,14 @@ export default function LivroCaixa() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {MESES.map((nome, i) => (
+                <SelectItem key={i + 1} value={String(i + 1)}>{nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={String(anoBase)} onValueChange={(v) => setAnoBase(Number(v))}>
             <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -168,12 +256,38 @@ export default function LivroCaixa() {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fechamento.fechado ? handleReabrirMes : handleFecharMes}
+            disabled={fechando}
+          >
+            <Lock className="w-4 h-4 mr-2" />
+            {fechando ? "Processando..." : fechamento.fechado ? "Reabrir Mês" : "Fechar Mês"}
+          </Button>
           <Button size="sm" onClick={() => setShowNew(true)} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
             Novo Lançamento
           </Button>
         </div>
       </div>
+
+      {/* Status do fechamento do mês selecionado */}
+      {fechamento.fechado && (
+        <Card className="border-blue-200 bg-blue-50 cursor-pointer" onClick={() => setShowFechamento(true)}>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-blue-700" />
+              <p className="text-sm text-blue-900">
+                <strong>{MESES[mes - 1]}/{anoBase}</strong> fechado em{" "}
+                {new Date(fechamento.fechado_em!).toLocaleDateString("pt-BR")} — saldo consolidado{" "}
+                <strong>{fmt(fechamento.saldo)}</strong>
+              </p>
+            </div>
+            <span className="text-xs text-blue-700 underline">Ver detalhes</span>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Apuração anual */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -324,6 +438,46 @@ export default function LivroCaixa() {
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
             <Button onClick={handleCreate} disabled={saving} style={{ background: "oklch(0.42 0.14 145)" }}>
               {saving ? "Salvando..." : "Criar Lançamento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Modal de detalhe do fechamento */}
+      <Dialog open={showFechamento} onOpenChange={setShowFechamento}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fechamento — {MESES[mes - 1]}/{anoBase}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <Card>
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Receitas</p>
+                  <p className="text-lg font-bold text-emerald-700">{fmt(fechamento.receitas)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Despesas</p>
+                  <p className="text-lg font-bold text-red-600">{fmt(fechamento.despesas)}</p>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {fechamento.linhas.map((l, i) => (
+                <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
+                  <span className="text-muted-foreground">{l.categoria.replace(/_/g, " ")}</span>
+                  <span className={l.tipo === "receita" ? "text-emerald-700 font-medium" : "text-red-600 font-medium"}>
+                    {l.tipo === "despesa" ? "− " : "+ "}{fmt(l.total)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFechamento(false)}>Fechar</Button>
+            <Button variant="destructive" onClick={handleReabrirMes} disabled={fechando}>
+              {fechando ? "Reabrindo..." : "Reabrir para retificação"}
             </Button>
           </DialogFooter>
         </DialogContent>
