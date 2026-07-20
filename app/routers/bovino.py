@@ -1125,15 +1125,25 @@ def iofc_mensal(produtor_id: int, meses: int = Query(12, ge=1, le=36)):
                 WHERE produto = 'leite_litro_brasil'
             ),
             custo_racao_leite AS (
+                -- Custo pelo que foi REALMENTE CONSUMIDO no mes (baixas de
+                -- estoque), nao pelo que foi comprado. Isso evita que uma
+                -- compra grande em um mes infle o IOFC daquele mes mesmo
+                -- sem ter alimentado o gado ainda (aquisicao=despesa no
+                -- Livro Caixa, baixa=custeio aqui, nunca os dois juntos).
+                --
+                -- LIMITACAO CONHECIDA (mesma do resto do modulo Insumos):
+                -- movimentacoes_insumo nao tem produtor_id, so fazenda_id
+                -- (fixo em 1 no MVP single-tenant) -- por isso nao filtra
+                -- por %(produtor_id)s aqui, diferente das outras CTEs.
                 SELECT
-                    l.produtor_id,
-                    date_trunc('month', l.data)::date AS mes,
-                    SUM(l.valor) AS custo_racao
-                FROM lancamentos l
-                JOIN subcontas s ON s.id = l.subconta_id
-                WHERE s.codigo_conta = '3.1.3.1.1'
-                  AND l.produtor_id = %(produtor_id)s
-                GROUP BY l.produtor_id, date_trunc('month', l.data)
+                    date_trunc('month', m.data_movim)::date AS mes,
+                    SUM(m.custo_total) AS custo_racao
+                FROM movimentacoes_insumo m
+                JOIN insumos i ON i.id = m.insumo_id
+                WHERE m.tipo = 'uso'
+                  AND i.fazenda_id = 1
+                  AND LOWER(i.categoria) IN ('racao', 'ração', 'nutricao', 'nutrição')
+                GROUP BY date_trunc('month', m.data_movim)
             )
             SELECT
                 p.mes,
@@ -1151,7 +1161,7 @@ def iofc_mensal(produtor_id: int, meses: int = Query(12, ge=1, le=36)):
             FROM producao_mensal p
             LEFT JOIN receita_real r ON r.produtor_id = p.produtor_id AND r.mes = p.mes
             LEFT JOIN preco_cepea pc ON pc.mes = p.mes
-            LEFT JOIN custo_racao_leite c ON c.produtor_id = p.produtor_id AND c.mes = p.mes
+            LEFT JOIN custo_racao_leite c ON c.mes = p.mes
             ORDER BY p.mes DESC
         """, {"produtor_id": produtor_id, "meses": meses})
         return list(cur.fetchall())
