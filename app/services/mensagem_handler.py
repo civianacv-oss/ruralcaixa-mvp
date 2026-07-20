@@ -1162,7 +1162,7 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
 
     m = _re.search(
         r'(\d+(?:[.,]\d+)?)\s*'
-        r'(sacos?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
+        r'(sacos?|sacas?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
         r'de\s+(.+)$',
         texto_norm,
     )
@@ -1333,7 +1333,7 @@ def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
 
     m = _re.search(
         r'(\d+(?:[.,]\d+)?)\s*'
-        r'(sacos?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
+        r'(sacos?|sacas?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
         r'de\s+(.+)$',
         texto_norm,
     )
