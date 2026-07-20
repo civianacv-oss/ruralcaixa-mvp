@@ -1141,6 +1141,44 @@ def _juntar_numero_unidade(texto: str) -> str:
     return _re.sub(r'(\d+)\s+(kg|g|l|ml|un|ton)\b', r'\1\2', texto)
 
 
+_NUMEROS_EXTENSO = {
+    "um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "quatro": 4,
+    "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
+    "onze": 11, "doze": 12, "treze": 13, "quatorze": 14, "catorze": 14,
+    "quinze": 15, "dezesseis": 16, "dezessete": 17, "dezoito": 18,
+    "dezenove": 19, "cem": 100, "cento": 100,
+}
+_DEZENAS_EXTENSO = {
+    "vinte": 20, "trinta": 30, "quarenta": 40, "cinquenta": 50,
+    "sessenta": 60, "setenta": 70, "oitenta": 80, "noventa": 90,
+}
+
+
+def _converter_numeros_extenso(texto: str) -> str:
+    """Converte número escrito por extenso em dígito, incluindo compostos
+    (ex: 'seis sacos' -> '6 sacos', 'vinte e cinco sacos' -> '25 sacos').
+    Sem isso, só dígito puro era reconhecido, não a forma por extenso."""
+    palavras = texto.split()
+    resultado = []
+    i = 0
+    while i < len(palavras):
+        p = palavras[i]
+        if (p in _DEZENAS_EXTENSO and i + 2 < len(palavras)
+                and palavras[i + 1] == "e" and palavras[i + 2] in _NUMEROS_EXTENSO
+                and _NUMEROS_EXTENSO[palavras[i + 2]] < 10):
+            resultado.append(str(_DEZENAS_EXTENSO[p] + _NUMEROS_EXTENSO[palavras[i + 2]]))
+            i += 3
+            continue
+        if p in _DEZENAS_EXTENSO:
+            resultado.append(str(_DEZENAS_EXTENSO[p]))
+        elif p in _NUMEROS_EXTENSO:
+            resultado.append(str(_NUMEROS_EXTENSO[p]))
+        else:
+            resultado.append(p)
+        i += 1
+    return " ".join(resultado)
+
+
 def _detectar_consumo_insumo(texto: str) -> dict | None:
     """
     Detecta mensagens de consumo de um insumo já cadastrado no estoque
@@ -1161,11 +1199,24 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
     import re as _re
     from app.services.classifier import normalizar
 
-    texto_norm = normalizar(texto)
+    texto_norm = _converter_numeros_extenso(normalizar(texto))
 
     palavras_consumo = ["consumo", "consumi", "gastei", "gasto de", "usei",
-                         "utilizei", "baixa de", "baixei"]
-    if not any(p in texto_norm for p in palavras_consumo):
+                         "utilizei", "baixa de", "baixei", "saiu", "saida de",
+                         "saida do estoque", "foi usado", "foi para"]
+    tem_verbo_consumo = any(p in texto_norm for p in palavras_consumo)
+
+    # Padrão semântico: mesmo sem verbo explícito, "para o rebanho/lote/..."
+    # deixa claro que é uma saída (ex: "seis sacos de soja para rebanho
+    # leiteiro" — ninguém fala assim pra descrever uma compra)
+    tem_destino_producao = bool(_re.search(
+        r'\bpara\s+(o\s+|a\s+|os\s+|as\s+)?'
+        r'(rebanho|lote|gado|vacas?|bezerr\w*|leiteir\w*|piquete|'
+        r'talh[aã]o|lavoura|plantio|cultivo|criacao|tanque)',
+        texto_norm,
+    ))
+
+    if not (tem_verbo_consumo or tem_destino_producao):
         return None
 
     m = _re.search(
@@ -1334,7 +1385,7 @@ def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
     import re as _re
     from app.services.classifier import normalizar
 
-    texto_norm = normalizar(texto)
+    texto_norm = _converter_numeros_extenso(normalizar(texto))
 
     palavras_compra = ["compra", "comprei", "comprou", "adquiri", "aquisicao"]
     if not any(p in texto_norm for p in palavras_compra):
