@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { API_BASE, getImovelId, getProdutorId } from "@/lib/api";
 import { trpc } from "@/lib/trpc";
@@ -93,6 +94,11 @@ export default function Relatorios() {
   });
   const [dataFim, setDataFim] = useState(() => new Date().toISOString().split("T")[0]);
   const [loading, setLoading] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<
+    | { tipo: "rebanho-geral"; data: any }
+    | { tipo: "iofc"; data: any[] }
+    | null
+  >(null);
   const imovelId = getImovelId();
   const produtorId = getProdutorId();
 
@@ -112,25 +118,12 @@ export default function Relatorios() {
         const data = await utils.railway.relatorioRebanho.fetch({
           imovelId, dataInicio, dataFim,
         });
-        const b = data.especies.bovino;
-        const partes = [
-          `Bovino: ${b.totais.ativos} ativos (${b.totais.leite_ativos} leite, ${b.totais.corte_ativos} corte)` +
-          (b.peso_medio_kg ? ` · ${b.peso_medio_kg} kg médio` : ""),
-        ];
-        if (data.especies.ovino) partes.push(`Ovino: ${data.especies.ovino.totais.ativos} ativos`);
-        if (data.especies.suino) partes.push(`Suíno: ${data.especies.suino.totais.ativos} ativos`);
-        toast.success(partes.join(" · "), { duration: 8000 });
+        setResultado({ tipo: "rebanho-geral", data });
       } else if (rel.id === "iofc") {
         if (!produtorId) { toast.error("Produtor não identificado"); return; }
-        const data = await utils.railway.iofcMensal.fetch({ produtorId, meses: 3 });
-        const ultimo = data[data.length - 1];
-        if (!ultimo) { toast.info("Sem dados de IOFC para o período."); return; }
-        toast.success(
-          `IOFC (${ultimo.mes}): receita R$ ${ultimo.receita_leite_final?.toFixed(2) ?? "—"} ` +
-          `− ração R$ ${ultimo.custo_racao_leite?.toFixed(2) ?? "0.00"} ` +
-          `= R$ ${ultimo.iofc?.toFixed(2) ?? "—"}`,
-          { duration: 8000 },
-        );
+        const data = await utils.railway.iofcMensal.fetch({ produtorId, meses: 12 });
+        if (!data.length) { toast.info("Sem dados de IOFC para o período."); return; }
+        setResultado({ tipo: "iofc", data });
       }
     } catch (e: any) {
       toast.error(e?.message ?? "Não foi possível gerar o relatório. Tente novamente.");
@@ -217,6 +210,82 @@ export default function Relatorios() {
           </Card>
         ))}
       </div>
+
+      {/* Modal com o relatório completo */}
+      <Dialog open={resultado !== null} onOpenChange={(o) => { if (!o) setResultado(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          {resultado?.tipo === "rebanho-geral" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Rebanho Geral</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-5 text-sm">
+                {Object.entries(resultado.data.especies).map(([especie, info]: [string, any]) => (
+                  <div key={especie} className="border rounded-lg p-3">
+                    <p className="font-semibold capitalize mb-2">{especie}</p>
+                    <div className="flex gap-4 text-xs text-muted-foreground mb-2">
+                      <span>Total: <b className="text-foreground">{info.totais.total ?? info.totais.ativos}</b></span>
+                      <span>Ativos: <b className="text-foreground">{info.totais.ativos}</b></span>
+                      {info.peso_medio_kg != null && (
+                        <span>Peso médio: <b className="text-foreground">{info.peso_medio_kg} kg</b></span>
+                      )}
+                    </div>
+                    {info.por_categoria?.length > 0 && (
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {info.por_categoria.map((c: any) => (
+                            <tr key={c.categoria} className="border-t">
+                              <td className="py-1 capitalize">{c.categoria ?? "—"}</td>
+                              <td className="py-1 text-right font-medium">{c.qtd}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {resultado?.tipo === "iofc" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>IOFC — Margem Leiteira (últimos {resultado.data.length} meses)</DialogTitle>
+              </DialogHeader>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground border-b">
+                    <th className="py-1.5">Mês</th>
+                    <th className="py-1.5 text-right">Receita</th>
+                    <th className="py-1.5 text-right">Custo Ração</th>
+                    <th className="py-1.5 text-right">IOFC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultado.data.map((m: any) => (
+                    <tr key={m.mes} className="border-b last:border-0">
+                      <td className="py-1.5">{m.mes}</td>
+                      <td className="py-1.5 text-right">
+                        {m.receita_leite_final != null ? `R$ ${m.receita_leite_final.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-1.5 text-right">
+                        {m.custo_racao_leite != null ? `R$ ${m.custo_racao_leite.toFixed(2)}` : "R$ 0,00"}
+                      </td>
+                      <td
+                        className="py-1.5 text-right font-semibold"
+                        style={{ color: (m.iofc ?? 0) >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.5 0.2 25)" }}
+                      >
+                        {m.iofc != null ? `R$ ${m.iofc.toFixed(2)}` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
