@@ -291,24 +291,33 @@ async def processar_mensagem(msg: MsgIn) -> str:
             baixa_insumo_msg = ""
             if sess.get("_insumo_id"):
                 try:
-                    from app.db import engine
-                    from sqlalchemy import text as sqlt
-                    with engine.connect() as conn:
-                        conn.execute(sqlt("""
-                            UPDATE insumos
-                            SET estoque_atual = GREATEST(estoque_atual - :qtd, 0),
-                                atualizado_em = NOW()
-                            WHERE id = :iid
-                        """), {"qtd": sess["_quantidade_consumida"], "iid": sess["_insumo_id"]})
-                        conn.commit()
-                    novo_estoque = sess.get("_insumo_estoque_antes", 0) - sess["_quantidade_consumida"]
-                    baixa_insumo_msg = (
-                        f"\n📦 Baixa no estoque: {sess['_insumo_nome']} "
-                        f"(-{sess['_quantidade_consumida']:g}, restam {max(novo_estoque, 0):g})"
-                    )
+                    from app.db import get_db
+                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                    conn_estoque = get_db()
+                    try:
+                        cur_estoque = conn_estoque.cursor()
+                        resultado_mov = aplicar_movimentacao_insumo(
+                            cur_estoque,
+                            fazenda_id=1,
+                            insumo_id=sess["_insumo_id"],
+                            tipo="uso",
+                            quantidade=sess["_quantidade_consumida"],
+                            origem_modulo="mensageria",
+                            origem_tipo="lancamento",
+                            origem_descricao=f"Consumo via WhatsApp/Telegram — lançamento #{lancamento_id}",
+                        )
+                        conn_estoque.commit()
+                        baixa_insumo_msg = (
+                            f"\n📦 Baixa no estoque: {sess['_insumo_nome']} "
+                            f"(-{sess['_quantidade_consumida']:g}, restam {resultado_mov['novo_estoque']:g}, "
+                            f"custo médio R$ {resultado_mov['novo_custo_medio']:.2f})"
+                        )
+                    finally:
+                        conn_estoque.close()
                 except Exception as e:
                     logger.error("Erro ao dar baixa no insumo: %s", e)
-                    baixa_insumo_msg = "\n⚠️ Lançamento gravado, mas não consegui dar baixa no estoque — confira manualmente."
+                    detalhe = getattr(e, "detail", str(e))
+                    baixa_insumo_msg = f"\n⚠️ Lançamento gravado, mas não consegui dar baixa no estoque: {detalhe}"
 
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
