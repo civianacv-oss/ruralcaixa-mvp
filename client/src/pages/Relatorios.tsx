@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarChart3, FileDown, RefreshCw, TrendingUp, PawPrint, Leaf, Receipt, FileText } from "lucide-react";
+import { BarChart3, FileDown, RefreshCw, TrendingUp, PawPrint, Leaf, Receipt, FileText, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,6 +9,55 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { API_BASE, getImovelId, getProdutorId } from "@/lib/api";
 import { trpc } from "@/lib/trpc";
+
+/**
+ * Alertas de margem/tendencia do IOFC, calculados em cima dos meses ja
+ * buscados (sem chamada extra ao backend). Janela de analise: ultimos 3
+ * meses com dado (ou menos, se nao houver 3).
+ */
+function calcularAlertasIOFC(meses: any[]): string[] {
+  const alertas: string[] = [];
+  if (!meses || meses.length === 0) return alertas;
+
+  const janela = meses.slice(-3);
+
+  const negativos = janela.filter((m) => (m.iofc ?? 0) < 0).length;
+  if (negativos >= 2) {
+    alertas.push(
+      `IOFC negativo em ${negativos} dos últimos ${janela.length} meses. ` +
+      `Recomendação: revisar dieta ou preço de venda do leite.`
+    );
+  }
+
+  const primeiro = janela[0];
+  const ultimo = janela[janela.length - 1];
+  if (janela.length >= 2 && primeiro.custo_racao_leite > 0) {
+    const pctCusto = ((ultimo.custo_racao_leite - primeiro.custo_racao_leite) / primeiro.custo_racao_leite) * 100;
+    const receitaPrimeiro = primeiro.receita_leite_final ?? primeiro.receita_real ?? 0;
+    const receitaUltimo = ultimo.receita_leite_final ?? ultimo.receita_real ?? 0;
+    const pctReceita = receitaPrimeiro > 0 ? ((receitaUltimo - receitaPrimeiro) / receitaPrimeiro) * 100 : 0;
+    if (pctCusto - pctReceita > 15) {
+      alertas.push(
+        `Custo de ração subiu ${pctCusto.toFixed(0)}% (R$ ${primeiro.custo_racao_leite.toFixed(2)} → ` +
+        `R$ ${ultimo.custo_racao_leite.toFixed(2)}) enquanto a receita variou ${pctReceita.toFixed(0)}% no mesmo período.`
+      );
+    }
+  }
+
+  if (janela.length >= 2 && primeiro.volume_l > 0 && ultimo.volume_l > 0) {
+    const cupPrimeiro = primeiro.custo_racao_leite / primeiro.volume_l;
+    const cupUltimo = ultimo.custo_racao_leite / ultimo.volume_l;
+    if (cupPrimeiro > 0 && cupUltimo > cupPrimeiro * 1.2) {
+      const variacao = ((cupUltimo - cupPrimeiro) / cupPrimeiro) * 100;
+      alertas.push(
+        `Custo de ração por litro (CUP) subiu de R$ ${cupPrimeiro.toFixed(2)} para R$ ${cupUltimo.toFixed(2)} ` +
+        `(+${variacao.toFixed(0)}%) — a margem por litro está encolhendo.`
+      );
+    }
+  }
+
+  return alertas;
+}
 
 interface Relatorio {
   id: string;
@@ -270,6 +319,16 @@ export default function Relatorios() {
               <DialogHeader>
                 <DialogTitle>IOFC — Margem Leiteira (últimos {resultado.data.length} meses)</DialogTitle>
               </DialogHeader>
+              {calcularAlertasIOFC(resultado.data).map((msg, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2 rounded-lg p-2.5 text-xs"
+                  style={{ background: "oklch(0.96 0.05 60)", color: "oklch(0.4 0.15 50)" }}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{msg}</span>
+                </div>
+              ))}
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-muted-foreground border-b">
