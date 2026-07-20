@@ -322,12 +322,15 @@ async def processar_mensagem(msg: MsgIn) -> str:
             # custo pro lote/atividade (regra: aquisição=despesa, baixa=
             # custeio, nunca os dois — evita duplicar o mesmo gasto).
             if sess.get("_consumo_puro"):
+                from app.db import get_db
+                from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                from fastapi import HTTPException as _HTTPException
+
+                conn_estoque = get_db()
                 try:
-                    from app.db import get_db
-                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
-                    conn_estoque = get_db()
+                    cur_estoque = conn_estoque.cursor()
+                    alerta_estoque_negativo = ""
                     try:
-                        cur_estoque = conn_estoque.cursor()
                         resultado_mov = aplicar_movimentacao_insumo(
                             cur_estoque,
                             fazenda_id=1,
@@ -339,22 +342,55 @@ async def processar_mensagem(msg: MsgIn) -> str:
                             origem_id=sess.get("_origem_id"),
                             origem_descricao=sess.get("_origem_descricao") or "Consumo via WhatsApp/Telegram",
                         )
-                        conn_estoque.commit()
-                        destino = f" — {sess['_origem_descricao']}" if sess.get("_origem_descricao") else ""
-                        return (
-                            f"✅ Baixa registrada no estoque!\n\n"
-                            f"📦 {sess['_insumo_nome']}\n"
-                            f"Quantidade: {sess['_quantidade_consumida']:g}\n"
-                            f"Restam: {resultado_mov['novo_estoque']:g}\n"
-                            f"Custo alocado: R$ {resultado_mov['custo_total']:.2f}{destino}\n\n"
-                            f"(Isso não gera despesa nova — o gasto já foi registrado na compra desse insumo.)"
-                        )
-                    finally:
-                        conn_estoque.close()
+                    except _HTTPException as e:
+                        if e.status_code == 400 and "insuficiente" in str(e.detail).lower():
+                            # Não bloqueia — deixa ir negativo e avisa, em vez
+                            # de travar o produtor por causa de uma divergência
+                            # de registro (compra não lançada, erro de digitação
+                            # etc.). O estoque negativo já vira alerta "crítico"
+                            # automático no painel de Insumos (vw_insumos_alerta).
+                            conn_estoque.rollback()
+                            cur_estoque = conn_estoque.cursor()
+                            resultado_mov = aplicar_movimentacao_insumo(
+                                cur_estoque,
+                                fazenda_id=1,
+                                insumo_id=sess["_insumo_id"],
+                                tipo="uso",
+                                quantidade=sess["_quantidade_consumida"],
+                                origem_modulo=sess.get("_origem_modulo"),
+                                origem_tipo=sess.get("_origem_tipo"),
+                                origem_id=sess.get("_origem_id"),
+                                origem_descricao=sess.get("_origem_descricao") or "Consumo via WhatsApp/Telegram",
+                                permitir_estoque_negativo=True,
+                            )
+                            alerta_estoque_negativo = (
+                                f"\n\n⚠️ ATENÇÃO: a quantidade registrada é maior do que o "
+                                f"estoque tinha ({sess['_insumo_nome']} ficou com "
+                                f"{resultado_mov['novo_estoque']:g} no sistema). "
+                                f"Confira o estoque físico — pode ter uma compra não "
+                                f"lançada ou um erro de quantidade. Isso já apareceu "
+                                f"como alerta crítico no painel de Insumos."
+                            )
+                        else:
+                            raise
+
+                    conn_estoque.commit()
+                    destino = f" — {sess['_origem_descricao']}" if sess.get("_origem_descricao") else ""
+                    return (
+                        f"✅ Baixa registrada no estoque!\n\n"
+                        f"📦 {sess['_insumo_nome']}\n"
+                        f"Quantidade: {sess['_quantidade_consumida']:g}\n"
+                        f"Restam: {resultado_mov['novo_estoque']:g}\n"
+                        f"Custo alocado: R$ {resultado_mov['custo_total']:.2f}{destino}\n\n"
+                        f"(Isso não gera despesa nova — o gasto já foi registrado na compra desse insumo.)"
+                        f"{alerta_estoque_negativo}"
+                    )
                 except Exception as e:
                     logger.error("Erro ao dar baixa no insumo (consumo puro): %s", e)
                     detalhe = getattr(e, "detail", str(e))
                     return f"⚠️ Não consegui dar baixa no estoque: {detalhe}"
+                finally:
+                    conn_estoque.close()
 
             lancamento_id = gravar_lancamento(sess)
 
@@ -377,6 +413,38 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
+            entrada_insumo_msg = ""
+            if sess.get("_compra_insumo_id"):
+                try:
+                    from app.db import get_db
+                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                    conn_estoque = get_db()
+                    try:
+                        cur_estoque = conn_estoque.cursor()
+                        resultado_mov = aplicar_movimentacao_insumo(
+                            cur_estoque,
+                            fazenda_id=1,
+                            insumo_id=sess["_compra_insumo_id"],
+                            tipo="compra",
+                            quantidade=sess["_compra_quantidade"],
+                            custo_unitario=sess.get("_compra_custo_unitario"),
+                            origem_modulo="mensageria",
+                            origem_tipo="compra",
+                            origem_descricao=f"Compra via WhatsApp/Telegram — lançamento #{lancamento_id}",
+                        )
+                        conn_estoque.commit()
+                        entrada_insumo_msg = (
+                            f"\n📦 Entrada no estoque: {sess['_compra_insumo_nome']} "
+                            f"(+{sess['_compra_quantidade']:g}, novo estoque {resultado_mov['novo_estoque']:g}, "
+                            f"custo médio R$ {resultado_mov['novo_custo_medio']:.2f})"
+                        )
+                    finally:
+                        conn_estoque.close()
+                except Exception as e:
+                    logger.error("Erro ao dar entrada no insumo: %s", e)
+                    detalhe = getattr(e, "detail", str(e))
+                    entrada_insumo_msg = f"\n⚠️ Lançamento gravado, mas não consegui dar entrada no estoque: {detalhe}"
+
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"Tipo: {sess.get('tipo','').upper()}\n"
@@ -384,6 +452,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
                 f"Data: {sess.get('data','')}\n\n"
                 f"Envie a foto ou PDF do comprovante para vincular."
+                f"{entrada_insumo_msg}"
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
             if sessoes[key].get("_consumo_puro"):
@@ -506,6 +575,15 @@ async def processar_mensagem(msg: MsgIn) -> str:
         return _texto_pergunta_tipo_lancamento(
             prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
         )
+
+    # Compra de insumo já cadastrado no catálogo — além da despesa normal
+    # (já classificada acima), dá ENTRADA automática no estoque na
+    # confirmação. Espelha o consumo (baixa), fechando o ciclo aquisição
+    # -> estoque -> baixa -> custeio.
+    if resultado.get("tipo") == "despesa" and resultado.get("valor"):
+        compra_insumo = _detectar_compra_insumo(texto, resultado["valor"])
+        if compra_insumo:
+            resultado.update(compra_insumo)
 
     sessoes[key] = resultado
 
@@ -1232,3 +1310,83 @@ def _listar_lotes_bovino_ativos(imovel_id: int) -> list:
             ORDER BY nome
         """), {"iid": imovel_id}).fetchall()
     return [{"id": r[0], "nome": r[1]} for r in rows]
+
+def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
+    """
+    Detecta se uma mensagem de despesa é uma compra de insumo já cadastrado
+    no catálogo, pra dar entrada automática no estoque na confirmação —
+    espelha _detectar_consumo_insumo, mas pro lado da aquisição.
+
+    Não substitui a classificação normal (conta/tipo/valor já vieram do
+    classifier) — só anexa qual insumo/quantidade deu entrada. Retorna
+    None se não parecer uma compra de insumo conhecido (mensagem segue
+    como despesa normal, sem mexer no estoque).
+    """
+    import re as _re
+    from app.services.classifier import normalizar
+
+    texto_norm = normalizar(texto)
+
+    palavras_compra = ["compra", "comprei", "comprou", "adquiri", "aquisicao"]
+    if not any(p in texto_norm for p in palavras_compra):
+        return None
+
+    m = _re.search(
+        r'(\d+(?:[.,]\d+)?)\s*'
+        r'(sacos?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
+        r'de\s+(.+)$',
+        texto_norm,
+    )
+    if not m:
+        return None
+
+    try:
+        quantidade = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    if quantidade <= 0 or not valor:
+        return None
+
+    resto = m.group(3).strip()
+    produto_texto = _re.split(r'\s+por\s+|\s*,\s*|\s+a\s+r\$', resto)[0].strip()
+    if not produto_texto:
+        return None
+
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+
+    with engine.connect() as conn:
+        rows = conn.execute(sqlt("""
+            SELECT id, nome FROM insumos WHERE fazenda_id = 1 AND ativo = true
+        """)).fetchall()
+
+    melhor = None
+    melhor_score = 0
+    empate = False
+    for r in rows:
+        nome_norm = normalizar(r.nome)
+        score = 0
+        if produto_texto == nome_norm:
+            score = 1000
+        elif produto_texto in nome_norm or nome_norm in produto_texto:
+            score = len(produto_texto) if produto_texto in nome_norm else len(nome_norm)
+        else:
+            overlap = set(produto_texto.split()) & set(nome_norm.split())
+            if overlap:
+                score = len(overlap)
+        if score > melhor_score:
+            melhor, melhor_score, empate = r, score, False
+        elif score == melhor_score and score > 0:
+            empate = True
+
+    # Compra ambígua entre insumos: não arrisca dar entrada no errado —
+    # segue só como despesa normal, sem mexer no estoque
+    if not melhor or empate:
+        return None
+
+    return {
+        "_compra_insumo_id": melhor.id,
+        "_compra_insumo_nome": melhor.nome,
+        "_compra_quantidade": quantidade,
+        "_compra_custo_unitario": round(valor / quantidade, 4),
+    }
