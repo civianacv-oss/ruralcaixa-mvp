@@ -1133,6 +1133,14 @@ def _conta_por_categoria_insumo(categoria: str) -> str:
     return "3.1.1"
 
 
+def _juntar_numero_unidade(texto: str) -> str:
+    """Junta 'número + unidade' com espaço num token só (ex: '50 kg' ->
+    '50kg'), pra não empatar por engano na hora de comparar com o nome
+    do insumo no catálogo (que geralmente não tem espaço: 'Soja 50kg')."""
+    import re as _re
+    return _re.sub(r'(\d+)\s+(kg|g|l|ml|un|ton)\b', r'\1\2', texto)
+
+
 def _detectar_consumo_insumo(texto: str) -> dict | None:
     """
     Detecta mensagens de consumo de um insumo já cadastrado no estoque
@@ -1179,6 +1187,7 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
     produto_texto = m.group(3).strip()
     if not produto_texto:
         return None
+    produto_texto = _juntar_numero_unidade(produto_texto)
 
     from app.db import engine
     from sqlalchemy import text as sqlt
@@ -1192,7 +1201,7 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
 
     # Casamento exato tem prioridade absoluta — não entra em empate
     for r in rows:
-        if produto_texto == normalizar(r.nome):
+        if produto_texto == _juntar_numero_unidade(normalizar(r.nome)):
             return _montar_resultado_insumo(r, quantidade)
 
     # Fora do exato, pontua por substring e por sobreposição de palavras,
@@ -1201,7 +1210,7 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
     # em "Farelo de Soja" quanto em "Saca de Soja 50kg")
     candidatos = []  # (score, row)
     for r in rows:
-        nome_norm = normalizar(r.nome)
+        nome_norm = _juntar_numero_unidade(normalizar(r.nome))
         score = 0
         if produto_texto in nome_norm or nome_norm in produto_texto:
             score = len(produto_texto) if produto_texto in nome_norm else len(nome_norm)
@@ -1351,6 +1360,7 @@ def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
     produto_texto = _re.split(r'\s+por\s+|\s*,\s*|\s+a\s+r\$', resto)[0].strip()
     if not produto_texto:
         return None
+    produto_texto = _juntar_numero_unidade(produto_texto)
 
     from app.db import engine
     from sqlalchemy import text as sqlt
@@ -1364,7 +1374,7 @@ def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
     melhor_score = 0
     empate = False
     for r in rows:
-        nome_norm = normalizar(r.nome)
+        nome_norm = _juntar_numero_unidade(normalizar(r.nome))
         score = 0
         if produto_texto == nome_norm:
             score = 1000
