@@ -368,7 +368,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # Autorização — só produtor dono ou administrador vinculado podem
     # criar lançamentos/registros. Comandos de consulta e cadastro (acima)
     # continuam livres pra qualquer número.
-    auth = _autorizar_numero(msg.numero)
+    auth = _autorizar_numero(msg.numero, msg.canal)
     if not auth["autorizado"]:
         if auth["produtor_id"] is None:
             return (
@@ -850,27 +850,42 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
 # Autorização — dono ou administrador vinculado
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _autorizar_numero(numero: str) -> dict:
+def _autorizar_numero(numero: str, canal: str) -> dict:
     """
-    Verifica se o número que está mandando a mensagem pertence a um produtor
-    cadastrado e, se sim, resolve qual propriedade ele está autorizado a
-    lançar: dono direto (imoveis_rurais.produtor_id) ou administrador
-    vinculado (participacoes_imovel, tipo_vinculo 'administrador' ou
-    'proprietario', sem vigencia_fim — ver migration_023).
+    Verifica se quem está mandando a mensagem é um produtor cadastrado e
+    resolve a propriedade que ele está autorizado a lançar.
 
-    Retorna {"produtor_id": int|None, "imovel_id": int|None,
-             "papel": str|None, "autorizado": bool}
+    IMPORTANTE: "numero" não é telefone em todo canal — no Telegram é o
+    chat_id (numérico, sem relação com o telefone real da pessoa). Por
+    isso o campo de busca muda conforme o canal:
+      - canal == "telegram" -> produtores.telegram_chat_id (match exato)
+      - qualquer outro canal -> produtores.telefone (últimos 8 dígitos,
+        mesmo padrão já usado em _resolver_imovel_id)
+
+    Resolve a propriedade nesta ordem: imovel_id_padrao (se preenchido) ->
+    dono direto (imoveis_rurais.produtor_id) -> administrador vinculado
+    (participacoes_imovel, tipo_vinculo 'administrador' ou 'proprietario').
     """
     from app.db import engine
     from sqlalchemy import text as sqlt
 
     with engine.connect() as conn:
-        row = conn.execute(sqlt(
-            "SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1"
-        ), {"tel": f"%{numero[-8:]}"}).fetchone()
+        if canal == "telegram":
+            row = conn.execute(sqlt(
+                "SELECT id, imovel_id_padrao FROM produtores WHERE telegram_chat_id = :num LIMIT 1"
+            ), {"num": numero}).fetchone()
+        else:
+            row = conn.execute(sqlt(
+                "SELECT id, imovel_id_padrao FROM produtores WHERE telefone LIKE :tel LIMIT 1"
+            ), {"tel": f"%{numero[-8:]}"}).fetchone()
+
         if not row:
             return {"produtor_id": None, "imovel_id": None, "papel": None, "autorizado": False}
-        produtor_id = row[0]
+        produtor_id, imovel_padrao = row[0], row[1]
+
+        if imovel_padrao:
+            return {"produtor_id": produtor_id, "imovel_id": imovel_padrao,
+                    "papel": "proprietario", "autorizado": True}
 
         row_dono = conn.execute(sqlt(
             "SELECT id FROM imoveis_rurais WHERE produtor_id = :pid LIMIT 1"
