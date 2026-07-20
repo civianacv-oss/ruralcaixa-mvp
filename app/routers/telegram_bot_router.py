@@ -152,10 +152,16 @@ async def setup_webhook(base_url: str = None):
     if not BOT_TOKEN:
         raise HTTPException(500, "TELEGRAM_BOT_TOKEN não configurado")
 
+    # BUG CORRIGIDO: RAILWAY_PUBLIC_DOMAIN e fornecida automaticamente pelo
+    # Railway SEM o "https://" na frente (so o dominio puro) -- por isso o
+    # webhook estava registrado como "ruralcaixa-mvp....app/telegram/webhook"
+    # sem protocolo, e o Telegram nunca conseguia entregar nada.
     url = base_url or os.getenv(
         "RAILWAY_PUBLIC_DOMAIN",
-        "https://ruralcaixa-mvp-production.up.railway.app"
+        "ruralcaixa-mvp-production.up.railway.app"
     )
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = f"https://{url}"
     webhook_url = f"{url}/telegram/webhook"
 
     async with httpx.AsyncClient(timeout=10) as client:
