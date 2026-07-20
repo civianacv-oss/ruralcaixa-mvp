@@ -41,8 +41,23 @@ def gravar_lancamento(dados: dict):
             sub_id = sub[0]
         import uuid as _uuid2
         lanc_id = str(_uuid2.uuid4())
-        conn.execute(text('INSERT INTO lancamentos (id, produtor_id, subconta_id, valor, data, documento_url) VALUES (:id, :pid, :sub, :valor, :data, NULL)'),
-            {'id': lanc_id, 'pid': produtor_id, 'sub': sub_id, 'valor': abs(float(dados.get('valor', 0))), 'data': dados.get('data')})
+        # origem_modulo/tipo/id/descricao: rastreabilidade de custo por lote,
+        # ciclo, talhao etc (mesmo padrao de movimentacoes_insumo) - fica NULL
+        # quando o lancamento nao esta vinculado a uma unidade de producao
+        conn.execute(text(
+            "INSERT INTO lancamentos "
+            "(id, produtor_id, subconta_id, valor, data, documento_url, "
+            " origem_modulo, origem_tipo, origem_id, origem_descricao) "
+            "VALUES (:id, :pid, :sub, :valor, :data, NULL, "
+            "        :origem_modulo, :origem_tipo, :origem_id, :origem_descricao)"
+        ), {
+            'id': lanc_id, 'pid': produtor_id, 'sub': sub_id,
+            'valor': abs(float(dados.get('valor', 0))), 'data': dados.get('data'),
+            'origem_modulo': dados.get('_origem_modulo'),
+            'origem_tipo': dados.get('_origem_tipo'),
+            'origem_id': dados.get('_origem_id'),
+            'origem_descricao': dados.get('_origem_descricao'),
+        })
         conn.commit()
         import json as _json
         try:

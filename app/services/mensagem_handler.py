@@ -114,6 +114,61 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
 
+        # Sub-fluxo: escolha do lote de bovino (piloto de rastreabilidade
+        # de custo por unidade de produção)
+        if sessoes[key].get("_aguardando_lote_bovino"):
+            resultado_pendente = sessoes[key]["_resultado_pendente"]
+            lotes = sessoes[key]["_lotes_disponiveis"]
+            if texto_up not in ("0",) and not (texto_up.isdigit() and 1 <= int(texto_up) <= len(lotes)):
+                linhas = ["Não entendi. Isso foi pra qual lote de bovino?\n"]
+                for i, lote in enumerate(lotes, start=1):
+                    linhas.append(f"{i}. {lote['nome']}")
+                linhas.append("\n0. Não é de um lote específico / custo geral da fazenda")
+                return "\n".join(linhas)
+
+            if texto_up != "0":
+                lote_escolhido = lotes[int(texto_up) - 1]
+                resultado_pendente["_origem_modulo"] = "bovino"
+                resultado_pendente["_origem_tipo"] = "lote"
+                resultado_pendente["_origem_id"] = lote_escolhido["id"]
+                resultado_pendente["_origem_descricao"] = lote_escolhido["nome"]
+
+            sessoes[key] = resultado_pendente
+            if resultado_pendente.get("valor") is None:
+                sessoes[key]["_aguardando_valor"] = True
+                return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
+            return _proximo_passo_apos_valor(resultado_pendente, msg.numero)
+
+        # Sub-fluxo: consumo de insumo ambíguo — produtor escolhe qual dos
+        # candidatos empatados é o certo
+        if sessoes[key].get("_aguardando_escolha_insumo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA", "NENHUM"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo com o nome mais específico do insumo."
+            candidatos = sessoes[key]["_candidatos_insumo"]
+            if not texto_up.isdigit() or not (1 <= int(texto_up) <= len(candidatos)):
+                linhas = ["Não entendi a escolha. Qual desses?\n"]
+                for i, c in enumerate(candidatos, start=1):
+                    linhas.append(f"{i}. {c['nome']} ({c['estoque_atual']:g} {c['unidade']} em estoque)")
+                linhas.append("\n0. Nenhum desses / cancelar")
+                return "\n".join(linhas)
+
+            escolhido = candidatos[int(texto_up) - 1]
+            quantidade = sessoes[key]["_quantidade_consumida"]
+            from app.db import engine
+            from sqlalchemy import text as sqlt
+            with engine.connect() as conn:
+                row = conn.execute(sqlt("""
+                    SELECT id, nome, categoria, unidade, estoque_atual, preco_estimado, custo_medio
+                    FROM insumos WHERE id = :iid
+                """), {"iid": escolhido["id"]}).fetchone()
+            novo_resultado = _montar_resultado_insumo(row, quantidade)
+            sessoes[key] = novo_resultado
+            if novo_resultado.get("valor") is None:
+                sessoes[key]["_aguardando_valor"] = True
+                return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
+            return _proximo_passo_apos_valor(novo_resultado, msg.numero)
+
         # Sub-fluxo: valor não veio no texto original, pedimos e aguardamos
         if sessoes[key].get("_aguardando_valor"):
             valor_digitado = _parse_valor_simples(texto)
@@ -416,7 +471,19 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # Consumo de insumo já cadastrado no estoque — tenta achar o valor
     # automaticamente pelo custo do insumo, em vez de perguntar
     resultado_insumo = _detectar_consumo_insumo(texto)
-    if resultado_insumo:
+    if resultado_insumo and resultado_insumo.get("_candidatos_insumo_ambiguo"):
+        candidatos = resultado_insumo["_candidatos_insumo_ambiguo"]
+        sessoes[key] = {
+            "_aguardando_escolha_insumo": True,
+            "_candidatos_insumo": candidatos,
+            "_quantidade_consumida": resultado_insumo["_quantidade_consumida"],
+        }
+        linhas = ["Encontrei mais de um insumo parecido no seu estoque. Qual você quis dizer?\n"]
+        for i, c in enumerate(candidatos, start=1):
+            linhas.append(f"{i}. {c['nome']} ({c['estoque_atual']:g} {c['unidade']} em estoque)")
+        linhas.append("\n0. Nenhum desses / cancelar")
+        return "\n".join(linhas)
+    elif resultado_insumo:
         resultado = resultado_insumo
     else:
         # Classificação financeira via IA (com termos que o produtor já ensinou antes)
@@ -428,6 +495,24 @@ async def processar_mensagem(msg: MsgIn) -> str:
         return _texto_pergunta_tipo_lancamento(
             prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
         )
+
+    # Piloto: pergunta o lote de bovino quando for consumo de ração/medicamento
+    # (conta 3.1.3) vindo da detecção de insumo — só se houver lote ativo
+    # cadastrado. Base pra estender depois a ovino/caprino/suino/piscicultura/
+    # fruticultura, seguindo o mesmo padrão origem_modulo/tipo/id.
+    if resultado.get("conta") == "3.1.3" and resultado.get("_insumo_id"):
+        lotes_bovino = _listar_lotes_bovino_ativos(auth["imovel_id"])
+        if lotes_bovino:
+            sessoes[key] = {
+                "_aguardando_lote_bovino": True,
+                "_resultado_pendente": resultado,
+                "_lotes_disponiveis": lotes_bovino,
+            }
+            linhas = ["Isso foi pra qual lote de bovino?\n"]
+            for i, lote in enumerate(lotes_bovino, start=1):
+                linhas.append(f"{i}. {lote['nome']}")
+            linhas.append("\n0. Não é de um lote específico / custo geral da fazenda")
+            return "\n".join(linhas)
 
     sessoes[key] = resultado
 
@@ -1034,40 +1119,78 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
             WHERE fazenda_id = 1 AND ativo = true
         """)).fetchall()
 
-    melhor = None
-    melhor_score = 0
+    # Casamento exato tem prioridade absoluta — não entra em empate
+    for r in rows:
+        if produto_texto == normalizar(r.nome):
+            return _montar_resultado_insumo(r, quantidade)
+
+    # Fora do exato, pontua por substring e por sobreposição de palavras,
+    # e junta TODOS os candidatos empatados no topo — se houver mais de
+    # um, pergunta ao produtor em vez de adivinhar (ex.: "soja" bate tanto
+    # em "Farelo de Soja" quanto em "Saca de Soja 50kg")
+    candidatos = []  # (score, row)
     for r in rows:
         nome_norm = normalizar(r.nome)
-        if produto_texto == nome_norm:
-            melhor, melhor_score = r, 1000
-            break
+        score = 0
         if produto_texto in nome_norm or nome_norm in produto_texto:
             score = len(produto_texto) if produto_texto in nome_norm else len(nome_norm)
-            if score > melhor_score:
-                melhor, melhor_score = r, score
-            continue
-        palavras_produto = set(produto_texto.split())
-        palavras_nome = set(nome_norm.split())
-        overlap = palavras_produto & palavras_nome
-        if overlap and len(overlap) > melhor_score:
-            melhor, melhor_score = r, len(overlap)
+        else:
+            palavras_produto = set(produto_texto.split())
+            palavras_nome = set(nome_norm.split())
+            overlap = palavras_produto & palavras_nome
+            if overlap:
+                score = len(overlap)
+        if score > 0:
+            candidatos.append((score, r))
 
-    if not melhor:
+    if not candidatos:
         return None
 
-    custo_unitario = melhor.custo_medio or melhor.preco_estimado
+    melhor_score = max(c[0] for c in candidatos)
+    empatados = [r for score, r in candidatos if score == melhor_score]
+
+    if len(empatados) == 1:
+        return _montar_resultado_insumo(empatados[0], quantidade)
+
+    # Ambíguo — devolve os candidatos pra quem chamou perguntar ao produtor
+    return {
+        "_candidatos_insumo_ambiguo": [
+            {"id": r.id, "nome": r.nome, "estoque_atual": float(r.estoque_atual or 0), "unidade": r.unidade}
+            for r in empatados
+        ],
+        "_quantidade_consumida": quantidade,
+    }
+
+
+def _montar_resultado_insumo(insumo_row, quantidade: float) -> dict:
+    custo_unitario = insumo_row.custo_medio or insumo_row.preco_estimado
     valor = round(quantidade * float(custo_unitario), 2) if custo_unitario else None
 
     return {
-        "conta": _conta_por_categoria_insumo(melhor.categoria),
+        "conta": _conta_por_categoria_insumo(insumo_row.categoria),
         "tipo": "despesa",
         "valor": valor,
-        "produto": melhor.nome,
+        "produto": insumo_row.nome,
         "atividade": "rural",
         "data": date.today().isoformat(),
         "confianca": 95 if valor is not None else 60,
-        "_insumo_id": melhor.id,
-        "_insumo_nome": melhor.nome,
+        "_insumo_id": insumo_row.id,
+        "_insumo_nome": insumo_row.nome,
         "_quantidade_consumida": quantidade,
-        "_insumo_estoque_antes": float(melhor.estoque_atual or 0),
+        "_insumo_estoque_antes": float(insumo_row.estoque_atual or 0),
     }
+
+def _listar_lotes_bovino_ativos(imovel_id: int) -> list:
+    """Lista lotes de bovino ativos desse imóvel, pra pergunta de origem
+    de custo (rastreabilidade por lote). Retorna [] se não houver nenhum."""
+    if not imovel_id:
+        return []
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        rows = conn.execute(sqlt("""
+            SELECT id, nome FROM bovino_lotes
+            WHERE imovel_id = :iid AND ativo = true
+            ORDER BY nome
+        """), {"iid": imovel_id}).fetchall()
+    return [{"id": r[0], "nome": r[1]} for r in rows]
