@@ -500,7 +500,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # (conta 3.1.3) vindo da detecção de insumo — só se houver lote ativo
     # cadastrado. Base pra estender depois a ovino/caprino/suino/piscicultura/
     # fruticultura, seguindo o mesmo padrão origem_modulo/tipo/id.
-    if resultado.get("conta") == "3.1.3" and resultado.get("_insumo_id"):
+    if resultado.get("_insumo_id"):
         lotes_bovino = _listar_lotes_bovino_ativos(auth["imovel_id"])
         if lotes_bovino:
             sessoes[key] = {
