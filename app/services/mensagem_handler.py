@@ -124,15 +124,40 @@ async def processar_mensagem(msg: MsgIn) -> str:
             sess.pop("_aguardando_valor", None)
             return _proximo_passo_apos_valor(sess, msg.numero)
 
+        # Sub-fluxo NOVO: pergunta o tipo (receita/despesa/investimento)
+        # antes de mostrar a lista de contas — reduz a lista de ~13 opções
+        # pra só as 2-4 relevantes daquele tipo
+        if sessoes[key].get("_aguardando_tipo_novo_termo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            tipo_escolhido = {
+                "1": "receita", "RECEITA": "receita",
+                "2": "despesa", "DESPESA": "despesa",
+                "3": "investimento", "INVESTIMENTO": "investimento",
+            }.get(texto_up)
+            if not tipo_escolhido:
+                return _texto_pergunta_tipo_lancamento(prefixo="Não entendi. ")
+            sessoes[key]["_tipo_escolhido"] = tipo_escolhido
+            sessoes[key].pop("_aguardando_tipo_novo_termo", None)
+            sessoes[key]["_aguardando_conta_novo_termo"] = True
+            return _texto_lista_contas_por_tipo(tipo_escolhido)
+
         # Sub-fluxo: termo desconhecido pelo classificador — produtor escolhe
         # a conta certa, o sistema aprende e prossegue com o lançamento
         if sessoes[key].get("_aguardando_conta_novo_termo"):
             if texto_up in ("0", "CANCELAR", "CANCELA"):
                 sessoes.pop(key, None)
                 return "Cancelado. Pode mandar de novo quando quiser."
-            escolha = _resolver_escolha_conta(texto)
-            if not escolha:
-                return _texto_lista_contas(prefixo="Não entendi a escolha. ")
+            tipo_filtro = sessoes[key].get("_tipo_escolhido")
+            if tipo_filtro:
+                escolha = _resolver_escolha_conta_por_tipo(texto, tipo_filtro)
+                if not escolha:
+                    return _texto_lista_contas_por_tipo(tipo_filtro, prefixo="Não entendi a escolha. ")
+            else:
+                escolha = _resolver_escolha_conta(texto)
+                if not escolha:
+                    return _texto_lista_contas(prefixo="Não entendi a escolha. ")
             texto_original = sessoes[key]["_texto_original"]
             conta, label = escolha
             tipo = _tipo_da_conta(conta)
@@ -263,6 +288,28 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
+            baixa_insumo_msg = ""
+            if sess.get("_insumo_id"):
+                try:
+                    from app.db import engine
+                    from sqlalchemy import text as sqlt
+                    with engine.connect() as conn:
+                        conn.execute(sqlt("""
+                            UPDATE insumos
+                            SET estoque_atual = GREATEST(estoque_atual - :qtd, 0),
+                                atualizado_em = NOW()
+                            WHERE id = :iid
+                        """), {"qtd": sess["_quantidade_consumida"], "iid": sess["_insumo_id"]})
+                        conn.commit()
+                    novo_estoque = sess.get("_insumo_estoque_antes", 0) - sess["_quantidade_consumida"]
+                    baixa_insumo_msg = (
+                        f"\n📦 Baixa no estoque: {sess['_insumo_nome']} "
+                        f"(-{sess['_quantidade_consumida']:g}, restam {max(novo_estoque, 0):g})"
+                    )
+                except Exception as e:
+                    logger.error("Erro ao dar baixa no insumo: %s", e)
+                    baixa_insumo_msg = "\n⚠️ Lançamento gravado, mas não consegui dar baixa no estoque — confira manualmente."
+
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"Tipo: {sess.get('tipo','').upper()}\n"
@@ -270,6 +317,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
                 f"Data: {sess.get('data','')}\n\n"
                 f"Envie a foto ou PDF do comprovante para vincular."
+                f"{baixa_insumo_msg}"
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
             # Em vez de cancelar direto, oferece trocar a conta sugerida —
@@ -317,6 +365,24 @@ async def processar_mensagem(msg: MsgIn) -> str:
             )
         return iniciar_cadastro(sessoes, key)
 
+    # Autorização — só produtor dono ou administrador vinculado podem
+    # criar lançamentos/registros. Comandos de consulta e cadastro (acima)
+    # continuam livres pra qualquer número.
+    auth = _autorizar_numero(msg.numero)
+    if not auth["autorizado"]:
+        if auth["produtor_id"] is None:
+            return (
+                "Esse número não está cadastrado no RuralCaixa ainda.\n"
+                "Fale com o responsável pela propriedade pra ser adicionado, "
+                "ou digite CADASTRAR pra começar um cadastro novo."
+            )
+        return (
+            "Seu número já está cadastrado, mas não está vinculado a nenhuma "
+            "propriedade ainda.\n"
+            "Peça pro proprietário te adicionar como administrador em "
+            "Propriedades → (ícone de pessoas) no painel do RuralCaixa."
+        )
+
     # Detecção módulos zootécnicos
     keywords_ovino = ["brinco", "ovino", "ovelha", "cordeiro", "carneiro",
                       "pesagem", "vacina", "vermifug", "parto", "monta",
@@ -338,12 +404,19 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if any(k in texto.lower() for k in keywords_pisc):
         return await _processar_zootecnico(msg, "piscicultura", texto)
 
-    # Classificação financeira via IA (com termos que o produtor já ensinou antes)
-    termos_aprendidos = _buscar_termos_aprendidos(msg.numero)
-    resultado = classificar(texto, termos_aprendidos=termos_aprendidos)
+    # Consumo de insumo já cadastrado no estoque — tenta achar o valor
+    # automaticamente pelo custo do insumo, em vez de perguntar
+    resultado_insumo = _detectar_consumo_insumo(texto)
+    if resultado_insumo:
+        resultado = resultado_insumo
+    else:
+        # Classificação financeira via IA (com termos que o produtor já ensinou antes)
+        termos_aprendidos = _buscar_termos_aprendidos(msg.numero)
+        resultado = classificar(texto, termos_aprendidos=termos_aprendidos)
+
     if not resultado:
-        sessoes[key] = {"_aguardando_conta_novo_termo": True, "_texto_original": texto}
-        return _texto_lista_contas(
+        sessoes[key] = {"_aguardando_tipo_novo_termo": True, "_texto_original": texto}
+        return _texto_pergunta_tipo_lancamento(
             prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
         )
 
@@ -771,3 +844,206 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
     except Exception as e:
         logger.error("Erro zootécnico %s: %s", modulo, e)
         return f"Erro ao processar registro {modulo}."
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Autorização — dono ou administrador vinculado
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _autorizar_numero(numero: str) -> dict:
+    """
+    Verifica se o número que está mandando a mensagem pertence a um produtor
+    cadastrado e, se sim, resolve qual propriedade ele está autorizado a
+    lançar: dono direto (imoveis_rurais.produtor_id) ou administrador
+    vinculado (participacoes_imovel, tipo_vinculo 'administrador' ou
+    'proprietario', sem vigencia_fim — ver migration_023).
+
+    Retorna {"produtor_id": int|None, "imovel_id": int|None,
+             "papel": str|None, "autorizado": bool}
+    """
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+
+    with engine.connect() as conn:
+        row = conn.execute(sqlt(
+            "SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1"
+        ), {"tel": f"%{numero[-8:]}"}).fetchone()
+        if not row:
+            return {"produtor_id": None, "imovel_id": None, "papel": None, "autorizado": False}
+        produtor_id = row[0]
+
+        row_dono = conn.execute(sqlt(
+            "SELECT id FROM imoveis_rurais WHERE produtor_id = :pid LIMIT 1"
+        ), {"pid": produtor_id}).fetchone()
+        if row_dono:
+            return {"produtor_id": produtor_id, "imovel_id": row_dono[0],
+                    "papel": "proprietario", "autorizado": True}
+
+        row_admin = conn.execute(sqlt(
+            "SELECT imovel_id, tipo_vinculo FROM participacoes_imovel "
+            "WHERE produtor_id = :pid AND vigencia_fim IS NULL "
+            "AND tipo_vinculo IN ('administrador', 'proprietario') "
+            "ORDER BY vigencia_inicio DESC LIMIT 1"
+        ), {"pid": produtor_id}).fetchone()
+        if row_admin:
+            return {"produtor_id": produtor_id, "imovel_id": row_admin[0],
+                    "papel": row_admin[1], "autorizado": True}
+
+        return {"produtor_id": produtor_id, "imovel_id": None, "papel": None, "autorizado": False}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Perguntas em duas etapas: tipo primeiro, depois conta filtrada
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _texto_pergunta_tipo_lancamento(prefixo: str = "") -> str:
+    return (
+        f"{prefixo}Esse lançamento é:\n\n"
+        f"1. 💰 Receita (entrou dinheiro)\n"
+        f"2. 💸 Despesa (saiu dinheiro)\n"
+        f"3. 📊 Investimento (máquina, animal, obra)\n\n"
+        f"0. Cancelar\n\n"
+        f"Responda com o número."
+    )
+
+
+def _contas_por_tipo(tipo: str) -> list:
+    return [(c, l) for c, l in CONTAS_DISPONIVEIS if _tipo_da_conta(c) == tipo]
+
+
+def _texto_lista_contas_por_tipo(tipo: str, prefixo: str = "") -> str:
+    contas = _contas_por_tipo(tipo)
+    linhas = [f"{prefixo}Qual dessas é a conta certa?\n"]
+    for i, (codigo, label) in enumerate(contas, start=1):
+        linhas.append(f"{i}. {codigo} — {label}")
+    linhas.append("\n0. Cancelar o lançamento")
+    linhas.append("\nResponda com o número.")
+    return "\n".join(linhas)
+
+
+def _resolver_escolha_conta_por_tipo(texto: str, tipo: str):
+    contas = _contas_por_tipo(tipo)
+    texto = texto.strip()
+    if texto.isdigit():
+        idx = int(texto)
+        if 1 <= idx <= len(contas):
+            return contas[idx - 1]
+        return None
+    for codigo, label in contas:
+        if texto == codigo:
+            return (codigo, label)
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Consumo de insumo já cadastrado no estoque — baixa automática
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _conta_por_categoria_insumo(categoria: str) -> str:
+    """Mapeia a categoria do insumo (cadastro em Insumos) pra conta LCDPR,
+    seguindo o mesmo padrão de contas já usado no classifier.py."""
+    categoria = (categoria or "").lower()
+    if categoria in ("combustivel", "combustível"):
+        return "3.1.2"
+    if categoria in ("racao", "ração", "nutricao", "nutrição", "medicamento",
+                     "veterinario", "veterinário", "farmacia", "farmácia"):
+        return "3.1.3"
+    if categoria in ("manutencao", "manutenção", "peca", "peça", "pecas", "peças"):
+        return "3.1.5"
+    return "3.1.1"
+
+
+def _detectar_consumo_insumo(texto: str) -> dict | None:
+    """
+    Detecta mensagens de consumo de um insumo já cadastrado no estoque
+    (ex: "consumo de 10 sacos de farelo de soja") e monta o lançamento
+    já com o valor calculado a partir do custo do insumo, em vez de
+    perguntar o valor pro produtor.
+
+    Se o insumo bater mas não tiver custo cadastrado, ainda assim retorna
+    o resultado com valor=None — cai no fluxo normal de "aguardando_valor",
+    só que já sabendo qual insumo/quantidade dar baixa depois.
+
+    Retorna None se não parecer uma mensagem de consumo de insumo (nesse
+    caso o chamador segue pro classificador genérico normalmente).
+
+    LIMITAÇÃO CONHECIDA (mesma do resto do módulo Insumos): a tabela
+    `insumos` usa fazenda_id fixo em 1 (MVP single-tenant), não imovel_id.
+    """
+    import re as _re
+    from app.services.classifier import normalizar
+
+    texto_norm = normalizar(texto)
+
+    palavras_consumo = ["consumo", "consumi", "gastei", "gasto de", "usei",
+                         "utilizei", "baixa de", "baixei"]
+    if not any(p in texto_norm for p in palavras_consumo):
+        return None
+
+    m = _re.search(
+        r'(\d+(?:[.,]\d+)?)\s*'
+        r'(sacos?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
+        r'de\s+(.+)$',
+        texto_norm,
+    )
+    if not m:
+        return None
+
+    try:
+        quantidade = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    if quantidade <= 0:
+        return None
+
+    produto_texto = m.group(3).strip()
+    if not produto_texto:
+        return None
+
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+
+    with engine.connect() as conn:
+        rows = conn.execute(sqlt("""
+            SELECT id, nome, categoria, unidade, estoque_atual, preco_estimado, custo_medio
+            FROM insumos
+            WHERE fazenda_id = 1 AND ativo = true
+        """)).fetchall()
+
+    melhor = None
+    melhor_score = 0
+    for r in rows:
+        nome_norm = normalizar(r.nome)
+        if produto_texto == nome_norm:
+            melhor, melhor_score = r, 1000
+            break
+        if produto_texto in nome_norm or nome_norm in produto_texto:
+            score = len(produto_texto) if produto_texto in nome_norm else len(nome_norm)
+            if score > melhor_score:
+                melhor, melhor_score = r, score
+            continue
+        palavras_produto = set(produto_texto.split())
+        palavras_nome = set(nome_norm.split())
+        overlap = palavras_produto & palavras_nome
+        if overlap and len(overlap) > melhor_score:
+            melhor, melhor_score = r, len(overlap)
+
+    if not melhor:
+        return None
+
+    custo_unitario = melhor.custo_medio or melhor.preco_estimado
+    valor = round(quantidade * float(custo_unitario), 2) if custo_unitario else None
+
+    return {
+        "conta": _conta_por_categoria_insumo(melhor.categoria),
+        "tipo": "despesa",
+        "valor": valor,
+        "produto": melhor.nome,
+        "atividade": "rural",
+        "data": date.today().isoformat(),
+        "confianca": 95 if valor is not None else 60,
+        "_insumo_id": melhor.id,
+        "_insumo_nome": melhor.nome,
+        "_quantidade_consumida": quantidade,
+        "_insumo_estoque_antes": float(melhor.estoque_atual or 0),
+    }
