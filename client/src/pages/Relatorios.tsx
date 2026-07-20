@@ -42,6 +42,15 @@ const RELATORIOS: Relatorio[] = [
     implementado: true,
   },
   {
+    id: "eficiencia-alimentar",
+    titulo: "Eficiência Alimentar (Peso)",
+    descricao: "Custo de ração por kg de peso ganho — corte, ovino, caprino e suíno",
+    endpoint: "/relatorios/eficiencia-alimentar",
+    icone: <TrendingUp className="w-5 h-5" />,
+    categoria: "Rebanho",
+    implementado: true,
+  },
+  {
     id: "financeiro",
     titulo: "Financeiro",
     descricao: "Receitas, despesas e resultado por período",
@@ -97,6 +106,7 @@ export default function Relatorios() {
   const [resultado, setResultado] = useState<
     | { tipo: "rebanho-geral"; data: any }
     | { tipo: "iofc"; data: any[] }
+    | { tipo: "eficiencia-alimentar"; data: any }
     | null
   >(null);
   const imovelId = getImovelId();
@@ -124,6 +134,13 @@ export default function Relatorios() {
         const data = await utils.railway.iofcMensal.fetch({ produtorId, meses: 12 });
         if (!data.length) { toast.info("Sem dados de IOFC para o período."); return; }
         setResultado({ tipo: "iofc", data });
+      } else if (rel.id === "eficiencia-alimentar") {
+        const data = await utils.railway.relatorioEficienciaAlimentar.fetch({ imovelId });
+        if (!Object.keys(data.rebanhos).length) {
+          toast.info("Sem rebanhos com peso/dados suficientes para calcular.");
+          return;
+        }
+        setResultado({ tipo: "eficiencia-alimentar", data });
       }
     } catch (e: any) {
       toast.error(e?.message ?? "Não foi possível gerar o relatório. Tente novamente.");
@@ -282,6 +299,49 @@ export default function Relatorios() {
                   ))}
                 </tbody>
               </table>
+            </>
+          )}
+          {resultado?.tipo === "eficiencia-alimentar" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Eficiência Alimentar — Custo por kg de Peso Ganho</DialogTitle>
+              </DialogHeader>
+              <p className="text-xs text-muted-foreground -mt-2">{resultado.data.aviso}</p>
+              <table className="w-full text-xs mt-2">
+                <thead>
+                  <tr className="text-left text-muted-foreground border-b">
+                    <th className="py-1.5">Rebanho</th>
+                    <th className="py-1.5 text-right">Cabeças</th>
+                    <th className="py-1.5 text-right">Peso médio</th>
+                    <th className="py-1.5 text-right">GPD</th>
+                    <th className="py-1.5 text-right">Ração alocada/mês</th>
+                    <th className="py-1.5 text-right">Custo/kg ganho/dia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(resultado.data.rebanhos).map(([nome, r]: [string, any]) => (
+                    <tr key={nome} className="border-b last:border-0">
+                      <td className="py-1.5 capitalize">{nome.replace("_", " ")}</td>
+                      <td className="py-1.5 text-right">{r.cabecas_ativas}</td>
+                      <td className="py-1.5 text-right">{r.peso_medio_kg != null ? `${r.peso_medio_kg} kg` : "—"}</td>
+                      <td className="py-1.5 text-right">
+                        {r.gpd_medio_kg_dia != null ? `${r.gpd_medio_kg_dia} kg/dia` : "sem dado"}
+                      </td>
+                      <td className="py-1.5 text-right">
+                        R$ {r.custo_racao_alocado_mensal.toFixed(2)}
+                        <span className="text-muted-foreground"> ({(r.proporcao_cabecas * 100).toFixed(0)}%)</span>
+                      </td>
+                      <td className="py-1.5 text-right font-semibold">
+                        {r.custo_por_kg_ganho != null ? `R$ ${r.custo_por_kg_ganho.toFixed(4)}` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Ração/mês da fazenda toda: R$ {resultado.data.custo_racao_mensal_medio_fazenda.toFixed(2)}
+                {" "}(média dos últimos 3 meses) · {resultado.data.cabecas_totais_fazenda} cabeças no total.
+              </p>
             </>
           )}
         </DialogContent>

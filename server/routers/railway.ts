@@ -2604,6 +2604,17 @@ relatorioRebanho: publicProcedure
     if (input.dataFim) params.set("data_fim", input.dataFim);
     return railwayFetch<any>(`/relatorios/rebanho?${params}`, undefined, claims.produtorId);
   }),
+relatorioEficienciaAlimentar: publicProcedure
+  .input(z.object({ imovelId: z.number() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const params = new URLSearchParams({
+      imovel_id: String(input.imovelId),
+      produtor_id: String(claims.produtorId),
+    });
+    return railwayFetch<any>(`/relatorios/eficiencia-alimentar?${params}`, undefined, claims.produtorId);
+  }),
 listarCotacoes: publicProcedure
   .input(z.object({ imovelId: z.number(), status: z.string().optional() }))
   .query(async ({ ctx, input }) => {
