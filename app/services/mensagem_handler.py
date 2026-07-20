@@ -160,8 +160,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     FROM insumos WHERE id = :iid
                 """), {"iid": escolhido["id"]}).fetchone()
             novo_resultado = _montar_resultado_insumo(row, quantidade)
-            sessoes[key] = novo_resultado
-            return _texto_confirmacao_consumo(novo_resultado)
+            auth_local = _autorizar_numero(msg.numero, msg.canal)
+            return _avancar_consumo_insumo(sessoes, key, novo_resultado, auth_local.get("imovel_id"))
 
         # Sub-fluxo: valor não veio no texto original, pedimos e aguardamos
         if sessoes[key].get("_aguardando_valor"):
@@ -495,21 +495,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
         # cadastrado. Base pra estender depois a ovino/caprino/suino/
         # piscicultura/fruticultura, seguindo o mesmo padrão origem_modulo/
         # tipo/id.
-        lotes_bovino = _listar_lotes_bovino_ativos(auth["imovel_id"])
-        if lotes_bovino:
-            sessoes[key] = {
-                "_aguardando_lote_bovino": True,
-                "_resultado_pendente": resultado_insumo,
-                "_lotes_disponiveis": lotes_bovino,
-            }
-            linhas = ["Isso foi pra qual lote de bovino?\n"]
-            for i, lote in enumerate(lotes_bovino, start=1):
-                linhas.append(f"{i}. {lote['nome']}")
-            linhas.append("\n0. Não é de um lote específico / custo geral da fazenda")
-            return "\n".join(linhas)
-
-        sessoes[key] = resultado_insumo
-        return _texto_confirmacao_consumo(resultado_insumo)
+        return _avancar_consumo_insumo(sessoes, key, resultado_insumo, auth["imovel_id"])
 
     # Classificação financeira via IA (com termos que o produtor já ensinou antes)
     termos_aprendidos = _buscar_termos_aprendidos(msg.numero)
@@ -1183,7 +1169,37 @@ def _montar_resultado_insumo(insumo_row, quantidade: float) -> dict:
         "_quantidade_consumida": quantidade,
         "_insumo_estoque_antes": float(insumo_row.estoque_atual or 0),
         "_custo_estimado": custo_estimado,
+        # Valores padrão — sobrescritos se o produtor escolher um lote
+        # específico depois. Sem isso, "0. Não é de um lote específico"
+        # deixaria origem_modulo nulo, e a coluna não aceita nulo.
+        "_origem_modulo": "insumos",
+        "_origem_tipo": "consumo_geral",
+        "_origem_id": None,
+        "_origem_descricao": "Consumo geral (sem lote/atividade específica)",
     }
+
+
+def _avancar_consumo_insumo(sessoes: dict, key: str, resultado_insumo: dict, imovel_id) -> str:
+    """Passo comum depois de identificar o insumo (seja direto, seja depois
+    de resolver ambiguidade): pergunta o lote de bovino se houver algum
+    ativo, senão confirma a baixa direto. Usado nos dois pontos de entrada
+    pra não divergir (bug corrigido: a escolha de insumo ambíguo pulava
+    essa pergunta e ia direto pra confirmação sem origem_modulo)."""
+    lotes_bovino = _listar_lotes_bovino_ativos(imovel_id)
+    if lotes_bovino:
+        sessoes[key] = {
+            "_aguardando_lote_bovino": True,
+            "_resultado_pendente": resultado_insumo,
+            "_lotes_disponiveis": lotes_bovino,
+        }
+        linhas = ["Isso foi pra qual lote de bovino?\n"]
+        for i, lote in enumerate(lotes_bovino, start=1):
+            linhas.append(f"{i}. {lote['nome']}")
+        linhas.append("\n0. Não é de um lote específico / custo geral da fazenda")
+        return "\n".join(linhas)
+
+    sessoes[key] = resultado_insumo
+    return _texto_confirmacao_consumo(resultado_insumo)
 
 
 def _texto_confirmacao_consumo(dados: dict) -> str:
