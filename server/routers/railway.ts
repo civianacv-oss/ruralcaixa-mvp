@@ -2590,6 +2590,20 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+relatorioRebanho: publicProcedure
+  .input(z.object({
+    imovelId: z.number(),
+    dataInicio: z.string().optional(),
+    dataFim: z.string().optional(),
+  }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const params = new URLSearchParams({ imovel_id: String(input.imovelId) });
+    if (input.dataInicio) params.set("data_inicio", input.dataInicio);
+    if (input.dataFim) params.set("data_fim", input.dataFim);
+    return railwayFetch<any>(`/relatorios/rebanho?${params}`, undefined, claims.produtorId);
+  }),
 listarCotacoes: publicProcedure
   .input(z.object({ imovelId: z.number(), status: z.string().optional() }))
   .query(async ({ ctx, input }) => {

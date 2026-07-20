@@ -1,5 +1,6 @@
 # bovino module enabled
 from app.routers.bovino import router as bovino_router
+from app.routers.relatorios import router as relatorios_router
 import hmac, hashlib, json, os
 import httpx
 from datetime import date
@@ -341,6 +342,7 @@ from app.consorcios import router as consorcios_router
 app.include_router(consorcios_router)
 app.include_router(contratos_rurais_router)
 app.include_router(bovino_router)
+app.include_router(relatorios_router)
 app.include_router(agricultura_router)
 app.include_router(piscicultura_router)
 app.include_router(telegram_router)
