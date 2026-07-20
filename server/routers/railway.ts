@@ -1036,6 +1036,7 @@ export const railwayRouter = router({
 
       const COL_BRINCO = ["identificadoranimal", "identificador", "brinco"];
       const COL_DATA_CONTROLE = ["datacontrole"];
+      const COL_DATA_PARTO = ["dataparto"];
       const COL_NUM_CONTROLE = ["numerocontrole"];
       const COL_NUM_ORDENHAS = ["numerodeordenhasnocontrole", "numeroordenhas"];
       const COL_PROD_CONTROLE = ["producaoleitecontrole"];
@@ -1045,7 +1046,7 @@ export const railwayRouter = router({
       const COL_ES = ["es"];
       const COL_CCS = ["ccs"];
 
-      const itens: any[] = [];
+      const itensBrutos: any[] = [];
       const nao_encontrados: { brinco: string }[] = [];
       let ignoradas_count = 0;
 
@@ -1059,10 +1060,14 @@ export const railwayRouter = router({
         if (!animalId) { nao_encontrados.push({ brinco }); continue; }
 
         const n = (v?: string) => (v !== undefined ? Number(v.replace(",", ".")) : undefined);
-        itens.push({
+        itensBrutos.push({
           animal_id: animalId,
           brinco,
           data: dataControle,
+          // data_parto só serve pra detectar colisao de brinco abaixo -- é
+          // removida antes de enviar pro backend (bovino_ordenha nao tem
+          // essa coluna, quem guarda parto é bovino_lactacoes)
+          data_parto: dataBr(findCol(row, COL_DATA_PARTO)),
           volume_l: n(producaoControle),
           gordura_pct: n(findCol(row, COL_GORDURA)),
           proteina_pct: n(findCol(row, COL_PROTEINA)),
@@ -1074,14 +1079,49 @@ export const railwayRouter = router({
         });
       }
 
-      if (itens.length === 0 && input.rows.length > 0) {
+      // Deteccao de brinco reaproveitado: se o mesmo brinco (mesmo animal_id
+      // cadastrado hoje) aparece na planilha com Datas de Parto distintas e
+      // a diferenca entre elas e menor que ~250 dias, e biologicamente
+      // impossivel ser a mesma vaca (gestacao de ~285 dias + intervalo minimo
+      // entre partos). Isso indica que o brinco foi usado por dois animais
+      // diferentes ao longo do tempo e o casamento por brinco puro nao da
+      // conta de separar os dois. Rows nessa situacao vao pra "colisoes" em
+      // vez de "itens", pra revisao manual antes de importar.
+      const DIAS_MIN_ENTRE_PARTOS = 250;
+      const datasPartoPorAnimal = new Map<number, Set<string>>();
+      for (const it of itensBrutos) {
+        if (!it.data_parto) continue;
+        if (!datasPartoPorAnimal.has(it.animal_id)) datasPartoPorAnimal.set(it.animal_id, new Set());
+        datasPartoPorAnimal.get(it.animal_id)!.add(it.data_parto);
+      }
+      const animaisComColisao = new Set<number>();
+      for (const [animalId, datas] of datasPartoPorAnimal.entries()) {
+        const ordenadas = [...datas].sort();
+        for (let i = 1; i < ordenadas.length; i++) {
+          const dias = (new Date(ordenadas[i]).getTime() - new Date(ordenadas[i - 1]).getTime()) / 86400000;
+          if (dias < DIAS_MIN_ENTRE_PARTOS) { animaisComColisao.add(animalId); break; }
+        }
+      }
+
+      const itens: any[] = [];
+      const colisoes_brinco: any[] = [];
+      for (const it of itensBrutos) {
+        const { data_parto, ...semDataParto } = it;
+        if (animaisComColisao.has(it.animal_id)) {
+          colisoes_brinco.push({ ...semDataParto, data_parto });
+        } else {
+          itens.push(semDataParto);
+        }
+      }
+
+      if (itens.length === 0 && colisoes_brinco.length === 0 && input.rows.length > 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Nenhuma linha reconhecida. Verifique se a planilha tem 'Identificador Animal', 'Data Controle' e 'Producao Leite Controle', e se os animais já estão cadastrados no rebanho.",
         });
       }
 
-      return { itens, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
+      return { itens, colisoes_brinco, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
     }),
 
   confirmarImportacaoControleLeiteiroBovino: publicProcedure
@@ -1092,7 +1132,9 @@ export const railwayRouter = router({
     .mutation(async ({ ctx, input }) => {
       const claims = await requireClaims(ctx.req);
       assertImovel(claims, input.imovelId);
-      const itens = input.itens.map(({ brinco, ...rest }) => rest);
+      // brinco e data_parto sao só pra UI/deteccao de colisao -- bovino_ordenha
+      // nao tem essas colunas (data_parto vive em bovino_lactacoes)
+      const itens = input.itens.map(({ brinco, data_parto, ...rest }) => rest);
       return railwayMutate(`/bovino/leiteiro/ordenha/importar`, "POST", {
         imovel_id: input.imovelId, itens,
       }, claims.produtorId);

@@ -312,6 +312,7 @@ export default function Rebanhos() {
     nao_encontrados?: { brinco: string }[];
     ignoradas_count?: number;
     total_planilha?: number;
+    colisoes_brinco?: { brinco: string; data_parto?: string }[];
   } | null>(null);
 
   const confirmarLactacoes = trpc.railway.confirmarImportacaoLactacoesBovino.useMutation({
@@ -354,7 +355,16 @@ export default function Rebanhos() {
         nao_encontrados: data.nao_encontrados,
         ignoradas_count: data.ignoradas_count,
         total_planilha: data.total_planilha,
+        colisoes_brinco: data.colisoes_brinco,
       });
+      if (data.colisoes_brinco?.length > 0) {
+        const brincos = [...new Set(data.colisoes_brinco.map((c: any) => c.brinco))].join(", ");
+        toast.warning(
+          `${data.colisoes_brinco.length} linha(s) ignorada(s): brinco(s) ${brincos} tem datas de parto ` +
+          `incompatíveis com a mesma vaca (possível reaproveitamento de brinco). Revise manualmente antes de reimportar.`,
+          { duration: 10000 },
+        );
+      }
       if (data.itens.length === 0) {
         setImportResult({ tipo: "controle", criados: 0, duplicados: [], erros: [], ...data });
         setImportStep("resultado");
