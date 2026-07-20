@@ -134,10 +134,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 resultado_pendente["_origem_descricao"] = lote_escolhido["nome"]
 
             sessoes[key] = resultado_pendente
-            if resultado_pendente.get("valor") is None:
-                sessoes[key]["_aguardando_valor"] = True
-                return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
-            return _proximo_passo_apos_valor(resultado_pendente, msg.numero)
+            return _texto_confirmacao_consumo(resultado_pendente)
 
         # Sub-fluxo: consumo de insumo ambíguo — produtor escolhe qual dos
         # candidatos empatados é o certo
@@ -164,10 +161,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 """), {"iid": escolhido["id"]}).fetchone()
             novo_resultado = _montar_resultado_insumo(row, quantidade)
             sessoes[key] = novo_resultado
-            if novo_resultado.get("valor") is None:
-                sessoes[key]["_aguardando_valor"] = True
-                return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
-            return _proximo_passo_apos_valor(novo_resultado, msg.numero)
+            return _texto_confirmacao_consumo(novo_resultado)
 
         # Sub-fluxo: valor não veio no texto original, pedimos e aguardamos
         if sessoes[key].get("_aguardando_valor"):
@@ -322,6 +316,46 @@ async def processar_mensagem(msg: MsgIn) -> str:
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
+
+            # Consumo de insumo já em estoque — NÃO cria despesa nova (o
+            # gasto já foi registrado na aquisição). Só dá baixa e aloca o
+            # custo pro lote/atividade (regra: aquisição=despesa, baixa=
+            # custeio, nunca os dois — evita duplicar o mesmo gasto).
+            if sess.get("_consumo_puro"):
+                try:
+                    from app.db import get_db
+                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                    conn_estoque = get_db()
+                    try:
+                        cur_estoque = conn_estoque.cursor()
+                        resultado_mov = aplicar_movimentacao_insumo(
+                            cur_estoque,
+                            fazenda_id=1,
+                            insumo_id=sess["_insumo_id"],
+                            tipo="uso",
+                            quantidade=sess["_quantidade_consumida"],
+                            origem_modulo=sess.get("_origem_modulo"),
+                            origem_tipo=sess.get("_origem_tipo"),
+                            origem_id=sess.get("_origem_id"),
+                            origem_descricao=sess.get("_origem_descricao") or "Consumo via WhatsApp/Telegram",
+                        )
+                        conn_estoque.commit()
+                        destino = f" — {sess['_origem_descricao']}" if sess.get("_origem_descricao") else ""
+                        return (
+                            f"✅ Baixa registrada no estoque!\n\n"
+                            f"📦 {sess['_insumo_nome']}\n"
+                            f"Quantidade: {sess['_quantidade_consumida']:g}\n"
+                            f"Restam: {resultado_mov['novo_estoque']:g}\n"
+                            f"Custo alocado: R$ {resultado_mov['custo_total']:.2f}{destino}\n\n"
+                            f"(Isso não gera despesa nova — o gasto já foi registrado na compra desse insumo.)"
+                        )
+                    finally:
+                        conn_estoque.close()
+                except Exception as e:
+                    logger.error("Erro ao dar baixa no insumo (consumo puro): %s", e)
+                    detalhe = getattr(e, "detail", str(e))
+                    return f"⚠️ Não consegui dar baixa no estoque: {detalhe}"
+
             lancamento_id = gravar_lancamento(sess)
 
             # Upload de documento se houver mídia na sessão
@@ -343,37 +377,6 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
-            baixa_insumo_msg = ""
-            if sess.get("_insumo_id"):
-                try:
-                    from app.db import get_db
-                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
-                    conn_estoque = get_db()
-                    try:
-                        cur_estoque = conn_estoque.cursor()
-                        resultado_mov = aplicar_movimentacao_insumo(
-                            cur_estoque,
-                            fazenda_id=1,
-                            insumo_id=sess["_insumo_id"],
-                            tipo="uso",
-                            quantidade=sess["_quantidade_consumida"],
-                            origem_modulo="mensageria",
-                            origem_tipo="lancamento",
-                            origem_descricao=f"Consumo via WhatsApp/Telegram — lançamento #{lancamento_id}",
-                        )
-                        conn_estoque.commit()
-                        baixa_insumo_msg = (
-                            f"\n📦 Baixa no estoque: {sess['_insumo_nome']} "
-                            f"(-{sess['_quantidade_consumida']:g}, restam {resultado_mov['novo_estoque']:g}, "
-                            f"custo médio R$ {resultado_mov['novo_custo_medio']:.2f})"
-                        )
-                    finally:
-                        conn_estoque.close()
-                except Exception as e:
-                    logger.error("Erro ao dar baixa no insumo: %s", e)
-                    detalhe = getattr(e, "detail", str(e))
-                    baixa_insumo_msg = f"\n⚠️ Lançamento gravado, mas não consegui dar baixa no estoque: {detalhe}"
-
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"Tipo: {sess.get('tipo','').upper()}\n"
@@ -381,9 +384,11 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
                 f"Data: {sess.get('data','')}\n\n"
                 f"Envie a foto ou PDF do comprovante para vincular."
-                f"{baixa_insumo_msg}"
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
+            if sessoes[key].get("_consumo_puro"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
             # Em vez de cancelar direto, oferece trocar a conta sugerida —
             # a maioria dos "não" é sobre a conta estar errada, não sobre
             # desistir do lançamento inteiro. Cancelamento total continua
@@ -468,8 +473,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if any(k in texto.lower() for k in keywords_pisc):
         return await _processar_zootecnico(msg, "piscicultura", texto)
 
-    # Consumo de insumo já cadastrado no estoque — tenta achar o valor
-    # automaticamente pelo custo do insumo, em vez de perguntar
+    # Consumo de insumo já cadastrado no estoque — NUNCA vira lançamento
+    # (a despesa já foi registrada na aquisição). É só baixa de estoque +
+    # alocação de custo pro lote/atividade, pra não duplicar o gasto.
     resultado_insumo = _detectar_consumo_insumo(texto)
     if resultado_insumo and resultado_insumo.get("_candidatos_insumo_ambiguo"):
         candidatos = resultado_insumo["_candidatos_insumo_ambiguo"]
@@ -483,29 +489,17 @@ async def processar_mensagem(msg: MsgIn) -> str:
             linhas.append(f"{i}. {c['nome']} ({c['estoque_atual']:g} {c['unidade']} em estoque)")
         linhas.append("\n0. Nenhum desses / cancelar")
         return "\n".join(linhas)
-    elif resultado_insumo:
-        resultado = resultado_insumo
-    else:
-        # Classificação financeira via IA (com termos que o produtor já ensinou antes)
-        termos_aprendidos = _buscar_termos_aprendidos(msg.numero)
-        resultado = classificar(texto, termos_aprendidos=termos_aprendidos)
 
-    if not resultado:
-        sessoes[key] = {"_aguardando_tipo_novo_termo": True, "_texto_original": texto}
-        return _texto_pergunta_tipo_lancamento(
-            prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
-        )
-
-    # Piloto: pergunta o lote de bovino quando for consumo de ração/medicamento
-    # (conta 3.1.3) vindo da detecção de insumo — só se houver lote ativo
-    # cadastrado. Base pra estender depois a ovino/caprino/suino/piscicultura/
-    # fruticultura, seguindo o mesmo padrão origem_modulo/tipo/id.
-    if resultado.get("_insumo_id"):
+    if resultado_insumo:
+        # Piloto: pergunta o lote de bovino quando houver lote ativo
+        # cadastrado. Base pra estender depois a ovino/caprino/suino/
+        # piscicultura/fruticultura, seguindo o mesmo padrão origem_modulo/
+        # tipo/id.
         lotes_bovino = _listar_lotes_bovino_ativos(auth["imovel_id"])
         if lotes_bovino:
             sessoes[key] = {
                 "_aguardando_lote_bovino": True,
-                "_resultado_pendente": resultado,
+                "_resultado_pendente": resultado_insumo,
                 "_lotes_disponiveis": lotes_bovino,
             }
             linhas = ["Isso foi pra qual lote de bovino?\n"]
@@ -513,6 +507,19 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 linhas.append(f"{i}. {lote['nome']}")
             linhas.append("\n0. Não é de um lote específico / custo geral da fazenda")
             return "\n".join(linhas)
+
+        sessoes[key] = resultado_insumo
+        return _texto_confirmacao_consumo(resultado_insumo)
+
+    # Classificação financeira via IA (com termos que o produtor já ensinou antes)
+    termos_aprendidos = _buscar_termos_aprendidos(msg.numero)
+    resultado = classificar(texto, termos_aprendidos=termos_aprendidos)
+
+    if not resultado:
+        sessoes[key] = {"_aguardando_tipo_novo_termo": True, "_texto_original": texto}
+        return _texto_pergunta_tipo_lancamento(
+            prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
+        )
 
     sessoes[key] = resultado
 
@@ -1163,22 +1170,37 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
 
 
 def _montar_resultado_insumo(insumo_row, quantidade: float) -> dict:
+    """Monta os dados de uma baixa de estoque pura — NÃO é um lançamento
+    financeiro (conta/tipo/valor de despesa). custo_estimado é só
+    informativo, pra mostrar na confirmação antes de aplicar a baixa."""
     custo_unitario = insumo_row.custo_medio or insumo_row.preco_estimado
-    valor = round(quantidade * float(custo_unitario), 2) if custo_unitario else None
+    custo_estimado = round(quantidade * float(custo_unitario), 2) if custo_unitario else None
 
     return {
-        "conta": _conta_por_categoria_insumo(insumo_row.categoria),
-        "tipo": "despesa",
-        "valor": valor,
-        "produto": insumo_row.nome,
-        "atividade": "rural",
-        "data": date.today().isoformat(),
-        "confianca": 95 if valor is not None else 60,
+        "_consumo_puro": True,
         "_insumo_id": insumo_row.id,
         "_insumo_nome": insumo_row.nome,
         "_quantidade_consumida": quantidade,
         "_insumo_estoque_antes": float(insumo_row.estoque_atual or 0),
+        "_custo_estimado": custo_estimado,
     }
+
+
+def _texto_confirmacao_consumo(dados: dict) -> str:
+    custo_str = (
+        f"R$ {dados['_custo_estimado']:.2f}"
+        if dados.get("_custo_estimado") is not None
+        else "não calculado (insumo sem custo cadastrado)"
+    )
+    destino_str = f"\nDestino: {dados['_origem_descricao']}" if dados.get("_origem_descricao") else ""
+    return (
+        f"Recebi! Baixa de estoque:\n\n"
+        f"📦 {dados['_insumo_nome']}\n"
+        f"Quantidade: {dados['_quantidade_consumida']:g}\n"
+        f"Custo alocado: {custo_str}{destino_str}\n\n"
+        f"Isso NÃO gera uma despesa nova (o gasto já foi registrado na compra).\n\n"
+        f"Responda SIM para confirmar ou NÃO para cancelar."
+    )
 
 def _listar_lotes_bovino_ativos(imovel_id: int) -> list:
     """Lista lotes de bovino ativos desse imóvel, pra pergunta de origem
