@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 // build-20260712131406
 import { useState, useEffect, useRef } from "react";
 import { Plus, FileSignature, Search, RefreshCw, Trash2, Download, Sparkles, ArrowLeft, AlertTriangle, CheckCircle2, Upload, Send } from "lucide-react";
@@ -71,42 +71,42 @@ const PERGUNTAS_ASSISTENTE: {
 }[] = [
   {
     campo: "vinculo",
-    pergunta: "Como é o vínculo entre as partes?",
+    pergunta: "Como Ã© o vÃ­nculo entre as partes?",
     opcoes: [
-      { value: "autonomo", label: "Cada parte age com autonomia, sem subordinação" },
-      { value: "subordinado_remuneracao_fixa", label: "Uma parte trabalha sob ordens diretas, com remuneração fixa periódica" },
+      { value: "autonomo", label: "Cada parte age com autonomia, sem subordinaÃ§Ã£o" },
+      { value: "subordinado_remuneracao_fixa", label: "Uma parte trabalha sob ordens diretas, com remuneraÃ§Ã£o fixa periÃ³dica" },
     ],
   },
   {
     campo: "relacao",
-    pergunta: "Sobre ESSE contrato específico que você está criando agora:",
-    dica: "Já são condôminos/sócios de uma área maior, mas isso aqui é um acordo à parte pra uma atividade específica (ex: dois de vários condôminos vão criar animais juntos)? A resposta certa é a primeira opção — o fato de já serem condôminos de outra coisa não muda a natureza DESSE contrato.",
+    pergunta: "Sobre ESSE contrato especÃ­fico que vocÃª estÃ¡ criando agora:",
+    dica: "JÃ¡ sÃ£o condÃ´minos/sÃ³cios de uma Ã¡rea maior, mas isso aqui Ã© um acordo Ã  parte pra uma atividade especÃ­fica (ex: dois de vÃ¡rios condÃ´minos vÃ£o criar animais juntos)? A resposta certa Ã© a primeira opÃ§Ã£o â€” o fato de jÃ¡ serem condÃ´minos de outra coisa nÃ£o muda a natureza DESSE contrato.",
     opcoes: [
-      { value: "cede_uso", label: "Uma parte está usando/explorando a área ou bem da outra (mesmo que já sejam sócios/condôminos de algo maior), dividindo resultado, pagando aluguel, ou outro acordo" },
-      { value: "co_propriedade", label: "Vocês estão formalizando uma propriedade NOVA em conjunto (comprando junto, ou registrando uma copropriedade que ainda não existe)" },
-      { value: "transferencia_definitiva", label: "Uma parte está vendendo/transferindo definitivamente pra outra" },
+      { value: "cede_uso", label: "Uma parte estÃ¡ usando/explorando a Ã¡rea ou bem da outra (mesmo que jÃ¡ sejam sÃ³cios/condÃ´minos de algo maior), dividindo resultado, pagando aluguel, ou outro acordo" },
+      { value: "co_propriedade", label: "VocÃªs estÃ£o formalizando uma propriedade NOVA em conjunto (comprando junto, ou registrando uma copropriedade que ainda nÃ£o existe)" },
+      { value: "transferencia_definitiva", label: "Uma parte estÃ¡ vendendo/transferindo definitivamente pra outra" },
     ],
   },
   {
     campo: "remuneracao",
     pergunta: "Como funciona o pagamento?",
     opcoes: [
-      { value: "divisao_resultado", label: "Divisão do resultado da produção (lucro e prejuízo compartilhados)" },
+      { value: "divisao_resultado", label: "DivisÃ£o do resultado da produÃ§Ã£o (lucro e prejuÃ­zo compartilhados)" },
       { value: "valor_fixo", label: "Valor fixo combinado, independente do resultado" },
-      { value: "gratuito", label: "Não há cobrança nenhuma" },
-      { value: "rateio_cotas", label: "Cada um paga/recebe proporcional à cota de propriedade" },
-      { value: "preco_unico", label: "Um preço único pela transferência definitiva" },
-      { value: "por_servico_executado", label: "Pagamento por um serviço específico executado" },
+      { value: "gratuito", label: "NÃ£o hÃ¡ cobranÃ§a nenhuma" },
+      { value: "rateio_cotas", label: "Cada um paga/recebe proporcional Ã  cota de propriedade" },
+      { value: "preco_unico", label: "Um preÃ§o Ãºnico pela transferÃªncia definitiva" },
+      { value: "por_servico_executado", label: "Pagamento por um serviÃ§o especÃ­fico executado" },
     ],
   },
   {
     campo: "atividade",
     pergunta: "Qual a atividade principal?",
     opcoes: [
-      { value: "agricola", label: "🌱 Agrícola (lavoura)" },
-      { value: "pecuaria", label: "🐄 Pecuária" },
-      { value: "agroindustrial", label: "🏭 Agroindustrial" },
-      { value: "extrativa", label: "🌲 Extrativa" },
+      { value: "agricola", label: "ðŸŒ± AgrÃ­cola (lavoura)" },
+      { value: "pecuaria", label: "ðŸ„ PecuÃ¡ria" },
+      { value: "agroindustrial", label: "ðŸ­ Agroindustrial" },
+      { value: "extrativa", label: "ðŸŒ² Extrativa" },
     ],
     mostrar: (r) => r.remuneracao === "divisao_resultado",
   },
@@ -115,7 +115,7 @@ const PERGUNTAS_ASSISTENTE: {
     pergunta: "Qual o prazo pretendido?",
     opcoes: [
       { value: "curto", label: "Curto (menos de 1 ano / 1 safra)" },
-      { value: "medio", label: "Médio (1 a 3 anos)" },
+      { value: "medio", label: "MÃ©dio (1 a 3 anos)" },
       { value: "longo", label: "Longo (mais de 3 anos)" },
       { value: "indeterminado", label: "Prazo indeterminado" },
     ],
@@ -124,24 +124,25 @@ const PERGUNTAS_ASSISTENTE: {
     campo: "risco",
     pergunta: "Quem assume o risco (clima, mercado, perdas)?",
     opcoes: [
-      { value: "proprietario", label: "Só o proprietário" },
-      { value: "terceiro", label: "Só o terceiro/parceiro" },
+      { value: "proprietario", label: "SÃ³ o proprietÃ¡rio" },
+      { value: "terceiro", label: "SÃ³ o terceiro/parceiro" },
       { value: "dividido", label: "Dividido entre as partes" },
     ],
   },
   {
     campo: "infraestrutura",
-    pergunta: "Quem fornece a infraestrutura (máquinas, insumos, benfeitorias)?",
+    pergunta: "Quem fornece a infraestrutura (mÃ¡quinas, insumos, benfeitorias)?",
     opcoes: [
-      { value: "proprietario", label: "Só o proprietário" },
-      { value: "terceiro", label: "Só o terceiro/parceiro" },
+      { value: "proprietario", label: "SÃ³ o proprietÃ¡rio" },
+      { value: "terceiro", label: "SÃ³ o terceiro/parceiro" },
       { value: "ambos", label: "Os dois contribuem" },
     ],
   },
 ];
 
 function authHeaders(): Record<string, string> {
-  const token = getRcToken();
+  const apiToken = localStorage.getItem("rc_api_token");
+  const token = apiToken ?? getRcToken();
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -166,20 +167,20 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 const TIPO_LABELS: Record<string, string> = {
   arrendamento:      "Arrendamento",
   parceria:          "Parceria",
-  agricola:          "Parceria Agrícola",
-  pecuaria:          "Parceria Pecuária",
+  agricola:          "Parceria AgrÃ­cola",
+  pecuaria:          "Parceria PecuÃ¡ria",
   agroindustrial:    "Parceria Agroindustrial",
   extrativa:         "Parceria Extrativa",
-  condominio:        "Condomínio Rural",
+  condominio:        "CondomÃ­nio Rural",
   comodato:          "Comodato",
-  prestacao_servico: "Prestação de Serviço",
+  prestacao_servico: "PrestaÃ§Ã£o de ServiÃ§o",
   compra_venda:      "Compra e Venda",
 };
 
 const TIPO_ICONS: Record<string, string> = {
-  agricola: "🌾", pecuaria: "🐄", agroindustrial: "🏭",
-  extrativa: "🌲", condominio: "🤝", arrendamento: "📋",
-  parceria: "🤝", comodato: "🏠", compra_venda: "💰",
+  agricola: "ðŸŒ¾", pecuaria: "ðŸ„", agroindustrial: "ðŸ­",
+  extrativa: "ðŸŒ²", condominio: "ðŸ¤", arrendamento: "ðŸ“‹",
+  parceria: "ðŸ¤", comodato: "ðŸ ", compra_venda: "ðŸ’°",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -192,22 +193,22 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const TIPOS_FORM = [
-  { value: "agricola",       label: "Parceria Agrícola" },
-  { value: "pecuaria",       label: "Parceria Pecuária" },
+  { value: "agricola",       label: "Parceria AgrÃ­cola" },
+  { value: "pecuaria",       label: "Parceria PecuÃ¡ria" },
   { value: "agroindustrial", label: "Parceria Agroindustrial" },
   { value: "extrativa",      label: "Parceria Extrativa" },
-  { value: "condominio",     label: "Condomínio Rural" },
+  { value: "condominio",     label: "CondomÃ­nio Rural" },
   { value: "arrendamento",   label: "Arrendamento" },
   { value: "comodato",       label: "Comodato" },
   { value: "compra_venda",   label: "Compra e Venda" },
 ];
 
-// Tipos que NÃO usam outorgante/outorgado
+// Tipos que NÃƒO usam outorgante/outorgado
 const TIPOS_SEM_PARTES = ["condominio"];
 
-// Tipos de parceria (usados pra decidir quando pré-preencher a cláusula
-// padrão de rateio de custos — não faz sentido pra arrendamento/comodato/
-// compra_venda, que têm lógica de custo diferente)
+// Tipos de parceria (usados pra decidir quando prÃ©-preencher a clÃ¡usula
+// padrÃ£o de rateio de custos â€” nÃ£o faz sentido pra arrendamento/comodato/
+// compra_venda, que tÃªm lÃ³gica de custo diferente)
 const TIPOS_PARCERIA = ["agricola", "pecuaria", "agroindustrial", "extrativa"];
 
 function fmtDate(s?: string) {
@@ -265,7 +266,7 @@ export default function ContratosRurais() {
 
   const removerCondomino = (index: number) => {
     if (condominos.length <= 2) {
-      toast.error("Um condomínio precisa de no mínimo 2 condôminos.");
+      toast.error("Um condomÃ­nio precisa de no mÃ­nimo 2 condÃ´minos.");
       return;
     }
     setCondominos((prev) => prev.filter((_, i) => i !== index));
@@ -295,7 +296,7 @@ export default function ContratosRurais() {
       }
       setContratos(data);
     } catch {
-      toast.error("Não foi possível carregar os contratos");
+      toast.error("NÃ£o foi possÃ­vel carregar os contratos");
     } finally {
       setLoading(false);
     }
@@ -313,7 +314,7 @@ export default function ContratosRurais() {
   const handleCreate = async () => {
     if (!form.tipo) { toast.error("Selecione o tipo de contrato"); return; }
     if (form.data_inicio && form.data_fim && form.data_fim < form.data_inicio) {
-      toast.error("Data Fim não pode ser anterior à Data Início");
+      toast.error("Data Fim nÃ£o pode ser anterior Ã  Data InÃ­cio");
       return;
     }
     if (!semPartes) {
@@ -322,35 +323,35 @@ export default function ContratosRurais() {
     }
     if (ehCondominio) {
       if (!form.data_fim) {
-        toast.error("Condomínio Rural exige Data Fim (não aceita prazo indeterminado).");
+        toast.error("CondomÃ­nio Rural exige Data Fim (nÃ£o aceita prazo indeterminado).");
         return;
       }
       if (!areaTotalCondominio || areaTotalCondominio <= 0) {
-        toast.error("Informe a Área total (hectares) do condomínio.");
+        toast.error("Informe a Ãrea total (hectares) do condomÃ­nio.");
         return;
       }
       if (condominos.length < 2) {
-        toast.error("Um condomínio precisa de no mínimo 2 condôminos.");
+        toast.error("Um condomÃ­nio precisa de no mÃ­nimo 2 condÃ´minos.");
         return;
       }
       for (const c of condominos) {
-        if (!c.nome.trim()) { toast.error("Preencha o nome de todos os condôminos."); return; }
+        if (!c.nome.trim()) { toast.error("Preencha o nome de todos os condÃ´minos."); return; }
         if (!c.area_ha || Number(c.area_ha) <= 0) {
-          toast.error(`Informe a área (ha) do condômino "${c.nome || "sem nome"}".`);
+          toast.error(`Informe a Ã¡rea (ha) do condÃ´mino "${c.nome || "sem nome"}".`);
           return;
         }
       }
       if (somaAreaCondominos > areaTotalCondominio + 0.01) {
         toast.error(
-          `A soma das áreas dos condôminos (${somaAreaCondominos.toFixed(2)} ha) ` +
-          `excede a área total do imóvel (${areaTotalCondominio.toFixed(2)} ha).`
+          `A soma das Ã¡reas dos condÃ´minos (${somaAreaCondominos.toFixed(2)} ha) ` +
+          `excede a Ã¡rea total do imÃ³vel (${areaTotalCondominio.toFixed(2)} ha).`
         );
         return;
       }
     }
 
     if (!form.data_fim && !form.clausula_denuncia_dias) {
-      toast.error("Prazo indeterminado precisa do aviso prévio de rescisão (em dias) — sem data fim, isso é obrigatório");
+      toast.error("Prazo indeterminado precisa do aviso prÃ©vio de rescisÃ£o (em dias) â€” sem data fim, isso Ã© obrigatÃ³rio");
       return;
     }
     setSaving(true);
@@ -367,10 +368,10 @@ export default function ContratosRurais() {
         frequencia_pagamento: form.frequencia_pagamento,
         area_parceria_hectares: form.valor ? Number(form.valor) : undefined,
         outorgante_externo: !semPartes && form.outorgante_nome
-          ? { nome: form.outorgante_nome, tipo_documento: tipoDocumento(form.outorgante_documento), documento: form.outorgante_documento || "não informado" }
+          ? { nome: form.outorgante_nome, tipo_documento: tipoDocumento(form.outorgante_documento), documento: form.outorgante_documento || "nÃ£o informado" }
           : undefined,
         outorgado_externo: !semPartes && form.outorgado_nome
-          ? { nome: form.outorgado_nome, tipo_documento: tipoDocumento(form.outorgado_documento), documento: form.outorgado_documento || "não informado" }
+          ? { nome: form.outorgado_nome, tipo_documento: tipoDocumento(form.outorgado_documento), documento: form.outorgado_documento || "nÃ£o informado" }
           : undefined,
         clausulas_adicionais: {
           ...(ehPecuaria ? {
@@ -402,7 +403,7 @@ export default function ContratosRurais() {
               parceiro_externo: {
                 nome: c.nome,
                 tipo_documento: c.documento.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF",
-                documento: c.documento || "não informado",
+                documento: c.documento || "nÃ£o informado",
               },
             })),
           }
@@ -441,7 +442,7 @@ export default function ContratosRurais() {
     try {
       await apiFetch(`/contratos/${id}`, { method: "DELETE" });
       setContratos((prev) => prev.filter((c) => c.id !== id));
-      toast.success("Contrato excluído");
+      toast.success("Contrato excluÃ­do");
     } catch {
       toast.error("Erro ao excluir contrato");
     }
@@ -456,15 +457,15 @@ export default function ContratosRurais() {
   };
 
   // Lista de perguntas que se aplicam ao estado atual das respostas
-  // (a pergunta "atividade" só entra se remuneracao === "divisao_resultado").
+  // (a pergunta "atividade" sÃ³ entra se remuneracao === "divisao_resultado").
   const perguntasAtivas = PERGUNTAS_ASSISTENTE.filter(
     (p) => !p.mostrar || p.mostrar(respostasAssist)
   );
 
-  // A pergunta a exibir é sempre derivada diretamente das respostas já
-  // dadas — a primeira pergunta ativa que ainda não tem resposta. Isso evita
-  // qualquer dessincronia entre "que número de pergunta estou" e "qual
-  // pergunta esse número aponta", que existia com um índice numérico
+  // A pergunta a exibir Ã© sempre derivada diretamente das respostas jÃ¡
+  // dadas â€” a primeira pergunta ativa que ainda nÃ£o tem resposta. Isso evita
+  // qualquer dessincronia entre "que nÃºmero de pergunta estou" e "qual
+  // pergunta esse nÃºmero aponta", que existia com um Ã­ndice numÃ©rico
   // separado quando a lista de perguntas ativas muda de tamanho (pergunta
   // condicional de atividade).
   const perguntaAtual = perguntasAtivas.find(
@@ -519,22 +520,22 @@ export default function ContratosRurais() {
   };
 
   const CLAUSULA_CUSTOS_PADRAO_PARCERIA =
-    "Os custos operacionais serão rateados entre as partes na mesma proporção " +
-    "do percentual de divisão estabelecido neste contrato. Caso uma das partes " +
-    "desembolse valor superior à sua cota-parte, mediante comprovação por nota " +
-    "fiscal ou recibo, o valor excedente será reembolsado pela outra parte " +
-    "antes da apuração do lucro a ser dividido.";
+    "Os custos operacionais serÃ£o rateados entre as partes na mesma proporÃ§Ã£o " +
+    "do percentual de divisÃ£o estabelecido neste contrato. Caso uma das partes " +
+    "desembolse valor superior Ã  sua cota-parte, mediante comprovaÃ§Ã£o por nota " +
+    "fiscal ou recibo, o valor excedente serÃ¡ reembolsado pela outra parte " +
+    "antes da apuraÃ§Ã£o do lucro a ser dividido.";
 
   const CLAUSULA_RISCOS_PADRAO_PARCERIA =
-    "Os riscos inerentes à atividade serão suportados proporcionalmente pelas " +
-    "partes, na mesma proporção do percentual de divisão estabelecido neste " +
+    "Os riscos inerentes Ã  atividade serÃ£o suportados proporcionalmente pelas " +
+    "partes, na mesma proporÃ§Ã£o do percentual de divisÃ£o estabelecido neste " +
     "contrato, observado o seguinte: (i) morte de animal por causa natural ou " +
-    "acidente — mediante comunicação imediata à outra parte e, quando " +
-    "possível, laudo veterinário; (ii) roubo ou furto — mediante boletim de " +
-    "ocorrência registrado em até 48 (quarenta e oito) horas; (iii) doenças de " +
-    "notificação obrigatória — o descumprimento do protocolo sanitário " +
-    "combinado entre as partes transfere à parte que descumpriu a " +
-    "responsabilidade integral pelo prejuízo decorrente.";
+    "acidente â€” mediante comunicaÃ§Ã£o imediata Ã  outra parte e, quando " +
+    "possÃ­vel, laudo veterinÃ¡rio; (ii) roubo ou furto â€” mediante boletim de " +
+    "ocorrÃªncia registrado em atÃ© 48 (quarenta e oito) horas; (iii) doenÃ§as de " +
+    "notificaÃ§Ã£o obrigatÃ³ria â€” o descumprimento do protocolo sanitÃ¡rio " +
+    "combinado entre as partes transfere Ã  parte que descumpriu a " +
+    "responsabilidade integral pelo prejuÃ­zo decorrente.";
 
   const escolherTipo = (tipoValue: string) => {
     const ehParceria = TIPOS_PARCERIA.includes(tipoValue);
@@ -627,7 +628,7 @@ export default function ContratosRurais() {
         const msg = typeof err.detail === "string" ? err.detail : `HTTP ${res.status}`;
         throw new Error(msg);
       }
-      toast.success("Documento final gerado — já pode enviar para assinatura");
+      toast.success("Documento final gerado â€” jÃ¡ pode enviar para assinatura");
       load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Erro ao processar documento final");
@@ -640,7 +641,7 @@ export default function ContratosRurais() {
   const [enviandoAssinaturaId, setEnviandoAssinaturaId] = useState<number | null>(null);
 
   const handleEnviarParaAssinatura = async (contratoId: number) => {
-    if (!confirm("Enviar este contrato para assinatura? Cada parte receberá um código por WhatsApp.")) return;
+    if (!confirm("Enviar este contrato para assinatura? Cada parte receberÃ¡ um cÃ³digo por WhatsApp.")) return;
     setEnviandoAssinaturaId(contratoId);
     try {
       const resultado = await apiFetch<{ partes_notificadas: { nome: string; whatsapp_enviado: boolean }[] }>(
@@ -651,7 +652,7 @@ export default function ContratosRurais() {
       if (semWhatsapp.length > 0) {
         toast.warning(`Enviado, mas sem telefone cadastrado para: ${semWhatsapp.map((p) => p.nome).join(", ")}`);
       } else {
-        toast.success("Enviado para assinatura! Cada parte recebeu um código por WhatsApp.");
+        toast.success("Enviado para assinatura! Cada parte recebeu um cÃ³digo por WhatsApp.");
       }
       load();
     } catch (e: unknown) {
@@ -666,7 +667,7 @@ export default function ContratosRurais() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>Contratos Rurais</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Arrendamentos, parcerias e condomínio rural</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Arrendamentos, parcerias e condomÃ­nio rural</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -682,7 +683,7 @@ export default function ContratosRurais() {
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Buscar por tipo, parte ou descrição..." value={search}
+        <Input placeholder="Buscar por tipo, parte ou descriÃ§Ã£o..." value={search}
           onChange={(e) => setSearch(e.target.value)} className="pl-9" />
       </div>
 
@@ -697,7 +698,7 @@ export default function ContratosRurais() {
             <CardContent className="pt-4 pb-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
               <p className="text-2xl font-bold mt-1" style={{ color: "oklch(0.35 0.12 145)" }}>
-                {loading ? "—" : s.value}
+                {loading ? "â€”" : s.value}
               </p>
             </CardContent>
           </Card>
@@ -721,7 +722,7 @@ export default function ContratosRurais() {
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-xl"
                       style={{ background: "oklch(0.92 0.04 145)" }}>
-                      {TIPO_ICONS[c.tipo] ?? "📄"}
+                      {TIPO_ICONS[c.tipo] ?? "ðŸ“„"}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -734,7 +735,7 @@ export default function ContratosRurais() {
                       </div>
                       {(c.outorgante_nome || c.outorgado_nome) && (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {c.outorgante_nome ?? "—"} → {c.outorgado_nome ?? "—"}
+                          {c.outorgante_nome ?? "â€”"} â†’ {c.outorgado_nome ?? "â€”"}
                           {c.percentual_outorgante != null && (
                             <span className="ml-2 text-[10px] font-medium">
                               ({c.percentual_outorgante}% / {c.percentual_outorgado}%)
@@ -744,8 +745,8 @@ export default function ContratosRurais() {
                       )}
                       {c.descricao && <p className="text-xs text-muted-foreground mt-0.5 truncate">{c.descricao}</p>}
                       <div className="flex gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
-                        {c.data_inicio && <span>📅 {fmtDate(c.data_inicio)} → {fmtDate(c.data_fim) ?? "—"}</span>}
-                        {c.area_parceria_hectares != null && <span>🌱 {c.area_parceria_hectares} ha</span>}
+                        {c.data_inicio && <span>ðŸ“… {fmtDate(c.data_inicio)} â†’ {fmtDate(c.data_fim) ?? "â€”"}</span>}
+                        {c.area_parceria_hectares != null && <span>ðŸŒ± {c.area_parceria_hectares} ha</span>}
                       </div>
                     </div>
                   </div>
@@ -775,7 +776,7 @@ export default function ContratosRurais() {
                           size="sm"
                           onClick={() => handleEnviarParaAssinatura(c.id)}
                           disabled={enviandoAssinaturaId === c.id}
-                          title="Enviar para assinatura (código por WhatsApp)"
+                          title="Enviar para assinatura (cÃ³digo por WhatsApp)"
                           className="text-emerald-600 hover:text-emerald-700"
                         >
                           <Send className={`w-4 h-4 ${enviandoAssinaturaId === c.id ? "animate-pulse" : ""}`} />
@@ -804,7 +805,7 @@ export default function ContratosRurais() {
       <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
 
-          {/* ── MODO SELETOR: grade rápida + CTA do assistente ── */}
+          {/* â”€â”€ MODO SELETOR: grade rÃ¡pida + CTA do assistente â”€â”€ */}
           {modoNovo === "seletor" && (
             <>
               <DialogHeader><DialogTitle>Novo Contrato Rural</DialogTitle></DialogHeader>
@@ -818,7 +819,7 @@ export default function ContratosRurais() {
                     onClick={() => { escolherTipo(value); setModoNovo("form"); }}
                     className="p-3 rounded-lg border text-left hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
                   >
-                    <div className="text-xl mb-1">{TIPO_ICONS[value] ?? "📄"}</div>
+                    <div className="text-xl mb-1">{TIPO_ICONS[value] ?? "ðŸ“„"}</div>
                     <div className="text-[11px] font-medium leading-tight">{label}</div>
                   </button>
                 ))}
@@ -837,7 +838,7 @@ export default function ContratosRurais() {
                   <Sparkles className="w-5 h-5 text-emerald-700" />
                 </div>
                 <div>
-                  <div className="text-sm font-semibold">Não sabe qual escolher?</div>
+                  <div className="text-sm font-semibold">NÃ£o sabe qual escolher?</div>
                   <div className="text-xs text-muted-foreground">Responda 7 perguntas e descubra o contrato mais adequado</div>
                 </div>
               </button>
@@ -847,7 +848,7 @@ export default function ContratosRurais() {
             </>
           )}
 
-          {/* ── MODO ASSISTENTE: questionário ou resultado ── */}
+          {/* â”€â”€ MODO ASSISTENTE: questionÃ¡rio ou resultado â”€â”€ */}
           {modoNovo === "assistente" && (
             <>
               <DialogHeader>
@@ -869,7 +870,7 @@ export default function ContratosRurais() {
                   <p className="text-sm font-medium">{perguntaAtual.pergunta}</p>
                   {perguntaAtual.dica && (
                     <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2.5">
-                      💡 {perguntaAtual.dica}
+                      ðŸ’¡ {perguntaAtual.dica}
                     </p>
                   )}
                   <div className="space-y-2">
@@ -944,12 +945,12 @@ export default function ContratosRurais() {
 
                   {resultadoAssist.recomendado.clausulas && resultadoAssist.recomendado.clausulas.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Cláusulas essenciais</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">ClÃ¡usulas essenciais</p>
                       <ul className="space-y-1">
                         {resultadoAssist.recomendado.clausulas.map((c, i) => (
                           <li key={i} className="text-xs">
                             <span className="font-medium">{c.titulo}</span>
-                            {c.descricao && <span className="text-muted-foreground"> — {c.descricao}</span>}
+                            {c.descricao && <span className="text-muted-foreground"> â€” {c.descricao}</span>}
                           </li>
                         ))}
                       </ul>
@@ -985,7 +986,7 @@ export default function ContratosRurais() {
             </>
           )}
 
-          {/* ── MODO FORM: formulário de criação (existente) ── */}
+          {/* â”€â”€ MODO FORM: formulÃ¡rio de criaÃ§Ã£o (existente) â”€â”€ */}
           {modoNovo === "form" && (
             <>
               <DialogHeader>
@@ -1009,18 +1010,18 @@ export default function ContratosRurais() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Descrição</Label>
-                  <Input placeholder="Descrição do contrato" value={form.descricao}
+                  <Label>DescriÃ§Ã£o</Label>
+                  <Input placeholder="DescriÃ§Ã£o do contrato" value={form.descricao}
                     onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
                 </div>
                 {!semPartes && (
                   <div className="space-y-3">
                     {ehPecuaria && (
                       <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2.5">
-                        💡 Em parceria pecuária, "outorgante" e "outorgado" não têm papel fixo —
-                        pode ser quem tem as instalações (curral, infraestrutura), quem cede a
-                        área de pastagem, ou qualquer outra combinação. Defina os percentuais
-                        conforme o que cada lado realmente está contribuindo.
+                        ðŸ’¡ Em parceria pecuÃ¡ria, "outorgante" e "outorgado" nÃ£o tÃªm papel fixo â€”
+                        pode ser quem tem as instalaÃ§Ãµes (curral, infraestrutura), quem cede a
+                        Ã¡rea de pastagem, ou qualquer outra combinaÃ§Ã£o. Defina os percentuais
+                        conforme o que cada lado realmente estÃ¡ contribuindo.
                       </p>
                     )}
                     <div className="grid grid-cols-2 gap-3">
@@ -1062,26 +1063,26 @@ export default function ContratosRurais() {
                 )}
                 {ehPecuaria && (
                   <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
-                    <p className="text-xs font-medium text-muted-foreground">Detalhes da parceria pecuária</p>
+                    <p className="text-xs font-medium text-muted-foreground">Detalhes da parceria pecuÃ¡ria</p>
                     <div className="space-y-1.5">
                       <Label>Modalidade</Label>
                       <Select value={form.modalidade_parceria} onValueChange={(v) => setForm({ ...form, modalidade_parceria: v })}>
                         <SelectTrigger><SelectValue placeholder="Selecione a modalidade" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="pastagem">Parceria de pastagem (só área)</SelectItem>
-                          <SelectItem value="confinamento">Confinamento (só instalação)</SelectItem>
-                          <SelectItem value="integracao">Integração (área + instalação + animais)</SelectItem>
+                          <SelectItem value="pastagem">Parceria de pastagem (sÃ³ Ã¡rea)</SelectItem>
+                          <SelectItem value="confinamento">Confinamento (sÃ³ instalaÃ§Ã£o)</SelectItem>
+                          <SelectItem value="integracao">IntegraÃ§Ã£o (Ã¡rea + instalaÃ§Ã£o + animais)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Espécie / Raça</Label>
+                        <Label className="text-xs">EspÃ©cie / RaÃ§a</Label>
                         <Input placeholder="Ex: Bovino Nelore" value={form.especie_raca}
                           onChange={(e) => setForm({ ...form, especie_raca: e.target.value })} />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Peso médio de entrada (kg)</Label>
+                        <Label className="text-xs">Peso mÃ©dio de entrada (kg)</Label>
                         <Input type="number" min={0} placeholder="Ex: 220" value={form.peso_medio_entrada}
                           onChange={(e) => setForm({ ...form, peso_medio_entrada: e.target.value })} />
                       </div>
@@ -1090,7 +1091,7 @@ export default function ContratosRurais() {
                 )}
                 {ehPecuaria && (
                   <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
-                    <p className="text-xs font-medium text-muted-foreground">Aquisição do plantel inicial</p>
+                    <p className="text-xs font-medium text-muted-foreground">AquisiÃ§Ã£o do plantel inicial</p>
                     <div className="space-y-1.5">
                       <Label>Quantidade de animais</Label>
                       <Input type="number" min={0} placeholder="Ex: 30" value={form.quantidade_animais}
@@ -1098,12 +1099,12 @@ export default function ContratosRurais() {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Valor investido — Outorgante</Label>
+                        <Label className="text-xs">Valor investido â€” Outorgante</Label>
                         <Input type="number" min={0} placeholder="R$ 0,00" value={form.valor_investido_outorgante}
                           onChange={(e) => setForm({ ...form, valor_investido_outorgante: e.target.value })} />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs">Valor investido — Outorgado</Label>
+                        <Label className="text-xs">Valor investido â€” Outorgado</Label>
                         <Input type="number" min={0} placeholder="R$ 0,00" value={form.valor_investido_outorgado}
                           onChange={(e) => setForm({ ...form, valor_investido_outorgado: e.target.value })} />
                       </div>
@@ -1111,7 +1112,7 @@ export default function ContratosRurais() {
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label>Área (hectares){ehCondominio ? " total do condomínio" : ""}</Label>
+                  <Label>Ãrea (hectares){ehCondominio ? " total do condomÃ­nio" : ""}</Label>
                   <Input type="number" placeholder="0,00" value={form.valor}
                     onChange={(e) => setForm({ ...form, valor: e.target.value })} />
                 </div>
@@ -1120,21 +1121,21 @@ export default function ContratosRurais() {
                   <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-muted-foreground">
-                        Condôminos ({condominos.length})
+                        CondÃ´minos ({condominos.length})
                       </p>
                       <button
                         type="button"
                         onClick={adicionarCondomino}
                         className="text-xs font-medium text-emerald-700 hover:underline"
                       >
-                        + Adicionar condômino
+                        + Adicionar condÃ´mino
                       </button>
                     </div>
 
                     {condominos.map((c, i) => (
                       <div key={i} className="space-y-2 border-t pt-2 first:border-t-0 first:pt-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold">Condômino {i + 1}</span>
+                          <span className="text-xs font-semibold">CondÃ´mino {i + 1}</span>
                           {condominos.length > 2 && (
                             <button
                               type="button"
@@ -1161,7 +1162,7 @@ export default function ContratosRurais() {
                           <Input
                             type="number"
                             min={0}
-                            placeholder="Área (ha)"
+                            placeholder="Ãrea (ha)"
                             value={c.area_ha}
                             onChange={(e) => atualizarCondomino(i, "area_ha", e.target.value)}
                           />
@@ -1172,14 +1173,14 @@ export default function ContratosRurais() {
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="administrador">Administrador</SelectItem>
-                              <SelectItem value="condomino">Condômino</SelectItem>
+                              <SelectItem value="condomino">CondÃ´mino</SelectItem>
                               <SelectItem value="inventariante">Inventariante</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         {c.area_ha && areaTotalCondominio > 0 && (
                           <p className="text-[11px] text-muted-foreground">
-                            ≈ {((Number(c.area_ha) / areaTotalCondominio) * 100).toFixed(1)}% de participação
+                            â‰ˆ {((Number(c.area_ha) / areaTotalCondominio) * 100).toFixed(1)}% de participaÃ§Ã£o
                           </p>
                         )}
                       </div>
@@ -1190,14 +1191,14 @@ export default function ContratosRurais() {
                         ? "text-red-600"
                         : "text-muted-foreground"
                     }`}>
-                      Soma das áreas: {somaAreaCondominos.toFixed(2)} ha
+                      Soma das Ã¡reas: {somaAreaCondominos.toFixed(2)} ha
                       {areaTotalCondominio > 0 && ` de ${areaTotalCondominio.toFixed(2)} ha total`}
                     </p>
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>Data Início</Label>
+                    <Label>Data InÃ­cio</Label>
                     <Input type="date" value={form.data_inicio}
                       onChange={(e) => setForm({ ...form, data_inicio: e.target.value })} />
                   </div>
@@ -1209,33 +1210,33 @@ export default function ContratosRurais() {
                 </div>
                 {!form.data_fim && (
                   <div className="space-y-1.5">
-                    <Label>Aviso prévio de rescisão (dias) *</Label>
+                    <Label>Aviso prÃ©vio de rescisÃ£o (dias) *</Label>
                     <Input type="number" min={1} placeholder="Ex: 90" value={form.clausula_denuncia_dias}
                       onChange={(e) => setForm({ ...form, clausula_denuncia_dias: e.target.value })} />
                     <p className="text-xs text-muted-foreground">
-                      Sem data fim (prazo indeterminado), é obrigatório definir com quantos dias de
-                      antecedência qualquer parte pode encerrar o contrato.
+                      Sem data fim (prazo indeterminado), Ã© obrigatÃ³rio definir com quantos dias de
+                      antecedÃªncia qualquer parte pode encerrar o contrato.
                     </p>
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label>Frequência de pagamento</Label>
+                  <Label>FrequÃªncia de pagamento</Label>
                   <Select value={form.frequencia_pagamento} onValueChange={(v) => setForm({ ...form, frequencia_pagamento: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {ehPecuaria ? (
                         <>
-                          <SelectItem value="apos_abate">Após abate</SelectItem>
+                          <SelectItem value="apos_abate">ApÃ³s abate</SelectItem>
                           <SelectItem value="mensal">Mensal</SelectItem>
                           <SelectItem value="semestral">Semestral</SelectItem>
-                          <SelectItem value="ao_termino">Ao término do contrato</SelectItem>
+                          <SelectItem value="ao_termino">Ao tÃ©rmino do contrato</SelectItem>
                         </>
                       ) : (
                         <>
                           <SelectItem value="safra">Por safra</SelectItem>
                           <SelectItem value="mensal">Mensal</SelectItem>
                           <SelectItem value="anual">Anual</SelectItem>
-                          <SelectItem value="ao_termino">Ao término do contrato</SelectItem>
+                          <SelectItem value="ao_termino">Ao tÃ©rmino do contrato</SelectItem>
                         </>
                       )}
                     </SelectContent>
@@ -1247,24 +1248,24 @@ export default function ContratosRurais() {
                       <Label>Responsabilidade por custos operacionais</Label>
                       <textarea
                         className="w-full min-h-[70px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        placeholder="Ex: Os custos operacionais serão rateados entre as partes na mesma proporção do percentual de divisão estabelecido neste contrato. Caso uma das partes desembolse valor superior à sua cota-parte, mediante comprovação por nota fiscal ou recibo, o valor excedente será reembolsado pela outra parte antes da apuração do lucro a ser dividido."
+                        placeholder="Ex: Os custos operacionais serÃ£o rateados entre as partes na mesma proporÃ§Ã£o do percentual de divisÃ£o estabelecido neste contrato. Caso uma das partes desembolse valor superior Ã  sua cota-parte, mediante comprovaÃ§Ã£o por nota fiscal ou recibo, o valor excedente serÃ¡ reembolsado pela outra parte antes da apuraÃ§Ã£o do lucro a ser dividido."
                         value={form.responsabilidade_custos}
                         onChange={(e) => setForm({ ...form, responsabilidade_custos: e.target.value })}
                       />
                       <p className="text-xs text-muted-foreground">
-                        Quem paga ração, vacina, mão de obra, instalações — e se isso é deduzido antes de dividir o resultado.
+                        Quem paga raÃ§Ã£o, vacina, mÃ£o de obra, instalaÃ§Ãµes â€” e se isso Ã© deduzido antes de dividir o resultado.
                       </p>
                     </div>
                     <div className="space-y-1.5">
                       <Label>Responsabilidade por riscos e perdas</Label>
                       <textarea
                         className="w-full min-h-[70px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        placeholder="Ex: Morte por causa natural — prejuízo dividido proporcionalmente. Roubo/furto — comunicação imediata e boletim de ocorrência, prejuízo dividido. Doenças de notificação obrigatória — responsabilidade de quem descumprir o protocolo sanitário combinado."
+                        placeholder="Ex: Morte por causa natural â€” prejuÃ­zo dividido proporcionalmente. Roubo/furto â€” comunicaÃ§Ã£o imediata e boletim de ocorrÃªncia, prejuÃ­zo dividido. DoenÃ§as de notificaÃ§Ã£o obrigatÃ³ria â€” responsabilidade de quem descumprir o protocolo sanitÃ¡rio combinado."
                         value={form.responsabilidade_riscos}
                         onChange={(e) => setForm({ ...form, responsabilidade_riscos: e.target.value })}
                       />
                       <p className="text-xs text-muted-foreground">
-                        Um dos pontos mais litigiosos em parceria pecuária — quem assume morte, roubo ou doença do rebanho.
+                        Um dos pontos mais litigiosos em parceria pecuÃ¡ria â€” quem assume morte, roubo ou doenÃ§a do rebanho.
                       </p>
                     </div>
                   </>
@@ -1284,3 +1285,4 @@ export default function ContratosRurais() {
     </div>
   );
 }
+
