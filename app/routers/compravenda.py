@@ -902,6 +902,136 @@ def relatorio_fiscal(
         conn.close()
 
 
+@router.get("/relatorio-ganho-capital/{imovel_id}")
+def relatorio_ganho_capital(
+    imovel_id: int,
+    ano: Optional[int] = Query(None, description="Filtra pelo ano da venda (ano-calendário do GCAP)"),
+):
+    """
+    Gera uma planilha (.xlsx) com as operações classificadas como
+    NEGOCIACAO — as que ficaram FORA do Livro Caixa Rural por estarem
+    dentro do prazo fiscal (52/138 dias) — com os campos necessários
+    pra declarar Ganho de Capital.
+
+    IMPORTANTE — limitação real da Receita Federal: o programa GCAP não
+    aceita importação em lote. Cada operação precisa ser digitada
+    manualmente lá (Identificação → Direitos/Bens Móveis → Novo). Esta
+    planilha existe pra deixar essa digitação rápida (copiar e colar) ou
+    pra entregar pronta ao contador — ela não gera o arquivo .DEC que o
+    GCAP exporta pra declaração anual.
+
+    Isso não é orientação tributária — confirme com um contador se a
+    venda de animais de compra-e-venda se enquadra como "bem móvel" no
+    GCAP no seu caso específico antes de declarar.
+    """
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from fastapi.responses import StreamingResponse
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        filtros = ["v.imovel_id = %s", "b.classificacao = 'NEGOCIACAO'"]
+        params: list = [imovel_id]
+        if ano:
+            filtros.append("EXTRACT(YEAR FROM v.data_venda) = %s")
+            params.append(ano)
+
+        cur.execute(f"""
+            SELECT p.especie, p.nome AS produto_nome,
+                   c.data_compra, v.data_venda,
+                   b.quantidade_baixada, b.dias_permanencia,
+                   b.custo_baixado, b.valor_baixado,
+                   (b.valor_baixado - b.custo_baixado) AS ganho_capital,
+                   v.comprador
+            FROM cv_vendas_baixas b
+            JOIN cv_vendas v ON v.id = b.venda_id
+            JOIN cv_compras c ON c.id = b.compra_id
+            JOIN cv_produtos p ON p.id = v.produto_id
+            WHERE {' AND '.join(filtros)}
+            ORDER BY v.data_venda ASC
+        """, params)
+        linhas = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ganho de Capital"
+
+    ws.append([f"Relatório de Ganho de Capital — Compra e Venda (fora do Livro Caixa Rural)"])
+    ws.merge_cells("A1:J1")
+    ws["A1"].font = Font(bold=True, size=13)
+    ws.append([
+        "Operações classificadas como NEGOCIAÇÃO (dentro do prazo fiscal de 52/138 dias). "
+        "Digite manualmente no GCAP em Identificação → Direitos/Bens Móveis → Novo."
+    ])
+    ws.merge_cells("A2:J2")
+    ws["A2"].font = Font(italic=True, size=9, color="666666")
+    ws.append([])
+
+    headers = [
+        "Espécie", "Produto/Lote", "Data de Aquisição", "Data de Alienação",
+        "Quantidade", "Dias em Estoque", "Valor de Aquisição (R$)",
+        "Valor de Alienação (R$)", "Ganho de Capital (R$)", "Comprador",
+    ]
+    ws.append(headers)
+    header_row = ws.max_row
+    for cell in ws[header_row]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+
+    total_aquisicao = total_alienacao = total_ganho = 0.0
+    for l in linhas:
+        custo = float(l["custo_baixado"])
+        valor = float(l["valor_baixado"])
+        ganho = float(l["ganho_capital"])
+        ws.append([
+            l["especie"], l["produto_nome"],
+            l["data_compra"].strftime("%d/%m/%Y"),
+            l["data_venda"].strftime("%d/%m/%Y"),
+            float(l["quantidade_baixada"]), l["dias_permanencia"],
+            round(custo, 2), round(valor, 2), round(ganho, 2),
+            l["comprador"] or "",
+        ])
+        total_aquisicao += custo
+        total_alienacao += valor
+        total_ganho += ganho
+
+    if not linhas:
+        ws.append(["Nenhuma operação de negociação encontrada no período."])
+        ws.merge_cells(f"A{ws.max_row}:J{ws.max_row}")
+    else:
+        ws.append([
+            "TOTAL", "", "", "", "", "",
+            round(total_aquisicao, 2), round(total_alienacao, 2), round(total_ganho, 2), "",
+        ])
+        for cell in ws[ws.max_row]:
+            cell.font = Font(bold=True)
+
+    for col_cells in ws.columns:
+        larguras = [len(str(c.value)) for c in col_cells if c.value is not None]
+        if larguras:
+            letra = col_cells[0].column_letter if hasattr(col_cells[0], "column_letter") else None
+            if letra:
+                ws.column_dimensions[letra].width = min(max(larguras) + 2, 32)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    nome_arquivo = f"ganho_capital_imovel_{imovel_id}" + (f"_{ano}" if ano else "") + ".xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
+    )
+
+
 # ─────────────────────────────────────────────────────────────
 # ALERTAS FISCAIS — animais próximos da transição para produção rural
 # ─────────────────────────────────────────────────────────────
