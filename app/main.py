@@ -228,6 +228,13 @@ try:
 except Exception as _e:
     print(f'ADMINISTRADORES ROUTER FAILED: {_e}')
 
+try:
+    from app.routers.colaboradores_operacionais import router as colaboradores_operacionais_router
+    app.include_router(colaboradores_operacionais_router)
+    print('COLABORADORES_OPERACIONAIS ROUTER LOADED OK')
+except Exception as _e:
+    print(f'COLABORADORES_OPERACIONAIS ROUTER FAILED: {_e}')
+
 insumos_router = None
 try:
     from app.routers.insumos import router as insumos_router

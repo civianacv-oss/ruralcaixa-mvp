@@ -1045,6 +1045,23 @@ def _autorizar_numero(numero: str, canal: str) -> dict:
             ), {"tel": f"%{numero[-8:]}"}).fetchone()
 
         if not row:
+            # Fallback: nao e produtor, mas pode ser um colaborador
+            # operacional (cadastro leve, so nome+telefone, sem CPF) --
+            # autorizado so pra reportar consumo de insumo daquele imovel.
+            if canal == "telegram":
+                colab = conn.execute(sqlt(
+                    "SELECT id, imovel_id, nome FROM colaboradores_operacionais "
+                    "WHERE telegram_chat_id = :num AND ativo = true LIMIT 1"
+                ), {"num": numero}).fetchone()
+            else:
+                colab = conn.execute(sqlt(
+                    "SELECT id, imovel_id, nome FROM colaboradores_operacionais "
+                    "WHERE telefone LIKE :tel AND ativo = true LIMIT 1"
+                ), {"tel": f"%{numero[-8:]}"}).fetchone()
+            if colab:
+                return {"produtor_id": None, "imovel_id": colab[1],
+                        "papel": "colaborador_operacional", "autorizado": True,
+                        "colaborador_nome": colab[2]}
             return {"produtor_id": None, "imovel_id": None, "papel": None, "autorizado": False}
         produtor_id, imovel_padrao = row[0], row[1]
 

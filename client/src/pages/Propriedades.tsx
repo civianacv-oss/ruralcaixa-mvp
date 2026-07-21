@@ -32,6 +32,8 @@ export default function Propriedades() {
   const [deleteItem, setDeleteItem] = useState<Imovel | null>(null);
   const [adminItem, setAdminItem] = useState<Imovel | null>(null);
   const [novoCpf, setNovoCpf] = useState("");
+  const [novoColabNome, setNovoColabNome] = useState("");
+  const [novoColabTelefone, setNovoColabTelefone] = useState("");
   const [form, setForm]         = useState({ ...FORM_EMPTY });
 
   const { data: imoveis = [], isLoading, error, refetch } = trpc.railway.imoveis.useQuery(undefined, {
@@ -88,6 +90,36 @@ export default function Propriedades() {
     },
     onError: () => toast.error("Erro ao remover administrador"),
   });
+
+  const colaboradoresQuery = trpc.railway.listarColaboradoresOperacionais.useQuery(
+    { imovelId: adminItem?.id ?? 0 },
+    { enabled: !!adminItem },
+  );
+
+  const adicionarColabMutation = trpc.railway.adicionarColaboradorOperacional.useMutation({
+    onSuccess: (r) => {
+      toast.success(`${r.nome} adicionado como colaborador operacional`);
+      setNovoColabNome("");
+      setNovoColabTelefone("");
+      utils.railway.listarColaboradoresOperacionais.invalidate({ imovelId: adminItem?.id ?? 0 });
+    },
+    onError: (e) => toast.error(e.message ?? "Erro ao adicionar colaborador"),
+  });
+
+  const removerColabMutation = trpc.railway.removerColaboradorOperacional.useMutation({
+    onSuccess: () => {
+      toast.success("Colaborador removido");
+      utils.railway.listarColaboradoresOperacionais.invalidate({ imovelId: adminItem?.id ?? 0 });
+    },
+    onError: () => toast.error("Erro ao remover colaborador"),
+  });
+
+  const handleAdicionarColaborador = () => {
+    if (!novoColabNome.trim()) { toast.error("Informe o nome do colaborador"); return; }
+    if (novoColabTelefone.replace(/\D/g, "").length < 8) { toast.error("Informe um telefone válido"); return; }
+    if (!adminItem) return;
+    adicionarColabMutation.mutate({ imovelId: adminItem.id, nome: novoColabNome.trim(), telefone: novoColabTelefone.trim() });
+  };
 
   const handleAdicionarAdmin = () => {
     const cpfLimpo = novoCpf.replace(/\D/g, "");
@@ -408,7 +440,7 @@ export default function Propriedades() {
             </p>
           </div>
 
-          <div className="space-y-1.5 max-h-56 overflow-y-auto">
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {administradoresQuery.isLoading ? (
               <Skeleton className="h-12 rounded-lg" />
             ) : (administradoresQuery.data ?? []).length === 0 ? (
@@ -435,8 +467,71 @@ export default function Propriedades() {
             )}
           </div>
 
+          <div className="border-t pt-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-amber-600" />
+              <Label className="text-sm">Colaboradores Operacionais</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Cadastro simples (só nome e telefone, sem CPF) pra quem só precisa
+              reportar consumo de ração/insumo pelo bot do Telegram — ex: um
+              funcionário que alimenta o rebanho. Não tem acesso ao app.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nome"
+                value={novoColabNome}
+                onChange={(e) => setNovoColabNome(e.target.value)}
+              />
+              <Input
+                placeholder="Telefone"
+                value={novoColabTelefone}
+                onChange={(e) => setNovoColabTelefone(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdicionarColaborador(); }}
+              />
+              <Button
+                onClick={handleAdicionarColaborador}
+                disabled={adicionarColabMutation.isPending}
+                style={{ background: "oklch(0.55 0.15 70)" }}
+              >
+                {adicionarColabMutation.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <UserPlus className="w-4 h-4" />}
+              </Button>
+            </div>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {colaboradoresQuery.isLoading ? (
+                <Skeleton className="h-12 rounded-lg" />
+              ) : (colaboradoresQuery.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-3">Nenhum colaborador ainda</p>
+              ) : (
+                colaboradoresQuery.data!.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between rounded-lg border p-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{c.nome}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {c.telefone}
+                        {c.telegram_chat_id ? " · Telegram vinculado" : " · Telegram ainda não vinculado"}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-7 h-7 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
+                      title="Remover"
+                      onClick={() => adminItem && removerColabMutation.mutate({ imovelId: adminItem.id, colaboradorId: c.id })}
+                      disabled={removerColabMutation.isPending}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setAdminItem(null); setNovoCpf(""); } }>Fechar</Button>
+            <Button variant="outline" onClick={() => { setAdminItem(null); setNovoCpf(""); setNovoColabNome(""); setNovoColabTelefone(""); }}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

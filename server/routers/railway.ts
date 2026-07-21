@@ -2811,4 +2811,44 @@ removerAdministrador: publicProcedure
 
     return resultado;
   }),
+
+// ── Colaboradores operacionais (cadastro leve, so nome+telefone, so bot) ──
+
+listarColaboradoresOperacionais: publicProcedure
+  .input(z.object({ imovelId: z.number() }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch<{ id: number; nome: string; telefone: string; telegram_chat_id: string | null; created_at: string }[]>(
+      `/imoveis-rurais/${input.imovelId}/colaboradores-operacionais`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
+
+adicionarColaboradorOperacional: publicProcedure
+  .input(z.object({ imovelId: z.number(), nome: z.string().min(1), telefone: z.string().min(8) }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate<{ ok: boolean; id: number; nome: string }>(
+      `/imoveis-rurais/${input.imovelId}/colaboradores-operacionais`,
+      "POST",
+      { nome: input.nome, telefone: input.telefone },
+      claims.produtorId,
+    );
+  }),
+
+removerColaboradorOperacional: publicProcedure
+  .input(z.object({ imovelId: z.number(), colaboradorId: z.number() }))
+  .mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate<{ ok: boolean }>(
+      `/imoveis-rurais/${input.imovelId}/colaboradores-operacionais/${input.colaboradorId}`,
+      "DELETE",
+      undefined,
+      claims.produtorId,
+    );
+  }),
 });
