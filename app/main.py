@@ -1297,7 +1297,7 @@ async def processar(payload: dict):
 
             if is_cadastro_ativo(sessoes, numero):
                 if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
-                    dados = confirmar_cadastro(sessoes, numero)
+                    dados = confirmar_cadastro(sessoes, numero, numero, "whatsapp")
                     if dados:
                         from app.db import cadastrar
                         try:

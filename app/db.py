@@ -128,18 +128,36 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
             "SELECT id FROM produtores WHERE cpf = :cpf"
         ), {"cpf": cpf_limpo}).fetchone()
 
+        telefone_bruto = produtor.get("telefone")
+        telefone_limpo = (
+            telefone_bruto.replace("(", "").replace(")", "").replace("-", "").replace(" ", "")
+            if telefone_bruto else None
+        )
+        telegram_chat_id = produtor.get("telegram_chat_id")
+
         if existente:
             produtor_id = existente[0]
+            # Nao sobrescreve o que ja tiver — so preenche o que estiver
+            # faltando (ex: alguem que ja tinha cadastro por CPF/telefone
+            # e agora tambem confirmou pelo Telegram).
+            conn.execute(text("""
+                UPDATE produtores
+                SET telegram_chat_id = COALESCE(telegram_chat_id, :chat_id),
+                    telefone         = COALESCE(telefone, :telefone)
+                WHERE id = :pid
+            """), {"pid": produtor_id, "chat_id": telegram_chat_id, "telefone": telefone_limpo})
+            conn.commit()
         else:
             result = conn.execute(text("""
-                INSERT INTO produtores (cpf, nome, telefone, nirf)
-                VALUES (:cpf, :nome, :telefone, :nirf)
+                INSERT INTO produtores (cpf, nome, telefone, nirf, telegram_chat_id)
+                VALUES (:cpf, :nome, :telefone, :nirf, :chat_id)
                 RETURNING id
             """), {
                 "cpf":      cpf_limpo,
                 "nome":     produtor.get("nome"),
-                "telefone": produtor.get("telefone", "").replace("(","").replace(")","").replace("-","").replace(" ",""),
+                "telefone": telefone_limpo,
                 "nirf":     produtor.get("nirf"),
+                "chat_id":  telegram_chat_id,
             })
             conn.commit()
             produtor_id = result.fetchone()[0]

@@ -93,17 +93,39 @@ def _montar_confirmacao(sess: dict) -> str:
     )
 
 
-def confirmar_cadastro(sessoes: dict, numero: str) -> dict | None:
-    sess = sessoes.pop(numero, None)
+def confirmar_cadastro(sessoes: dict, key: str, numero_real: str = None, canal: str = "whatsapp") -> dict | None:
+    """
+    `key` é a chave da sessão (pode ser um composto "canal:numero" no
+    Telegram) — usada só pra recuperar/apagar a sessão em andamento.
+
+    `numero_real` e `canal` identificam de fato quem está se
+    cadastrando: se vierem vazios (chamada legada, sem os dois
+    parâmetros novos), assume-se WhatsApp e usa `key` como telefone,
+    mantendo compatibilidade com o webhook antigo (app/main.py).
+
+    Isso evita o bug de gravar o chat_id do Telegram (ou a chave
+    composta "telegram:123456789") na coluna `telefone` — o que fazia
+    o cadastro "terminar", mas o produtor nunca ser reconhecido de novo
+    porque `telegram_chat_id` ficava sempre NULL.
+    """
+    sess = sessoes.pop(key, None)
     if not sess or sess.get("_etapa") != "confirmar":
         return None
+
+    numero_real = numero_real or key
+    produtor = {
+        "nome":     sess["nome"],
+        "cpf":      sess["cpf"],
+        "nirf":     None,
+    }
+    if canal == "telegram":
+        produtor["telegram_chat_id"] = numero_real
+        produtor["telefone"] = None  # não confundir com telefone real — fica pra ser preenchido depois, se precisar
+    else:
+        produtor["telefone"] = numero_real
+
     return {
-        "produtor": {
-            "nome":     sess["nome"],
-            "cpf":      sess["cpf"],
-            "telefone": numero,
-            "nirf":     None,
-        },
+        "produtor": produtor,
         "imovel": {
             "nome":      sess["imovel_nome"],
             "municipio": sess["municipio"],

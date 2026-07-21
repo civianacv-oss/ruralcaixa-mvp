@@ -521,7 +521,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
     if is_cadastro_ativo(sessoes, key):
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
-            dados = confirmar_cadastro(sessoes, key)
+            dados = confirmar_cadastro(sessoes, key, msg.numero, msg.canal)
             if dados:
                 from app.db import cadastrar
                 try:
