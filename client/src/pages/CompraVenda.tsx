@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, ShoppingCart, RefreshCw, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { Plus, ShoppingCart, RefreshCw, TrendingUp, TrendingDown, AlertTriangle, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId } from "@/lib/api";
+import { API_BASE, getImovelId, getRcToken } from "@/lib/api";
 
 interface Produto {
   id: number;
@@ -114,6 +114,7 @@ export default function CompraVenda() {
   const [saving, setSaving] = useState(false);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [novoProduto, setNovoProduto] = useState(false);
+  const [baixandoRelatorio, setBaixandoRelatorio] = useState(false);
   const [form, setForm] = useState({
     tipo: "venda",
     produto_id: "",
@@ -127,6 +128,42 @@ export default function CompraVenda() {
     regime: "pasto",
   });
   const imovelId = getImovelId();
+
+  const baixarGanhoCapital = async () => {
+    if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
+    setBaixandoRelatorio(true);
+    try {
+      const token = getRcToken();
+      const ano = new Date().getFullYear();
+      const res = await fetch(
+        `${API_BASE}/compravenda/relatorio-ganho-capital/${imovelId}?ano=${ano}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error("Sessão expirou. Faça login novamente pra baixar o relatório.");
+        } else {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail ?? "Erro ao gerar o relatório");
+        }
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ganho_capital_${ano}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Relatório baixado.");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao baixar o relatório");
+    } finally {
+      setBaixandoRelatorio(false);
+    }
+  };
 
   const load = async () => {
     if (!imovelId) return;
@@ -242,6 +279,10 @@ export default function CompraVenda() {
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
+          </Button>
+          <Button variant="outline" size="sm" onClick={baixarGanhoCapital} disabled={baixandoRelatorio}>
+            <FileDown className={`w-4 h-4 mr-2 ${baixandoRelatorio ? "animate-pulse" : ""}`} />
+            {baixandoRelatorio ? "Gerando..." : "Ganho de Capital (Excel)"}
           </Button>
           <Button size="sm" onClick={() => setShowNew(true)} style={{ background: "oklch(0.42 0.14 145)" }}>
             <Plus className="w-4 h-4 mr-2" />
