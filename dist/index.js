@@ -790,7 +790,7 @@ function assertProdutor(claims, requestedProdutorId) {
     });
   }
 }
-async function railwayFetch(path2, options, produtorId) {
+async function railwayFetch(path3, options, produtorId) {
   let authHeader = {};
   if (produtorId) {
     const token = await getRailwayToken(produtorId).catch(() => null);
@@ -804,7 +804,7 @@ async function railwayFetch(path2, options, produtorId) {
       ...options?.headers ?? {}
     }
   };
-  const res = await fetch(`${RAILWAY_API2}${path2}`, fetchOptions);
+  const res = await fetch(`${RAILWAY_API2}${path3}`, fetchOptions);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new TRPCError3({
@@ -1144,11 +1144,11 @@ var init_alertasEstoque = __esm({
   }
 });
 
-// server/vercelHandler.ts
+// server/_core/index.ts
 import "dotenv/config";
-import express from "express";
-import path from "path";
-import fs from "fs";
+import express2 from "express";
+import { createServer } from "http";
+import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 // shared/const.ts
@@ -1446,8 +1446,8 @@ function getQueryParam(req, key) {
   const value = req.query[key];
   return typeof value === "string" ? value : void 0;
 }
-function registerOAuthRoutes(app2) {
-  app2.get("/api/oauth/callback", async (req, res) => {
+function registerOAuthRoutes(app) {
+  app.get("/api/oauth/callback", async (req, res) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
     if (!code || !state) {
@@ -1484,8 +1484,8 @@ function registerOAuthRoutes(app2) {
 
 // server/_core/storageProxy.ts
 init_env();
-function registerStorageProxy(app2) {
-  app2.get("/manus-storage/*", async (req, res) => {
+function registerStorageProxy(app) {
+  app.get("/manus-storage/*", async (req, res) => {
     const key = req.params[0];
     if (!key) {
       res.status(400).send("Missing storage key");
@@ -1932,14 +1932,14 @@ function msgDeErro(e) {
   }
   return String(e);
 }
-async function railwayMutate(path2, method, body, produtorId) {
+async function railwayMutate(path3, method, body, produtorId) {
   let authHeader = {};
   if (produtorId) {
     const { getRailwayToken: getRailwayToken2 } = await Promise.resolve().then(() => (init_db(), db_exports));
     const token = await getRailwayToken2(produtorId).catch(() => null);
     if (token) authHeader = { Authorization: `Bearer ${token}` };
   }
-  const res = await fetch(`${RAILWAY_API2}${path2}`, {
+  const res = await fetch(`${RAILWAY_API2}${path3}`, {
     method,
     headers: { "Content-Type": "application/json", ...authHeader },
     body: body !== void 0 ? JSON.stringify(body) : void 0
@@ -4151,32 +4151,271 @@ async function createContext(opts) {
   };
 }
 
-// server/vercelHandler.ts
-var app = express();
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-registerStorageProxy(app);
-registerOAuthRoutes(app);
-app.use(
-  "/api/trpc",
-  createExpressMiddleware({
-    router: appRouter,
-    createContext
-  })
-);
-var distPath = path.resolve(process.cwd(), "dist", "public");
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
+// server/_core/vite.ts
+import express from "express";
+import fs2 from "fs";
+import { nanoid } from "nanoid";
+import path2 from "path";
+import { createServer as createViteServer } from "vite";
+
+// vite.config.ts
+import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import fs from "node:fs";
+import path from "node:path";
+import { defineConfig } from "vite";
+import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+var PROJECT_ROOT = import.meta.dirname;
+var LOG_DIR = path.join(PROJECT_ROOT, ".manus-logs");
+var MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
+var TRIM_TARGET_BYTES = Math.floor(MAX_LOG_SIZE_BYTES * 0.6);
+function ensureLogDir() {
+  if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  }
 }
-app.use("*", (_req, res) => {
-  const indexPath = path.resolve(distPath, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send("Not found");
+function trimLogFile(logPath, maxSize) {
+  try {
+    if (!fs.existsSync(logPath) || fs.statSync(logPath).size <= maxSize) {
+      return;
+    }
+    const lines = fs.readFileSync(logPath, "utf-8").split("\n");
+    const keptLines = [];
+    let keptBytes = 0;
+    const targetSize = TRIM_TARGET_BYTES;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const lineBytes = Buffer.byteLength(`${lines[i]}
+`, "utf-8");
+      if (keptBytes + lineBytes > targetSize) break;
+      keptLines.unshift(lines[i]);
+      keptBytes += lineBytes;
+    }
+    fs.writeFileSync(logPath, keptLines.join("\n"), "utf-8");
+  } catch {
+  }
+}
+function writeToLogFile(source, entries) {
+  if (entries.length === 0) return;
+  ensureLogDir();
+  const logPath = path.join(LOG_DIR, `${source}.log`);
+  const lines = entries.map((entry) => {
+    const ts = (/* @__PURE__ */ new Date()).toISOString();
+    return `[${ts}] ${JSON.stringify(entry)}`;
+  });
+  fs.appendFileSync(logPath, `${lines.join("\n")}
+`, "utf-8");
+  trimLogFile(logPath, MAX_LOG_SIZE_BYTES);
+}
+function vitePluginManusDebugCollector() {
+  return {
+    name: "manus-debug-collector",
+    transformIndexHtml(html) {
+      if (process.env.NODE_ENV === "production") {
+        return html;
+      }
+      return {
+        html,
+        tags: [
+          {
+            tag: "script",
+            attrs: {
+              src: "/__manus__/debug-collector.js",
+              defer: true
+            },
+            injectTo: "head"
+          }
+        ]
+      };
+    },
+    configureServer(server) {
+      server.middlewares.use("/__manus__/logs", (req, res, next) => {
+        if (req.method !== "POST") {
+          return next();
+        }
+        const handlePayload = (payload) => {
+          if (payload.consoleLogs?.length > 0) {
+            writeToLogFile("browserConsole", payload.consoleLogs);
+          }
+          if (payload.networkRequests?.length > 0) {
+            writeToLogFile("networkRequests", payload.networkRequests);
+          }
+          if (payload.sessionEvents?.length > 0) {
+            writeToLogFile("sessionReplay", payload.sessionEvents);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true }));
+        };
+        const reqBody = req.body;
+        if (reqBody && typeof reqBody === "object") {
+          try {
+            handlePayload(reqBody);
+          } catch (e) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: String(e) }));
+          }
+          return;
+        }
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk.toString();
+        });
+        req.on("end", () => {
+          try {
+            const payload = JSON.parse(body);
+            handlePayload(payload);
+          } catch (e) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: String(e) }));
+          }
+        });
+      });
+    }
+  };
+}
+var plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+var vite_config_default = defineConfig({
+  plugins,
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@assets": path.resolve(import.meta.dirname, "attached_assets")
+    }
+  },
+  envDir: path.resolve(import.meta.dirname),
+  root: path.resolve(import.meta.dirname, "client"),
+  publicDir: path.resolve(import.meta.dirname, "client", "public"),
+  build: {
+    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    emptyOutDir: true
+  },
+  server: {
+    host: true,
+    allowedHosts: [
+      ".manuspre.computer",
+      ".manus.computer",
+      ".manus-asia.computer",
+      ".manuscomputer.ai",
+      ".manusvm.computer",
+      "localhost",
+      "127.0.0.1"
+    ],
+    fs: {
+      strict: true,
+      deny: ["**/.*"]
+    }
   }
 });
-var vercelHandler_default = app;
-export {
-  vercelHandler_default as default
-};
+
+// server/_core/vite.ts
+async function setupVite(app, server) {
+  const serverOptions = {
+    middlewareMode: true,
+    hmr: { server },
+    allowedHosts: true
+  };
+  const vite = await createViteServer({
+    ...vite_config_default,
+    configFile: false,
+    server: serverOptions,
+    appType: "custom"
+  });
+  app.use(vite.middlewares);
+  app.use("*", async (req, res, next) => {
+    const url = req.originalUrl;
+    try {
+      const clientTemplate = path2.resolve(
+        import.meta.dirname,
+        "../..",
+        "client",
+        "index.html"
+      );
+      let template = await fs2.promises.readFile(clientTemplate, "utf-8");
+      template = template.replace(
+        `src="/src/main.tsx"`,
+        `src="/src/main.tsx?v=${nanoid()}"`
+      );
+      const page = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+    } catch (e) {
+      vite.ssrFixStacktrace(e);
+      next(e);
+    }
+  });
+}
+function serveStatic(app) {
+  const distPath = process.env.NODE_ENV === "development" ? path2.resolve(import.meta.dirname, "../..", "dist", "public") : path2.resolve(import.meta.dirname, "public");
+  if (!fs2.existsSync(distPath)) {
+    console.error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
+  }
+  app.use(express.static(distPath));
+  app.use("*", (_req, res) => {
+    res.sendFile(path2.resolve(distPath, "index.html"));
+  });
+}
+
+// server/_core/index.ts
+init_alertasEstoque();
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.listen(port, () => {
+      server.close(() => resolve(true));
+    });
+    server.on("error", () => resolve(false));
+  });
+}
+async function findAvailablePort(startPort = 3e3) {
+  for (let port = startPort; port < startPort + 20; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(`No available port found starting from ${startPort}`);
+}
+async function startServer() {
+  const app = express2();
+  const server = createServer(app);
+  app.use(express2.json({ limit: "50mb" }));
+  app.use(express2.urlencoded({ limit: "50mb", extended: true }));
+  registerStorageProxy(app);
+  registerOAuthRoutes(app);
+  app.post("/api/scheduled/alertas-estoque", async (req, res) => {
+    const token = req.headers["x-scheduled-token"] ?? req.body?.token;
+    const expectedToken = process.env.SCHEDULED_SECRET ?? "ruralcaixa-scheduled";
+    if (token !== expectedToken) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const resultado = await processarTodosAlertas();
+      return res.json({ ok: true, ...resultado });
+    } catch (err) {
+      console.error("[alertas-estoque] Erro:", err);
+      return res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+  app.use(
+    "/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext
+    })
+  );
+  if (process.env.NODE_ENV === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+  const preferredPort = parseInt(process.env.PORT || "3000");
+  const port = await findAvailablePort(preferredPort);
+  if (port !== preferredPort) {
+    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
+  }
+  server.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}/`);
+  });
+}
+startServer().catch(console.error);

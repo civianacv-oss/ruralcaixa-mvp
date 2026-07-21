@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
-import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors, Milk } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors, Milk, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -17,8 +17,25 @@ function fmt(v: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 }
 
-function StatCard({ label, value, icon: Icon, color, sub }: {
+function fmtPct(v: number) {
+  return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+}
+
+function TrendBadge({ value }: { value: number | null }) {
+  if (value === null) return null;
+  const cor = value === 0 ? "#6b7280" : value > 0 ? "#16a34a" : "#dc2626";
+  const Icone = value === 0 ? Minus : value > 0 ? ArrowUpRight : ArrowDownRight;
+  return (
+    <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ backgroundColor: `${cor}15`, color: cor }}>
+      <Icone className="w-3 h-3" />
+      {fmtPct(value)} vs mês anterior
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon: Icon, color, sub, trend, action }: {
   label: string; value: string; icon: React.ElementType; color: string; sub?: string;
+  trend?: number | null; action?: { label: string; href: string } | null;
 }) {
   return (
     <div className="rounded-2xl p-5 bg-white shadow-sm border border-transparent hover:shadow-md transition-shadow">
@@ -27,18 +44,37 @@ function StatCard({ label, value, icon: Icon, color, sub }: {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
           <p className="text-2xl font-bold mt-1 truncate" style={{ color }}>{value}</p>
           {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+          {trend !== undefined && <TrendBadge value={trend} />}
         </div>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${color}18` }}>
           <Icon className="w-5 h-5" style={{ color }} />
         </div>
       </div>
+      {action && (
+        <a href={action.href} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+          {action.label} <ArrowUpRight className="w-3 h-3" />
+        </a>
+      )}
     </div>
   );
 }
 
-function SpeciesCard({ species, count, loading }: { species: typeof SPECIES[number]; count: number; loading: boolean }) {
+function SpeciesCard({ species, count, loading, isTop }: {
+  species: typeof SPECIES[number]; count: number; loading: boolean; isTop: boolean;
+}) {
+  if (!loading && count === 0) {
+    return (
+      <div className="rounded-2xl p-4 bg-gray-50/70 border border-dashed border-gray-200 opacity-70">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-lg opacity-60">{species.emoji}</span>
+          <p className="font-medium text-sm text-gray-400">{species.label}</p>
+        </div>
+        <p className="text-xs text-gray-400">Sem rebanho ativo</p>
+      </div>
+    );
+  }
   return (
-    <div className="rounded-2xl p-5 bg-white shadow-sm border border-transparent hover:shadow-md transition-shadow">
+    <div className={`rounded-2xl p-5 bg-white shadow-sm border transition-shadow hover:shadow-md ${isTop ? "border-amber-200 ring-1 ring-amber-100" : "border-transparent"}`}>
       <div className="flex items-center gap-3 mb-3">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: `${species.color}15` }}>
           {species.emoji}
@@ -58,8 +94,10 @@ function SpeciesCard({ species, count, loading }: { species: typeof SPECIES[numb
 }
 
 export default function Dashboard() {
-  const { produtorId, imovelId, produtorNome } = useRuralAuth();
+  const { produtorId, imovelId: imovelIdAuth, produtorNome } = useRuralAuth();
   const [iofcMeses, setIofcMeses] = useState(12);
+  const [imovelSelecionado, setImovelSelecionado] = useState<number | null>(null);
+  const imovelId = imovelSelecionado ?? imovelIdAuth;
 
   // Stable inputs for tRPC queries (avoid infinite re-render)
   const imovelInput = useMemo(() => ({ imovelId: imovelId ?? 0 }), [imovelId]);
@@ -68,8 +106,10 @@ export default function Dashboard() {
   const enabled = Boolean(produtorId && imovelId);
 
   // All data goes through the secure server-side proxy
+  const imoveis = trpc.railway.imoveis.useQuery(undefined, { enabled: Boolean(produtorId) });
   const ovinoDash = trpc.railway.ovinoDashboard.useQuery(imovelInput, { enabled });
   const resumo = trpc.railway.produtorResumo.useQuery(produtorInput, { enabled });
+  const lancamentos = trpc.railway.lancamentos.useQuery(produtorInput, { enabled });
   const iofc = trpc.railway.iofcMensal.useQuery({ produtorId: produtorId ?? 0, meses: iofcMeses }, { enabled });
 
   const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "ovinos" }, { enabled });
@@ -90,10 +130,39 @@ export default function Dashboard() {
   const totalAnimais = Object.values(counts).reduce((s, v) => s + v, 0);
   const lucro = (resumo.data?.receita ?? 0) - (resumo.data?.despesa ?? 0);
 
+  // Espécies ordenadas por quantidade (maior primeiro) — real, sem simulação
+  const sortedSpecies = useMemo(() => [...SPECIES].sort((a, b) => counts[b.key] - counts[a.key]), [counts]);
+
+  // Tendência vs mês anterior — calculada a partir dos lançamentos reais,
+  // não de nenhum valor simulado
+  const trends = useMemo(() => {
+    if (!lancamentos.data) return { receita: null, despesa: null, lucro: null };
+    const hoje = new Date();
+    const mesAtualKey = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+    const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    const mesAnteriorKey = `${mesAnterior.getFullYear()}-${String(mesAnterior.getMonth() + 1).padStart(2, "0")}`;
+
+    let receitaAnt = 0, despesaAnt = 0;
+    for (const l of lancamentos.data) {
+      if (!l.data_lancamento?.startsWith(mesAnteriorKey)) continue;
+      if (l.tipo === "receita") receitaAnt += l.valor;
+      else if (l.tipo === "despesa") despesaAnt += l.valor;
+    }
+    const lucroAnt = receitaAnt - despesaAnt;
+
+    const pct = (atual: number, anterior: number) => (anterior !== 0 ? ((atual - anterior) / Math.abs(anterior)) * 100 : null);
+    return {
+      receita: pct(resumo.data?.receita ?? 0, receitaAnt),
+      despesa: pct(resumo.data?.despesa ?? 0, despesaAnt),
+      lucro: pct(lucro, lucroAnt),
+    };
+  }, [lancamentos.data, resumo.data, lucro]);
+
   const pieData = SPECIES.filter((s) => counts[s.key] > 0).map((s) => ({
     name: s.label,
     value: counts[s.key],
     color: s.chartColor,
+    pct: totalAnimais > 0 ? Math.round((counts[s.key] / totalAnimais) * 100) : 0,
   }));
 
   const iofcSerie = [...(iofc.data ?? [])]
@@ -109,15 +178,28 @@ export default function Dashboard() {
   // preço CEPEA ou sem lançamento de venda ficam no gráfico (com um vazio
   // na linha do IOFC), mas não viram o número em destaque.
   const iofcMesAtual = [...iofcSerie].reverse().find((m) => m.iofc !== null);
+  const iofcPontosValidos = iofcSerie.filter((m) => m.iofc !== null).length;
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "oklch(0.18 0.04 145)" }}>
-          Bom dia, {produtorNome.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Visão geral da sua propriedade rural</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "oklch(0.18 0.04 145)" }}>
+            Bom dia, {produtorNome.split(" ")[0]}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Visão geral da sua propriedade rural</p>
+        </div>
+        {imoveis.data && imoveis.data.length > 1 && (
+          <Select value={String(imovelId ?? "")} onValueChange={(v) => setImovelSelecionado(Number(v))}>
+            <SelectTrigger className="w-56 h-9 text-sm"><SelectValue placeholder="Selecionar propriedade" /></SelectTrigger>
+            <SelectContent>
+              {imoveis.data.map((im) => (
+                <SelectItem key={im.id} value={String(im.id)}>{im.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Financial summary */}
@@ -128,6 +210,7 @@ export default function Dashboard() {
           icon={TrendingUp}
           color="oklch(0.42 0.14 145)"
           sub={`${resumo.data?.total_lancamentos ?? 0} lançamentos`}
+          trend={loading ? undefined : trends.receita}
         />
         <StatCard
           label="Despesas"
@@ -135,20 +218,23 @@ export default function Dashboard() {
           icon={TrendingDown}
           color="oklch(0.50 0.20 25)"
           sub={`${resumo.data?.pendentes ?? 0} pendentes`}
+          trend={loading ? undefined : trends.despesa}
         />
         <StatCard
           label="Resultado"
           value={loading ? "..." : fmt(lucro)}
           icon={DollarSign}
           color={lucro >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)"}
-          sub="Lucro no periodo"
+          sub="Lucro no período"
+          trend={loading ? undefined : trends.lucro}
+          action={!loading && lucro < 0 ? { label: "Ver lançamentos", href: "/lancamentos" } : null}
         />
       </div>
 
-      {/* Species cards */}
+      {/* Species cards — ordenadas por quantidade, sem rebanho fica discreto */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {SPECIES.map((s) => (
-          <SpeciesCard key={s.key} species={s} count={counts[s.key]} loading={animaisLoading} />
+        {sortedSpecies.map((s, i) => (
+          <SpeciesCard key={s.key} species={s} count={counts[s.key]} loading={animaisLoading} isTop={i === 0 && counts[s.key] > 0} />
         ))}
       </div>
 
@@ -168,7 +254,12 @@ export default function Dashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
+                <Pie
+                  data={pieData}
+                  cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value"
+                  label={({ name, pct }) => `${name} ${pct}%`}
+                  labelLine={false}
+                >
                   {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <Tooltip formatter={(v: number) => [`${v} animais`]} />
@@ -266,6 +357,16 @@ export default function Dashboard() {
           {iofc.isLoading ? (
             <div className="h-56 flex items-center justify-center">
               <div className="text-sm text-muted-foreground">Carregando...</div>
+            </div>
+          ) : iofcPontosValidos < 2 ? (
+            <div className="h-40 flex flex-col items-center justify-center gap-1.5 text-center px-4">
+              <p className="text-sm font-medium text-muted-foreground">
+                Ainda não há meses suficientes com IOFC calculado pra mostrar uma tendência
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Precisa de pelo menos 2 meses com lançamento de venda de leite (ou ordenha + preço CEPEA) registrados.
+                Tente aumentar o período no seletor acima, ou volte aqui depois de completar mais um mês de lançamentos.
+              </p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>

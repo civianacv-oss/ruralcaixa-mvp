@@ -1,0 +1,33 @@
+diff --git a/app/routers/bovino.py b/app/routers/bovino.py
+index 67d01f3..645176d 100644
+--- a/app/routers/bovino.py
++++ b/app/routers/bovino.py
+@@ -1131,17 +1131,23 @@ def iofc_mensal(produtor_id: int, meses: int = Query(12, ge=1, le=36)):
+                 -- sem ter alimentado o gado ainda (aquisicao=despesa no
+                 -- Livro Caixa, baixa=custeio aqui, nunca os dois juntos).
+                 --
+-                -- LIMITACAO CONHECIDA (mesma do resto do modulo Insumos):
+-                -- movimentacoes_insumo nao tem produtor_id, so fazenda_id
+-                -- (fixo em 1 no MVP single-tenant) -- por isso nao filtra
+-                -- por %(produtor_id)s aqui, diferente das outras CTEs.
++                -- CORRIGIDO: antes tinha "i.fazenda_id = 1" fixo no codigo,
++                -- entao o custo de racao de QUALQUER produtor vinha sempre
++                -- da fazenda 1 -- outros produtores (ex: Ubiratan, fazenda_id=6)
++                -- nunca tinham seu proprio custo de racao contabilizado no
++                -- IOFC deles, mesmo com dados de consumo registrados.
++                -- movimentacoes_insumo/insumos nao tem produtor_id direto,
++                -- so fazenda_id (que e o mesmo id-space de imoveis_rurais.id),
++                -- entao filtramos pelas propriedades do produtor.
+                 SELECT
+                     date_trunc('month', m.data_movim)::date AS mes,
+                     SUM(m.custo_total) AS custo_racao
+                 FROM movimentacoes_insumo m
+                 JOIN insumos i ON i.id = m.insumo_id
+                 WHERE m.tipo = 'uso'
+-                  AND i.fazenda_id = 1
++                  AND i.fazenda_id IN (
++                      SELECT id FROM imoveis_rurais WHERE produtor_id = %(produtor_id)s
++                  )
+                   AND LOWER(i.categoria) IN ('racao', 'ração', 'nutricao', 'nutrição')
+                 GROUP BY date_trunc('month', m.data_movim)
+             )

@@ -1,0 +1,211 @@
+DIFF / PATCH para app/routers/bovino.py
+=========================================
+Trecho original (linhas ~1426-1449):
+
+def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: float,
+                                    descricao: str, origem: str = "whatsapp_bovino"):
+    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py / ovino.py)."""
+    tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
+    lcdpr_conn = None
+    try:
+        lcdpr_conn = get_db()
+        with lcdpr_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1",
+                        (tipo_lancamento,))
+            sub = cur.fetchone()
+            subconta_id = sub["id"] if sub else None
+            cur.execute("""
+                INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (produtor_id, subconta_id, float(valor), data, origem))
+            row = cur.fetchone()
+            lcdpr_conn.commit()
+            return row["id"] if row else None
+    except Exception as e:
+        logger.error("[BOVINO] Erro ao criar lançamento LCDPR: %s", e)
+        if lcdpr_conn:
+            lcdpr_conn.rollback()
+        return None
+    finally:
+        ...
+
+
+SUBSTITUIR POR:
+----------------
+
+def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: float,
+                                    descricao: str, origem: str = "whatsapp_bovino",
+                                    codigo_conta: str = None):
+    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py / ovino.py).
+
+    Se `codigo_conta` for informado (ex: '4.1.2' para Venda de Leite), a subconta
+    exata é usada. Caso contrário, cai no comportamento antigo (primeira subconta
+    do tipo RECEITA/DESPESA encontrada) apenas por compatibilidade - NAO USE isso
+    para chamadas novas, sempre passe codigo_conta quando souber a categoria.
+    """
+    tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
+    lcdpr_conn = None
+    try:
+        lcdpr_conn = get_db()
+        with lcdpr_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            subconta_id = None
+
+            if codigo_conta:
+                cur.execute(
+                    "SELECT id FROM subcontas WHERE codigo_conta = %s LIMIT 1",
+                    (codigo_conta,)
+                )
+                sub = cur.fetchone()
+                if sub:
+                    subconta_id = sub["id"]
+                else:
+                    logger.warning(
+                        "[BOVINO] codigo_conta '%s' nao encontrado em subcontas; "
+                        "caindo no fallback por tipo.", codigo_conta
+                    )
+
+            if subconta_id is None:
+                # Fallback antigo - mantido so por compatibilidade com chamadas
+                # que ainda nao foram migradas para passar codigo_conta.
+                cur.execute(
+                    "SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1",
+                    (tipo_lancamento,)
+                )
+                sub = cur.fetchone()
+                subconta_id = sub["id"] if sub else None
+
+            cur.execute("""
+                INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (produtor_id, subconta_id, float(valor), data, origem))
+            row = cur.fetchone()
+            lcdpr_conn.commit()
+            return row["id"] if row else None
+    except Exception as e:
+        logger.error("[BOVINO] Erro ao criar lançamento LCDPR: %s", e)
+        if lcdpr_conn:
+            lcdpr_conn.rollback()
+        return None
+    finally:
+        if lcdpr_conn:
+            lcdpr_conn.close()
+
+
+def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: float,
+                                    descricao: str, origem: str = "whatsapp_bovino",
+                                    codigo_conta: str = None, subconta_id_fixo: str = None):
+    """Cria lançamento LCDPR em conexão própria (mesmo padrão de piscicultura.py / ovino.py).
+
+    Prioridade de escolha da subconta:
+      1. subconta_id_fixo - use quando voce ja sabe o UUID exato (mais seguro,
+         nao depende de nenhum outro dado - use isso sempre que possivel)
+      2. codigo_conta - use quando o codigo for UNICO entre as subcontas
+         (ex: '4.1.2' Venda de Leite, que so tem 1 subconta com esse codigo)
+      3. Fallback antigo por tipo (RECEITA/DESPESA) - mantido so por
+         compatibilidade, NAO USE em chamadas novas, e ambiguo.
+    """
+    tipo_lancamento = "Receita" if tipo == "receita" else "Despesa"
+    lcdpr_conn = None
+    try:
+        lcdpr_conn = get_db()
+        with lcdpr_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            subconta_id = subconta_id_fixo  # prioridade 1: ja vem pronto
+
+            if subconta_id is None and codigo_conta:
+                cur.execute(
+                    "SELECT id FROM subcontas WHERE codigo_conta = %s LIMIT 1",
+                    (codigo_conta,)
+                )
+                sub = cur.fetchone()
+                if sub:
+                    subconta_id = sub["id"]
+                else:
+                    logger.warning(
+                        "[BOVINO] codigo_conta '%s' nao encontrado; fallback por tipo.",
+                        codigo_conta
+                    )
+
+            if subconta_id is None:
+                cur.execute(
+                    "SELECT id FROM subcontas WHERE LOWER(tipo) = LOWER(%s) LIMIT 1",
+                    (tipo_lancamento,)
+                )
+                sub = cur.fetchone()
+                subconta_id = sub["id"] if sub else None
+
+            cur.execute("""
+                INSERT INTO lancamentos (produtor_id, subconta_id, valor, data, origem)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, (produtor_id, subconta_id, float(valor), data, origem))
+            row = cur.fetchone()
+            lcdpr_conn.commit()
+            return row["id"] if row else None
+    except Exception as e:
+        logger.error("[BOVINO] Erro ao criar lançamento LCDPR: %s", e)
+        if lcdpr_conn:
+            lcdpr_conn.rollback()
+        return None
+    finally:
+        if lcdpr_conn:
+            lcdpr_conn.close()
+
+
+CORRECAO DAS 2 CHAMADAS EXISTENTES (linhas ~1596-1627)
+========================================================
+
+1) COMPRA de bovino (linha ~1600) - hoje cai em qualquer DESPESA por sorte.
+   Corrigir para apontar direto pra subconta "Animais" (2.1.1):
+
+   ANTES:
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_bovino(
+                        conn, produtor_id, entidades.get("data_evento"), "despesa",
+                        valor_total, f"Compra de {qtd or '?'} bovino(s)"
+                    )
+
+   DEPOIS:
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_bovino(
+                        conn, produtor_id, entidades.get("data_evento"), "despesa",
+                        valor_total, f"Compra de {qtd or '?'} bovino(s)",
+                        subconta_id_fixo="456d01f4-e0b9-48e4-8b71-5ab8021fb50f"  # Animais
+                    )
+
+
+2) VENDA de bovino (linha ~1625) - hoje cai em qualquer RECEITA por sorte
+   (podia cair em "Venda de Soja" por acaso). Corrigir para apontar direto
+   pra subconta "Venda de Bovinos":
+
+   ANTES:
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_bovino(
+                        conn, produtor_id, entidades.get("data_evento"), "receita",
+                        valor_total, f"Venda de {qtd or '?'} bovino(s)"
+                    )
+
+   DEPOIS:
+                if valor_total:
+                    lanc_id = _criar_lancamento_lcdpr_bovino(
+                        conn, produtor_id, entidades.get("data_evento"), "receita",
+                        valor_total, f"Venda de {qtd or '?'} bovino(s)",
+                        subconta_id_fixo="93f28dea-0242-462c-a4ef-65eed3478815"  # Venda de Bovinos
+                    )
+
+
+NOTA IMPORTANTE - VENDA DE LEITE AINDA NAO TEM CAMINHO NO BOT
+================================================================
+Nenhuma das 2 chamadas acima e sobre leite. Confirmado: hoje o bot do
+WhatsApp/Telegram NAO tem nenhum intent/fluxo que registre venda de leite
+como lancamento financeiro. Se voce quiser que isso passe a existir, e
+preciso:
+  1. Adicionar um novo "intent" (ex: intent == "venda_leite") no bloco de
+     deteccao de intents deste mesmo arquivo (precisa ver esse bloco para
+     saber onde encaixar)
+  2. Chamar _criar_lancamento_lcdpr_bovino(..., "receita", valor,
+     "Venda de leite", codigo_conta="4.1.2") - aqui codigo_conta funciona
+     bem porque 4.1.2 e unico (so a subconta nova "Venda de Leite" tem
+     esse codigo)
+
+Por enquanto, para o IOFC funcionar, a receita de leite vai vir do
+fallback CEPEA (volume_l x preco do mes) ja que nao ha lancamento real
+ainda - e soh vai usar lancamento real quando/se esse fluxo for criado.

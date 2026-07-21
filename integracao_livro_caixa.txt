@@ -1,0 +1,102 @@
+INTEGRAÇÃO DO LIVRO CAIXA — 3 edições + 1 arquivo novo
+========================================================
+
+PASSO 0 — Copiar o arquivo novo
+--------------------------------
+Baixe LivroCaixa.tsx e salve em:
+  C:\ruralcaixa\ruralcaixa-mvp\client\src\pages\LivroCaixa.tsx
+
+
+===============================================================
+EDIÇÃO 1 — client/src/components/RuralLayout.tsx (import do ícone)
+===============================================================
+
+Localizar exatamente (dentro do bloco de import do lucide-react,
+perto da linha 25):
+
+  ClipboardList,
+  Globe,
+  TrendingDown,
+
+Substituir por:
+
+  ClipboardList,
+  Globe,
+  TrendingDown,
+  BookOpen,
+
+
+===============================================================
+EDIÇÃO 2 — client/src/components/RuralLayout.tsx (item no menu)
+===============================================================
+
+Localizar exatamente (a lista de itens da seção Fiscal):
+
+      { icon: ClipboardList, label: "EFD-Reinf / DARF",     path: "/efd-reinf" },
+      { icon: Globe,        label: "DCTFWeb",                path: "/dctfweb" },
+      { icon: TrendingDown, label: "Simulador Tributário",   path: "/simulador-tributario" },
+    ],
+
+Substituir por (adiciona o Livro Caixa antes do Simulador, ordem
+lógica: declarar > apurar):
+
+      { icon: ClipboardList, label: "EFD-Reinf / DARF",     path: "/efd-reinf" },
+      { icon: Globe,        label: "DCTFWeb",                path: "/dctfweb" },
+      { icon: BookOpen,     label: "Livro Caixa",            path: "/livro-caixa" },
+      { icon: TrendingDown, label: "Simulador Tributário",   path: "/simulador-tributario" },
+    ],
+
+
+===============================================================
+EDIÇÃO 3 — client/src/App.tsx (import do componente)
+===============================================================
+
+Localizar exatamente:
+
+import EFDReinf from "./pages/EFDReinf";
+import DCTFWeb from "./pages/DCTFWeb";
+
+Substituir por:
+
+import EFDReinf from "./pages/EFDReinf";
+import DCTFWeb from "./pages/DCTFWeb";
+import LivroCaixa from "./pages/LivroCaixa";
+
+
+===============================================================
+EDIÇÃO 4 — client/src/App.tsx (rota)
+===============================================================
+
+Localizar exatamente:
+
+      <Route path="/efd-reinf">{() => <ProtectedRoute component={EFDReinf} />}</Route>
+      <Route path="/dctfweb">{() => <ProtectedRoute component={DCTFWeb} />}</Route>
+      <Route path="/simulador-tributario">{() => <ProtectedRoute component={SimuladorTributacao} />}</Route>
+
+Substituir por:
+
+      <Route path="/efd-reinf">{() => <ProtectedRoute component={EFDReinf} />}</Route>
+      <Route path="/dctfweb">{() => <ProtectedRoute component={DCTFWeb} />}</Route>
+      <Route path="/livro-caixa">{() => <ProtectedRoute component={LivroCaixa} />}</Route>
+      <Route path="/simulador-tributario">{() => <ProtectedRoute component={SimuladorTributacao} />}</Route>
+
+
+===============================================================
+DEPOIS DE APLICAR TUDO
+===============================================================
+1. Testar o build:
+     cd C:\ruralcaixa\ruralcaixa-mvp\client
+     npm run build
+2. Se passar limpo, commit + push:
+     git add client/src/pages/LivroCaixa.tsx client/src/components/RuralLayout.tsx client/src/App.tsx
+     git commit -m "feat: adiciona pagina Livro Caixa Eletronico ao menu Fiscal"
+     git push origin main
+
+ESCOPO DESTA PRIMEIRA VERSAO (o que NAO foi incluido, de propósito):
+  - Edição de lançamento existente (só criar e excluir por enquanto;
+    o backend já tem PATCH /{id} pronto se quiser que eu adicione depois)
+  - Filtros por tipo/categoria/origem na tela (o backend já aceita
+    esses query params, só não expus na UI ainda)
+  - O botão "Lançar Acerto no Livro Caixa" (POST /from-acerto/{id}) —
+    isso é mais específico do módulo de Contratos, melhor conectar
+    lá quando você quiser

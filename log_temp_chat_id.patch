@@ -1,0 +1,16 @@
+diff --git a/app/routers/telegram_bot_router.py b/app/routers/telegram_bot_router.py
+index 5223516..8452b17 100644
+--- a/app/routers/telegram_bot_router.py
++++ b/app/routers/telegram_bot_router.py
+@@ -70,6 +70,11 @@ async def telegram_webhook(request: Request):
+         return {"ok": True}
+ 
+     chat_id = str(msg["chat"]["id"])
++    # LOG TEMPORARIO -- so pra identificar chat_id de novos usuarios pelos
++    # logs do Railway (ex: vincular o Ubiratan). Remover depois de usado.
++    _chat = msg.get("chat", {})
++    _nome_log = f"{_chat.get('first_name','')} {_chat.get('last_name','')}".strip()
++    logger.info(f"[TELEGRAM_CHAT_ID_DEBUG] chat_id={chat_id} nome='{_nome_log}' username='{_chat.get('username','')}'")
+     msg_type = "text"
+     texto = ""
+     midia_bytes = b""

@@ -1,0 +1,701 @@
+diff --git a/022_compravenda_classificacao_fiscal.sql b/022_compravenda_classificacao_fiscal.sql
+new file mode 100644
+index 0000000..11edaab
+--- /dev/null
++++ b/022_compravenda_classificacao_fiscal.sql
+@@ -0,0 +1,40 @@
++-- ============================================================
++-- RuralCaixa — Classificação Fiscal Automática (Compra e Venda)
++-- Migration: 022_compravenda_classificacao_fiscal.sql
++-- ============================================================
++-- Reaproveita o mesmo prazo já usado em /compravenda/alertas-fiscais
++-- (Decreto 9.580/2018 — RIR atual): 52 dias para regime de confinamento,
++-- 138 dias para regime de pasto. Acima do prazo = ATIVIDADE RURAL
++-- (entra no Livro Caixa). Dentro do prazo = NEGOCIACAO/COMERCIAL
++-- (fica fora do Livro Caixa Rural, tratado à parte na DAA).
++--
++-- Consumo por FIFO (Primeiro que Entra, Primeiro que Sai): cada venda
++-- é abatida das compras mais antigas primeiro, o que resolve o problema
++-- de rateio quando um mesmo produto/lote tem compras em datas diferentes.
++-- ============================================================
++
++-- Ledger de baixas: liga cada venda às compras específicas que ela consumiu
++CREATE TABLE IF NOT EXISTS cv_vendas_baixas (
++    id                  SERIAL PRIMARY KEY,
++    venda_id            INTEGER NOT NULL REFERENCES cv_vendas(id),
++    compra_id           INTEGER NOT NULL REFERENCES cv_compras(id),
++    quantidade_baixada  NUMERIC(12,4) NOT NULL CHECK (quantidade_baixada > 0),
++    dias_permanencia    INTEGER NOT NULL,
++    prazo_max           INTEGER NOT NULL,          -- 52 (confinamento) ou 138 (pasto)
++    classificacao       VARCHAR(12) NOT NULL CHECK (classificacao IN ('RURAL', 'NEGOCIACAO')),
++    valor_baixado       NUMERIC(14,2) NOT NULL,     -- proporcional ao valor_unitario da venda
++    custo_baixado       NUMERIC(14,2) NOT NULL,     -- proporcional ao valor_unitario da compra
++    criado_em           TIMESTAMP NOT NULL DEFAULT NOW()
++);
++
++CREATE INDEX IF NOT EXISTS idx_cv_vendas_baixas_venda  ON cv_vendas_baixas(venda_id);
++CREATE INDEX IF NOT EXISTS idx_cv_vendas_baixas_compra ON cv_vendas_baixas(compra_id);
++
++-- Campos agregados na própria venda, para consulta rápida sem juntar o ledger
++ALTER TABLE cv_vendas
++    ADD COLUMN IF NOT EXISTS classificacao   VARCHAR(12),   -- RURAL | NEGOCIACAO | MISTA
++    ADD COLUMN IF NOT EXISTS valor_rural      NUMERIC(14,2) DEFAULT 0,
++    ADD COLUMN IF NOT EXISTS valor_negociacao NUMERIC(14,2) DEFAULT 0,
++    ADD COLUMN IF NOT EXISTS lancamento_id    INTEGER REFERENCES lancamentos(id);
++
++CREATE INDEX IF NOT EXISTS idx_cv_vendas_classificacao ON cv_vendas(classificacao);
+diff --git a/app/routers/compravenda.py b/app/routers/compravenda.py
+index 99f89a6..d4c04f7 100644
+--- a/app/routers/compravenda.py
++++ b/app/routers/compravenda.py
+@@ -213,56 +213,155 @@ def listar_compras(
+ # VENDAS
+ # ─────────────────────────────────────────────────────────────
+ 
++PRAZO_FISCAL = {"confinamento": 52, "pasto": 138}  # Decreto 9.580/2018 — mesmo prazo do /alertas-fiscais
++
++
+ @router.post("/vendas", status_code=201)
+ def registrar_venda(dados: VendaCreate):
++    """
++    Registra a venda e baixa o estoque por FIFO (Primeiro que Entra,
++    Primeiro que Sai), consumindo as compras mais antigas primeiro.
++
++    Cada porção baixada é classificada individualmente:
++      - RURAL:      dias em estoque > prazo fiscal do regime da compra
++                     (52d confinamento / 138d pasto) -> entra no Livro Caixa
++      - NEGOCIACAO: dias em estoque <= prazo fiscal -> NAO entra no Livro
++                     Caixa Rural; deve ser declarado a parte como ganho de
++                     capital / atividade comercial na Declaracao Anual.
++
++    Se a venda consumir compras de mais de uma classificacao (parte ja
++    "rural", parte ainda "negociacao"), a venda fica com classificacao
++    = 'MISTA' e o valor e dividido proporcionalmente entre valor_rural
++    e valor_negociacao. So o valor_rural gera lancamento no Livro Caixa.
++    """
+     conn = get_db()
+     try:
+         cur = conn.cursor()
+-        # Verificar estoque disponível
+-        cur.execute("""
+-            SELECT COALESCE(SUM(quantidade), 0) AS comprado FROM cv_compras
+-            WHERE produto_id = %s AND imovel_id = %s
+-        """, (dados.produto_id, dados.imovel_id))
+-        comprado = float(cur.fetchone()["comprado"])
++
++        # Saldo disponivel por compra (FIFO), mais antiga primeiro
+         cur.execute("""
+-            SELECT COALESCE(SUM(quantidade), 0) AS vendido FROM cv_vendas
+-            WHERE produto_id = %s AND imovel_id = %s
++            SELECT c.id, c.data_compra, c.quantidade, c.valor_total, c.valor_unitario,
++                   c.regime,
++                   c.quantidade - COALESCE((
++                       SELECT SUM(b.quantidade_baixada) FROM cv_vendas_baixas b
++                       WHERE b.compra_id = c.id
++                   ), 0) AS saldo
++            FROM cv_compras c
++            WHERE c.produto_id = %s AND c.imovel_id = %s
++            ORDER BY c.data_compra ASC, c.id ASC
+         """, (dados.produto_id, dados.imovel_id))
+-        vendido = float(cur.fetchone()["vendido"])
+-        estoque = comprado - vendido
+-        if dados.quantidade > estoque:
++        compras = [dict(r) for r in cur.fetchall() if float(r["saldo"]) > 0]
++
++        estoque_disponivel = sum(float(c["saldo"]) for c in compras)
++        if dados.quantidade > estoque_disponivel:
+             raise HTTPException(
+                 status_code=400,
+-                detail=f"Estoque insuficiente. Disponível: {estoque:.2f}"
++                detail=f"Estoque insuficiente. Disponivel: {estoque_disponivel:.2f}"
+             )
+ 
+-        # Calcular custo médio para lucro bruto
+-        cur.execute("""
+-            SELECT CASE WHEN SUM(quantidade) > 0
+-                   THEN SUM(valor_total) / SUM(quantidade)
+-                   ELSE 0 END AS custo_medio
+-            FROM cv_compras WHERE produto_id = %s AND imovel_id = %s
+-        """, (dados.produto_id, dados.imovel_id))
+-        custo_medio = float(cur.fetchone()["custo_medio"] or 0)
+-
+         valor_total = dados.quantidade * dados.valor_unitario
+-        custo_total = dados.quantidade * custo_medio
++        restante = dados.quantidade
++        baixas = []
++
++        for c in compras:
++            if restante <= 0:
++                break
++            qtd_baixa = min(restante, float(c["saldo"]))
++            dias = (dados.data_venda - c["data_compra"]).days
++            prazo_max = PRAZO_FISCAL.get(c["regime"], 138)
++            classificacao = "RURAL" if dias > prazo_max else "NEGOCIACAO"
++
++            valor_baixado = round(qtd_baixa * dados.valor_unitario, 2)
++            custo_baixado = round(qtd_baixa * float(c["valor_unitario"]), 2)
++
++            baixas.append({
++                "compra_id": c["id"],
++                "quantidade_baixada": qtd_baixa,
++                "dias_permanencia": dias,
++                "prazo_max": prazo_max,
++                "classificacao": classificacao,
++                "valor_baixado": valor_baixado,
++                "custo_baixado": custo_baixado,
++            })
++            restante -= qtd_baixa
++
++        custo_total = sum(b["custo_baixado"] for b in baixas)
+         lucro_bruto = valor_total - custo_total
+         margem_pct = round((lucro_bruto / valor_total * 100), 2) if valor_total > 0 else 0
+ 
++        valor_rural = sum(b["valor_baixado"] for b in baixas if b["classificacao"] == "RURAL")
++        valor_negociacao = sum(b["valor_baixado"] for b in baixas if b["classificacao"] == "NEGOCIACAO")
++        classificacoes_presentes = {b["classificacao"] for b in baixas}
++        classificacao_venda = (
++            classificacoes_presentes.pop() if len(classificacoes_presentes) == 1 else "MISTA"
++        )
++
++        # So a parte RURAL gera lancamento no Livro Caixa (conta 1.1.2 -
++        # Venda de produtos pecuarios). A parte NEGOCIACAO fica de fora
++        # e deve ser tratada separadamente na Declaracao Anual (DAA).
++        lancamento_id = None
++        if valor_rural > 0:
++            cur.execute("""
++                INSERT INTO lancamentos
++                    (imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento,
++                     origem, origem_modulo, origem_tipo, origem_descricao)
++                VALUES (%s, '1.1.2', 'receita', %s, %s, %s,
++                        'compravenda', 'compravenda', 'venda', %s)
++                RETURNING id
++            """, (
++                dados.imovel_id,
++                f"Venda comercial (parte rural) - {dados.comprador or 'comprador nao informado'}",
++                round(valor_rural, 2),
++                dados.data_venda,
++                "Classificado automaticamente pela regra dos 52/138 dias (Decreto 9.580/2018)",
++            ))
++            lancamento_id = cur.fetchone()["id"]
++
+         cur.execute("""
+             INSERT INTO cv_vendas
+                 (imovel_id, produto_id, data_venda, quantidade, valor_unitario,
+                  valor_total, custo_total, lucro_bruto, margem_pct,
+-                 comprador, nota_fiscal, observacoes)
+-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
++                 comprador, nota_fiscal, observacoes,
++                 classificacao, valor_rural, valor_negociacao, lancamento_id)
++            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
++            RETURNING id
+         """, (dados.imovel_id, dados.produto_id, dados.data_venda,
+               dados.quantidade, dados.valor_unitario, valor_total,
+               custo_total, lucro_bruto, margem_pct,
+-              dados.comprador, dados.nota_fiscal, dados.observacoes))
++              dados.comprador, dados.nota_fiscal, dados.observacoes,
++              classificacao_venda, round(valor_rural, 2), round(valor_negociacao, 2),
++              lancamento_id))
+         vid = cur.fetchone()["id"]
++
++        if lancamento_id:
++            cur.execute("UPDATE lancamentos SET origem_id = %s WHERE id = %s", (vid, lancamento_id))
++
++        for b in baixas:
++            cur.execute("""
++                INSERT INTO cv_vendas_baixas
++                    (venda_id, compra_id, quantidade_baixada, dias_permanencia,
++                     prazo_max, classificacao, valor_baixado, custo_baixado)
++                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
++            """, (vid, b["compra_id"], b["quantidade_baixada"], b["dias_permanencia"],
++                  b["prazo_max"], b["classificacao"], b["valor_baixado"], b["custo_baixado"]))
++
+         conn.commit()
+-        return {"id": vid, "valor_total": valor_total, "lucro_bruto": lucro_bruto, "margem_pct": margem_pct}
++        return {
++            "id": vid,
++            "valor_total": valor_total,
++            "lucro_bruto": lucro_bruto,
++            "margem_pct": margem_pct,
++            "classificacao": classificacao_venda,
++            "valor_rural": round(valor_rural, 2),
++            "valor_negociacao": round(valor_negociacao, 2),
++            "lancamento_id": lancamento_id,
++            "aviso": (
++                None if classificacao_venda == "RURAL" else
++                "Parte ou toda a venda ficou dentro do prazo fiscal (regime comercial) - "
++                "nao entrou no Livro Caixa Rural. Declare o valor_negociacao separadamente "
++                "como ganho de capital / atividade comercial na Declaracao Anual."
++            ),
++        }
+     except HTTPException:
+         raise
+     except Exception as e:
+@@ -585,6 +684,69 @@ def dre(
+         conn.close()
+ 
+ 
++# ─────────────────────────────────────────────────────────────
++# RELATÓRIO FISCAL — RURAL vs NEGOCIAÇÃO (regra dos 52/138 dias)
++# ─────────────────────────────────────────────────────────────
++
++@router.get("/relatorio-fiscal/{imovel_id}")
++def relatorio_fiscal(
++    imovel_id: int,
++    data_inicio: Optional[date] = Query(None),
++    data_fim: Optional[date] = Query(None),
++):
++    """
++    Consolida as vendas por classificação fiscal (RURAL / NEGOCIACAO),
++    já com a baixa por FIFO aplicada em /vendas. Serve de base para a
++    tela "Compra e Venda" e para o contador separar o que vai no Livro
++    Caixa Rural do que precisa ser declarado na DAA como negociação.
++    """
++    conn = get_db()
++    try:
++        cur = conn.cursor()
++        filtros = ["v.imovel_id = %s"]
++        params: list = [imovel_id]
++        if data_inicio:
++            filtros.append("v.data_venda >= %s"); params.append(data_inicio)
++        if data_fim:
++            filtros.append("v.data_venda <= %s"); params.append(data_fim)
++
++        cur.execute(f"""
++            SELECT b.classificacao,
++                   COUNT(DISTINCT v.id) AS qtd_vendas,
++                   SUM(b.valor_baixado) AS valor,
++                   SUM(b.custo_baixado) AS custo,
++                   SUM(b.valor_baixado - b.custo_baixado) AS resultado
++            FROM cv_vendas_baixas b
++            JOIN cv_vendas v ON v.id = b.venda_id
++            WHERE {' AND '.join(filtros)}
++            GROUP BY b.classificacao
++        """, params)
++        por_classificacao = {r["classificacao"]: dict(r) for r in cur.fetchall()}
++
++        cur.execute(f"""
++            SELECT v.id, p.nome AS produto_nome, p.especie, v.data_venda,
++                   v.quantidade, v.classificacao, v.valor_rural, v.valor_negociacao,
++                   v.lancamento_id
++            FROM cv_vendas v
++            JOIN cv_produtos p ON p.id = v.produto_id
++            WHERE {' AND '.join(filtros)}
++            ORDER BY v.data_venda DESC
++        """, params)
++        vendas = [dict(r) for r in cur.fetchall()]
++
++        return {
++            "resumo": {
++                "rural": por_classificacao.get("RURAL", {"qtd_vendas": 0, "valor": 0, "custo": 0, "resultado": 0}),
++                "negociacao": por_classificacao.get("NEGOCIACAO", {"qtd_vendas": 0, "valor": 0, "custo": 0, "resultado": 0}),
++            },
++            "vendas": vendas,
++        }
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=str(e))
++    finally:
++        conn.close()
++
++
+ # ─────────────────────────────────────────────────────────────
+ # ALERTAS FISCAIS — animais próximos da transição para produção rural
+ # ─────────────────────────────────────────────────────────────
+diff --git a/client/src/pages/CompraVenda.tsx b/client/src/pages/CompraVenda.tsx
+index 3ff9dfb..f02e754 100644
+--- a/client/src/pages/CompraVenda.tsx
++++ b/client/src/pages/CompraVenda.tsx
+@@ -10,6 +10,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
+ import { toast } from "sonner";
+ import { API_BASE, getImovelId } from "@/lib/api";
+ 
++interface Produto {
++  id: number;
++  nome: string;
++  especie?: string;
++  unidade: string;
++  estoque_atual?: number;
++}
++
++async function fetchProdutos(imovelId: number): Promise<Produto[]> {
++  const res = await fetch(`${API_BASE}/compravenda/produtos?imovel_id=${imovelId}`);
++  if (!res.ok) return [];
++  const data = await res.json();
++  return Array.isArray(data) ? data : data.items ?? [];
++}
++
++async function criarProduto(imovelId: number, nome: string, unidade: string, especie: string): Promise<Produto | null> {
++  const res = await fetch(`${API_BASE}/compravenda/produtos`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ imovel_id: imovelId, nome, unidade, especie: especie || undefined }),
++  });
++  if (!res.ok) return null;
++  const criado = await res.json();
++  return { id: criado.id, nome, unidade, especie };
++}
++
+ interface Operacao {
+   id: number;
+   tipo: "compra" | "venda";
+@@ -21,6 +47,9 @@ interface Operacao {
+   fornecedor_cliente?: string;
+   status?: string;
+   especie?: string;
++  classificacao?: "RURAL" | "NEGOCIACAO" | "MISTA";
++  valor_rural?: number;
++  valor_negociacao?: number;
+ }
+ 
+ interface Dashboard {
+@@ -30,6 +59,19 @@ interface Dashboard {
+   alertas_fiscais?: number;
+ }
+ 
++interface RelatorioFiscal {
++  resumo: {
++    rural: { qtd_vendas?: number; valor?: number; resultado?: number };
++    negociacao: { qtd_vendas?: number; valor?: number; resultado?: number };
++  };
++}
++
++async function fetchRelatorioFiscal(imovelId: number): Promise<RelatorioFiscal | null> {
++  const res = await fetch(`${API_BASE}/compravenda/relatorio-fiscal/${imovelId}`);
++  if (!res.ok) return null;
++  return res.json();
++}
++
+ async function fetchDashboard(imovelId: number): Promise<Dashboard> {
+   const res = await fetch(`${API_BASE}/compravenda/dashboard/${imovelId}`);
+   if (!res.ok) return {};
+@@ -40,36 +82,66 @@ async function fetchCompras(imovelId: number): Promise<Operacao[]> {
+   const res = await fetch(`${API_BASE}/compravenda/compras?imovel_id=${imovelId}`);
+   if (!res.ok) return [];
+   const data = await res.json();
+-  return (Array.isArray(data) ? data : data.items ?? []).map((x: Operacao) => ({ ...x, tipo: "compra" as const }));
++  const items = Array.isArray(data) ? data : data.items ?? [];
++  return items.map((x: Record<string, unknown>) => ({
++    ...x,
++    tipo: "compra" as const,
++    produto: (x.produto_nome as string) ?? (x.produto as string),
++    fornecedor_cliente: x.fornecedor as string,
++  }));
+ }
+ 
+ async function fetchVendas(imovelId: number): Promise<Operacao[]> {
+   const res = await fetch(`${API_BASE}/compravenda/vendas?imovel_id=${imovelId}`);
+   if (!res.ok) return [];
+   const data = await res.json();
+-  return (Array.isArray(data) ? data : data.items ?? []).map((x: Operacao) => ({ ...x, tipo: "venda" as const }));
++  const items = Array.isArray(data) ? data : data.items ?? [];
++  return items.map((x: Record<string, unknown>) => ({
++    ...x,
++    tipo: "venda" as const,
++    produto: (x.produto_nome as string) ?? (x.produto as string),
++    fornecedor_cliente: x.comprador as string,
++  }));
+ }
+ 
+ export default function CompraVenda() {
+   const [operacoes, setOperacoes] = useState<Operacao[]>([]);
+   const [dashboard, setDashboard] = useState<Dashboard>({});
++  const [fiscal, setFiscal] = useState<RelatorioFiscal | null>(null);
+   const [loading, setLoading] = useState(true);
+   const [filtro, setFiltro] = useState<"todos" | "compra" | "venda">("todos");
+   const [showNew, setShowNew] = useState(false);
+   const [saving, setSaving] = useState(false);
+-  const [form, setForm] = useState({ tipo: "venda", produto: "", quantidade: "", valor_unitario: "", data: new Date().toISOString().split("T")[0], fornecedor_cliente: "", especie: "" });
++  const [produtos, setProdutos] = useState<Produto[]>([]);
++  const [novoProduto, setNovoProduto] = useState(false);
++  const [form, setForm] = useState({
++    tipo: "venda",
++    produto_id: "",
++    produto_nome_novo: "",
++    unidade_novo: "cab",
++    especie_novo: "",
++    quantidade: "",
++    valor_unitario: "",
++    data: new Date().toISOString().split("T")[0],
++    contraparte: "",
++    regime: "pasto",
++  });
+   const imovelId = getImovelId();
+ 
+   const load = async () => {
+     if (!imovelId) return;
+     setLoading(true);
+     try {
+-      const [dash, compras, vendas] = await Promise.all([
++      const [dash, compras, vendas, rel, prods] = await Promise.all([
+         fetchDashboard(imovelId),
+         fetchCompras(imovelId),
+         fetchVendas(imovelId),
++        fetchRelatorioFiscal(imovelId),
++        fetchProdutos(imovelId),
+       ]);
+       setDashboard(dash);
++      setFiscal(rel);
++      setProdutos(prods);
+       setOperacoes([...compras, ...vendas].sort((a, b) => (b.data ?? "").localeCompare(a.data ?? "")));
+     } catch {
+       toast.error("Não foi possível carregar as operações");
+@@ -83,31 +155,74 @@ export default function CompraVenda() {
+   const filtered = operacoes.filter((o) => filtro === "todos" || o.tipo === filtro);
+   const fmt = (v?: number) => (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+ 
++  const resetForm = () => setForm({
++    tipo: "venda",
++    produto_id: "",
++    produto_nome_novo: "",
++    unidade_novo: "cab",
++    especie_novo: "",
++    quantidade: "",
++    valor_unitario: "",
++    data: new Date().toISOString().split("T")[0],
++    contraparte: "",
++    regime: "pasto",
++  });
++
+   const handleCreate = async () => {
+-    if (!form.produto.trim()) { toast.error("Informe o produto"); return; }
+     if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
+     setSaving(true);
+     try {
++      let produtoId = form.produto_id ? Number(form.produto_id) : null;
++
++      // Se o usuário optou por cadastrar um produto novo na hora, cria primeiro.
++      if (novoProduto) {
++        if (!form.produto_nome_novo.trim()) { toast.error("Informe o nome do novo produto"); setSaving(false); return; }
++        const criado = await criarProduto(imovelId, form.produto_nome_novo, form.unidade_novo, form.especie_novo);
++        if (!criado) throw new Error("Não foi possível cadastrar o produto");
++        produtoId = criado.id;
++        setProdutos((prev) => [...prev, criado]);
++      }
++
++      if (!produtoId) { toast.error("Selecione um produto"); setSaving(false); return; }
++      if (!form.quantidade || !form.valor_unitario) { toast.error("Informe quantidade e valor unitário"); setSaving(false); return; }
++
+       const endpoint = form.tipo === "compra" ? "/compravenda/compras" : "/compravenda/vendas";
++      const payload =
++        form.tipo === "compra"
++          ? {
++              imovel_id: imovelId,
++              produto_id: produtoId,
++              data_compra: form.data,
++              quantidade: Number(form.quantidade),
++              valor_unitario: Number(form.valor_unitario),
++              fornecedor: form.contraparte || undefined,
++              regime: form.regime,
++            }
++          : {
++              imovel_id: imovelId,
++              produto_id: produtoId,
++              data_venda: form.data,
++              quantidade: Number(form.quantidade),
++              valor_unitario: Number(form.valor_unitario),
++              comprador: form.contraparte || undefined,
++            };
++
+       const res = await fetch(`${API_BASE}${endpoint}`, {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({
+-          produto: form.produto,
+-          quantidade: form.quantidade ? Number(form.quantidade) : undefined,
+-          valor_unitario: form.valor_unitario ? Number(form.valor_unitario) : undefined,
+-          valor_total: form.quantidade && form.valor_unitario ? Number(form.quantidade) * Number(form.valor_unitario) : undefined,
+-          data: form.data,
+-          fornecedor_cliente: form.fornecedor_cliente || undefined,
+-          especie: form.especie || undefined,
+-          imovel_id: imovelId,
+-        }),
++        body: JSON.stringify(payload),
+       });
+       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? "Erro"); }
+       const nova = await res.json();
+-      setOperacoes((prev) => [{ ...nova, tipo: form.tipo as "compra" | "venda" }, ...prev]);
++
++      if (form.tipo === "venda" && nova.aviso) {
++        toast.warning(nova.aviso);
++      }
++
++      await load(); // recarrega tudo (o relatório fiscal e o estoque mudaram)
+       setShowNew(false);
+-      setForm({ tipo: "venda", produto: "", quantidade: "", valor_unitario: "", data: new Date().toISOString().split("T")[0], fornecedor_cliente: "", especie: "" });
++      setNovoProduto(false);
++      resetForm();
+       toast.success(`${form.tipo === "compra" ? "Compra" : "Venda"} registrada com sucesso`);
+     } catch (e: unknown) {
+       toast.error(e instanceof Error ? e.message : "Erro ao registrar operação");
+@@ -164,6 +279,33 @@ export default function CompraVenda() {
+         </Card>
+       </div>
+ 
++      {fiscal && (fiscal.resumo.rural.qtd_vendas || fiscal.resumo.negociacao.qtd_vendas) ? (
++        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++          <Card className="border-emerald-200 bg-emerald-50/50">
++            <CardContent className="pt-4 pb-3">
++              <p className="text-xs text-emerald-700 uppercase tracking-wide font-medium">
++                Rural — entra no Livro Caixa
++              </p>
++              <p className="text-xl font-bold mt-1 text-emerald-800">{fmt(fiscal.resumo.rural.valor)}</p>
++              <p className="text-xs text-emerald-600 mt-0.5">
++                {fiscal.resumo.rural.qtd_vendas ?? 0} venda(s) · resultado {fmt(fiscal.resumo.rural.resultado)}
++              </p>
++            </CardContent>
++          </Card>
++          <Card className="border-amber-200 bg-amber-50/50">
++            <CardContent className="pt-4 pb-3">
++              <p className="text-xs text-amber-700 uppercase tracking-wide font-medium">
++                Negociação — fora do Livro Caixa (declarar na DAA)
++              </p>
++              <p className="text-xl font-bold mt-1 text-amber-800">{fmt(fiscal.resumo.negociacao.valor)}</p>
++              <p className="text-xs text-amber-600 mt-0.5">
++                {fiscal.resumo.negociacao.qtd_vendas ?? 0} venda(s) · resultado {fmt(fiscal.resumo.negociacao.resultado)}
++              </p>
++            </CardContent>
++          </Card>
++        </div>
++      ) : null}
++
+       {/* Filter tabs */}
+       <div className="flex gap-2">
+         {(["todos", "compra", "venda"] as const).map((f) => (
+@@ -204,11 +346,33 @@ export default function CompraVenda() {
+                       </p>
+                     </div>
+                   </div>
+-                  <div className="text-right shrink-0">
+-                    <p className={`text-sm font-bold ${o.tipo === "venda" ? "text-emerald-700" : "text-red-600"}`}>
+-                      {fmt(o.valor_total)}
+-                    </p>
+-                    {o.quantidade && <p className="text-xs text-muted-foreground">{o.quantidade} un.</p>}
++                  <div className="text-right shrink-0 flex items-center gap-2">
++                    {o.tipo === "venda" && o.classificacao && (
++                      <span
++                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
++                          o.classificacao === "RURAL"
++                            ? "bg-emerald-100 text-emerald-700"
++                            : o.classificacao === "NEGOCIACAO"
++                            ? "bg-amber-100 text-amber-700"
++                            : "bg-slate-100 text-slate-600"
++                        }`}
++                        title={
++                          o.classificacao === "NEGOCIACAO"
++                            ? "Fora do Livro Caixa Rural — declarar na DAA"
++                            : o.classificacao === "MISTA"
++                            ? `Parte rural (${fmt(o.valor_rural)}) + parte negociação (${fmt(o.valor_negociacao)})`
++                            : "Lançado no Livro Caixa Rural"
++                        }
++                      >
++                        {o.classificacao}
++                      </span>
++                    )}
++                    <div>
++                      <p className={`text-sm font-bold ${o.tipo === "venda" ? "text-emerald-700" : "text-red-600"}`}>
++                        {fmt(o.valor_total)}
++                      </p>
++                      {o.quantidade && <p className="text-xs text-muted-foreground">{o.quantidade} un.</p>}
++                    </div>
+                   </div>
+                 </div>
+               </CardContent>
+@@ -232,8 +396,59 @@ export default function CompraVenda() {
+               </Select>
+             </div>
+             <div className="space-y-1.5">
+-              <Label>Produto / Descrição *</Label>
+-              <Input placeholder="Ex: Ovinos, Ração, Medicamentos..." value={form.produto} onChange={(e) => setForm({ ...form, produto: e.target.value })} />
++              <div className="flex items-center justify-between">
++                <Label>Produto *</Label>
++                <button
++                  type="button"
++                  className="text-xs text-emerald-700 underline"
++                  onClick={() => setNovoProduto((v) => !v)}
++                >
++                  {novoProduto ? "Escolher produto existente" : "+ Cadastrar novo produto"}
++                </button>
++              </div>
++
++              {!novoProduto ? (
++                <Select value={form.produto_id} onValueChange={(v) => setForm({ ...form, produto_id: v })}>
++                  <SelectTrigger><SelectValue placeholder="Selecione um produto" /></SelectTrigger>
++                  <SelectContent>
++                    {produtos.length === 0 ? (
++                      <div className="px-2 py-4 text-xs text-muted-foreground text-center">
++                        Nenhum produto cadastrado ainda. Use "+ Cadastrar novo produto" acima.
++                      </div>
++                    ) : (
++                      produtos.map((p) => (
++                        <SelectItem key={p.id} value={String(p.id)}>
++                          {p.nome} {p.especie ? `(${p.especie})` : ""} — {p.unidade}
++                        </SelectItem>
++                      ))
++                    )}
++                  </SelectContent>
++                </Select>
++              ) : (
++                <div className="grid grid-cols-2 gap-3">
++                  <Input
++                    placeholder="Nome (ex: Bezerro Nelore)"
++                    className="col-span-2"
++                    value={form.produto_nome_novo}
++                    onChange={(e) => setForm({ ...form, produto_nome_novo: e.target.value })}
++                  />
++                  <Input
++                    placeholder="Espécie (ex: bovino)"
++                    value={form.especie_novo}
++                    onChange={(e) => setForm({ ...form, especie_novo: e.target.value })}
++                  />
++                  <Select value={form.unidade_novo} onValueChange={(v) => setForm({ ...form, unidade_novo: v })}>
++                    <SelectTrigger><SelectValue /></SelectTrigger>
++                    <SelectContent>
++                      <SelectItem value="cab">cabeça(s)</SelectItem>
++                      <SelectItem value="kg">kg</SelectItem>
++                      <SelectItem value="arroba">arroba</SelectItem>
++                      <SelectItem value="saca">saca</SelectItem>
++                      <SelectItem value="un">unidade</SelectItem>
++                    </SelectContent>
++                  </Select>
++                </div>
++              )}
+             </div>
+             <div className="grid grid-cols-2 gap-3">
+               <div className="space-y-1.5">
+@@ -250,15 +465,30 @@ export default function CompraVenda() {
+                 <Label>Data</Label>
+                 <Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+               </div>
++              {form.tipo === "compra" ? (
++                <div className="space-y-1.5">
++                  <Label>Regime</Label>
++                  <Select value={form.regime} onValueChange={(v) => setForm({ ...form, regime: v })}>
++                    <SelectTrigger><SelectValue /></SelectTrigger>
++                    <SelectContent>
++                      <SelectItem value="pasto">Pasto (prazo fiscal: 138 dias)</SelectItem>
++                      <SelectItem value="confinamento">Confinamento (prazo fiscal: 52 dias)</SelectItem>
++                    </SelectContent>
++                  </Select>
++                </div>
++              ) : (
++                <div className="space-y-1.5">
++                  <Label>Cliente</Label>
++                  <Input placeholder="Nome do cliente" value={form.contraparte} onChange={(e) => setForm({ ...form, contraparte: e.target.value })} />
++                </div>
++              )}
++            </div>
++            {form.tipo === "compra" && (
+               <div className="space-y-1.5">
+-                <Label>Espécie</Label>
+-                <Input placeholder="Ex: Ovino, Bovino..." value={form.especie} onChange={(e) => setForm({ ...form, especie: e.target.value })} />
++                <Label>Fornecedor</Label>
++                <Input placeholder="Nome do fornecedor" value={form.contraparte} onChange={(e) => setForm({ ...form, contraparte: e.target.value })} />
+               </div>
+-            </div>
+-            <div className="space-y-1.5">
+-              <Label>{form.tipo === "compra" ? "Fornecedor" : "Cliente"}</Label>
+-              <Input placeholder="Nome do fornecedor/cliente" value={form.fornecedor_cliente} onChange={(e) => setForm({ ...form, fornecedor_cliente: e.target.value })} />
+-            </div>
++            )}
+           </div>
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
