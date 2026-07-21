@@ -221,6 +221,13 @@ try:
 except Exception as _e:
     print(f'PROPRIEDADES_RURAL ROUTER FAILED: {_e}')
 
+try:
+    from app.routers.administradores import router as administradores_router
+    app.include_router(administradores_router)
+    print('ADMINISTRADORES ROUTER LOADED OK')
+except Exception as _e:
+    print(f'ADMINISTRADORES ROUTER FAILED: {_e}')
+
 insumos_router = None
 try:
     from app.routers.insumos import router as insumos_router

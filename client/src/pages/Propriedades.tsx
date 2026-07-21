@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, MapPin, Search, RefreshCw, Pencil, Trash2, Building2, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, MapPin, Search, RefreshCw, Pencil, Trash2, Building2, AlertTriangle, Loader2, Users, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +30,8 @@ export default function Propriedades() {
   const [showNew, setShowNew]   = useState(false);
   const [editItem, setEditItem] = useState<Imovel | null>(null);
   const [deleteItem, setDeleteItem] = useState<Imovel | null>(null);
+  const [adminItem, setAdminItem] = useState<Imovel | null>(null);
+  const [novoCpf, setNovoCpf] = useState("");
   const [form, setForm]         = useState({ ...FORM_EMPTY });
 
   const { data: imoveis = [], isLoading, error, refetch } = trpc.railway.imoveis.useQuery(undefined, {
@@ -64,6 +66,35 @@ export default function Propriedades() {
     },
     onError: (e) => toast.error(e.message ?? "Erro ao excluir propriedade"),
   });
+
+  const administradoresQuery = trpc.railway.listarAdministradores.useQuery(
+    { imovelId: adminItem?.id ?? 0 },
+    { enabled: !!adminItem },
+  );
+
+  const adicionarAdminMutation = trpc.railway.adicionarAdministrador.useMutation({
+    onSuccess: (r) => {
+      toast.success(`${r.produtor_nome} adicionado como administrador`);
+      setNovoCpf("");
+      utils.railway.listarAdministradores.invalidate({ imovelId: adminItem?.id ?? 0 });
+    },
+    onError: (e) => toast.error(e.message ?? "Erro ao adicionar administrador"),
+  });
+
+  const removerAdminMutation = trpc.railway.removerAdministrador.useMutation({
+    onSuccess: () => {
+      toast.success("Administrador removido");
+      utils.railway.listarAdministradores.invalidate({ imovelId: adminItem?.id ?? 0 });
+    },
+    onError: () => toast.error("Erro ao remover administrador"),
+  });
+
+  const handleAdicionarAdmin = () => {
+    const cpfLimpo = novoCpf.replace(/\D/g, "");
+    if (cpfLimpo.length !== 11) { toast.error("Informe um CPF válido (11 dígitos)"); return; }
+    if (!adminItem) return;
+    adicionarAdminMutation.mutate({ imovelId: adminItem.id, cpf: cpfLimpo });
+  };
 
   const handleCreate = () => {
     if (!form.nome.trim()) { toast.error("Informe o nome da propriedade"); return; }
@@ -259,6 +290,9 @@ export default function Propriedades() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="w-8 h-8 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50" title="Administradores" onClick={() => setAdminItem(im)}>
+                      <Users className="w-3.5 h-3.5" />
+                    </Button>
                     <Button variant="ghost" size="icon" className="w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50" title="Editar" onClick={() => handleEdit(im)}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
@@ -330,6 +364,79 @@ export default function Propriedades() {
             >
               {excluirMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Excluindo...</> : "Sim, excluir"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Administradores — acesso operacional, sem participação societária */}
+      <Dialog open={!!adminItem} onOpenChange={(o) => { if (!o) { setAdminItem(null); setNovoCpf(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-emerald-600" />
+              Administradores — {adminItem?.nome}
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-xs text-muted-foreground -mt-2">
+            Pessoas com acesso operacional a essa propriedade, sem participação
+            societária nem responsabilidade tributária. Não altera a apuração
+            fiscal nem quem é o contribuinte.
+          </p>
+
+          <div className="space-y-2">
+            <Label>Adicionar por CPF</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="000.000.000-00"
+                value={novoCpf}
+                onChange={(e) => setNovoCpf(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdicionarAdmin(); }}
+              />
+              <Button
+                onClick={handleAdicionarAdmin}
+                disabled={adicionarAdminMutation.isPending}
+                style={{ background: "oklch(0.42 0.14 145)" }}
+              >
+                {adicionarAdminMutation.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <UserPlus className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              A pessoa precisa já ter um cadastro no RuralCaixa (mesmo CPF usado no login dela).
+            </p>
+          </div>
+
+          <div className="space-y-1.5 max-h-56 overflow-y-auto">
+            {administradoresQuery.isLoading ? (
+              <Skeleton className="h-12 rounded-lg" />
+            ) : (administradoresQuery.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum administrador ainda</p>
+            ) : (
+              administradoresQuery.data!.map((a) => (
+                <div key={a.produtor_id} className="flex items-center justify-between rounded-lg border p-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{a.nome}</p>
+                    <p className="text-xs text-muted-foreground">CPF {a.cpf}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-7 h-7 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
+                    title="Remover"
+                    onClick={() => adminItem && removerAdminMutation.mutate({ imovelId: adminItem.id, produtorId: a.produtor_id })}
+                    disabled={removerAdminMutation.isPending}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAdminItem(null); setNovoCpf(""); } }>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
