@@ -18,8 +18,15 @@ interface Produto {
   estoque_atual?: number;
 }
 
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getRcToken();
+  return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
+
 async function fetchProdutos(imovelId: number): Promise<Produto[]> {
-  const res = await fetch(`${API_BASE}/compravenda/produtos?imovel_id=${imovelId}`);
+  const res = await fetch(`${API_BASE}/compravenda/produtos?imovel_id=${imovelId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : data.items ?? [];
@@ -28,7 +35,7 @@ async function fetchProdutos(imovelId: number): Promise<Produto[]> {
 async function criarProduto(imovelId: number, nome: string, unidade: string, especie: string): Promise<Produto | null> {
   const res = await fetch(`${API_BASE}/compravenda/produtos`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ imovel_id: imovelId, nome, unidade, especie: especie || undefined }),
   });
   if (!res.ok) return null;
@@ -67,19 +74,25 @@ interface RelatorioFiscal {
 }
 
 async function fetchRelatorioFiscal(imovelId: number): Promise<RelatorioFiscal | null> {
-  const res = await fetch(`${API_BASE}/compravenda/relatorio-fiscal/${imovelId}`);
+  const res = await fetch(`${API_BASE}/compravenda/relatorio-fiscal/${imovelId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return null;
   return res.json();
 }
 
 async function fetchDashboard(imovelId: number): Promise<Dashboard> {
-  const res = await fetch(`${API_BASE}/compravenda/dashboard/${imovelId}`);
+  const res = await fetch(`${API_BASE}/compravenda/dashboard/${imovelId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return {};
   return res.json();
 }
 
 async function fetchCompras(imovelId: number): Promise<Operacao[]> {
-  const res = await fetch(`${API_BASE}/compravenda/compras?imovel_id=${imovelId}`);
+  const res = await fetch(`${API_BASE}/compravenda/compras?imovel_id=${imovelId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return [];
   const data = await res.json();
   const items = Array.isArray(data) ? data : data.items ?? [];
@@ -92,7 +105,9 @@ async function fetchCompras(imovelId: number): Promise<Operacao[]> {
 }
 
 async function fetchVendas(imovelId: number): Promise<Operacao[]> {
-  const res = await fetch(`${API_BASE}/compravenda/vendas?imovel_id=${imovelId}`);
+  const res = await fetch(`${API_BASE}/compravenda/vendas?imovel_id=${imovelId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) return [];
   const data = await res.json();
   const items = Array.isArray(data) ? data : data.items ?? [];
@@ -246,7 +261,7 @@ export default function CompraVenda() {
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? "Erro"); }
