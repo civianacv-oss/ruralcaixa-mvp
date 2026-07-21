@@ -333,7 +333,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     try:
                         resultado_mov = aplicar_movimentacao_insumo(
                             cur_estoque,
-                            fazenda_id=1,
+                            fazenda_id=sess.get("_imovel_id") or 1,
                             insumo_id=sess["_insumo_id"],
                             tipo="uso",
                             quantidade=sess["_quantidade_consumida"],
@@ -353,7 +353,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                             cur_estoque = conn_estoque.cursor()
                             resultado_mov = aplicar_movimentacao_insumo(
                                 cur_estoque,
-                                fazenda_id=1,
+                                fazenda_id=sess.get("_imovel_id") or 1,
                                 insumo_id=sess["_insumo_id"],
                                 tipo="uso",
                                 quantidade=sess["_quantidade_consumida"],
@@ -423,7 +423,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                         cur_estoque = conn_estoque.cursor()
                         resultado_mov = aplicar_movimentacao_insumo(
                             cur_estoque,
-                            fazenda_id=1,
+                            fazenda_id=sess.get("_imovel_id") or 1,
                             insumo_id=sess["_compra_insumo_id"],
                             tipo="compra",
                             quantidade=sess["_compra_quantidade"],
@@ -545,7 +545,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # Consumo de insumo já cadastrado no estoque — NUNCA vira lançamento
     # (a despesa já foi registrada na aquisição). É só baixa de estoque +
     # alocação de custo pro lote/atividade, pra não duplicar o gasto.
-    resultado_insumo = _detectar_consumo_insumo(texto)
+    resultado_insumo = _detectar_consumo_insumo(texto, auth["imovel_id"])
     if resultado_insumo and resultado_insumo.get("_candidatos_insumo_ambiguo"):
         candidatos = resultado_insumo["_candidatos_insumo_ambiguo"]
         sessoes[key] = {
@@ -581,7 +581,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # confirmação. Espelha o consumo (baixa), fechando o ciclo aquisição
     # -> estoque -> baixa -> custeio.
     if resultado.get("tipo") == "despesa" and resultado.get("valor"):
-        compra_insumo = _detectar_compra_insumo(texto, resultado["valor"])
+        compra_insumo = _detectar_compra_insumo(texto, resultado["valor"], auth["imovel_id"])
         if compra_insumo:
             resultado.update(compra_insumo)
 
@@ -1196,7 +1196,7 @@ def _converter_numeros_extenso(texto: str) -> str:
     return " ".join(resultado)
 
 
-def _detectar_consumo_insumo(texto: str) -> dict | None:
+def _detectar_consumo_insumo(texto: str, imovel_id: int) -> dict | None:
     """
     Detecta mensagens de consumo de um insumo já cadastrado no estoque
     (ex: "consumo de 10 sacos de farelo de soja") e monta o lançamento
@@ -1210,8 +1210,9 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
     Retorna None se não parecer uma mensagem de consumo de insumo (nesse
     caso o chamador segue pro classificador genérico normalmente).
 
-    LIMITAÇÃO CONHECIDA (mesma do resto do módulo Insumos): a tabela
-    `insumos` usa fazenda_id fixo em 1 (MVP single-tenant), não imovel_id.
+    CORRIGIDO: antes a query usava fazenda_id fixo em 1 — qualquer produtor
+    (ex: Ubiratan, imovel 6) tinha o insumo procurado no estoque errado.
+    Agora recebe o imovel_id resolvido pela autorização do numero/chat.
     """
     import re as _re
     from app.services.classifier import normalizar
@@ -1264,8 +1265,8 @@ def _detectar_consumo_insumo(texto: str) -> dict | None:
         rows = conn.execute(sqlt("""
             SELECT id, nome, categoria, unidade, estoque_atual, preco_estimado, custo_medio
             FROM insumos
-            WHERE fazenda_id = 1 AND ativo = true
-        """)).fetchall()
+            WHERE fazenda_id = :fid AND ativo = true
+        """), {"fid": imovel_id}).fetchall()
 
     # Casamento exato tem prioridade absoluta — não entra em empate
     for r in rows:
@@ -1340,6 +1341,9 @@ def _avancar_consumo_insumo(sessoes: dict, key: str, resultado_insumo: dict, imo
     ativo, senão confirma a baixa direto. Usado nos dois pontos de entrada
     pra não divergir (bug corrigido: a escolha de insumo ambíguo pulava
     essa pergunta e ia direto pra confirmação sem origem_modulo)."""
+    # Guarda o imovel_id na sessão — a gravação da baixa acontece só na
+    # mensagem seguinte ("SIM"), quando o contexto original já se perdeu.
+    resultado_insumo["_imovel_id"] = imovel_id
     lotes_bovino = _listar_lotes_bovino_ativos(imovel_id)
     if lotes_bovino:
         sessoes[key] = {
@@ -1388,7 +1392,7 @@ def _listar_lotes_bovino_ativos(imovel_id: int) -> list:
         """), {"iid": imovel_id}).fetchall()
     return [{"id": r[0], "nome": r[1]} for r in rows]
 
-def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
+def _detectar_compra_insumo(texto: str, valor: float, imovel_id: int) -> dict | None:
     """
     Detecta se uma mensagem de despesa é uma compra de insumo já cadastrado
     no catálogo, pra dar entrada automática no estoque na confirmação —
@@ -1435,8 +1439,8 @@ def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
 
     with engine.connect() as conn:
         rows = conn.execute(sqlt("""
-            SELECT id, nome FROM insumos WHERE fazenda_id = 1 AND ativo = true
-        """)).fetchall()
+            SELECT id, nome FROM insumos WHERE fazenda_id = :fid AND ativo = true
+        """), {"fid": imovel_id}).fetchall()
 
     melhor = None
     melhor_score = 0
@@ -1467,4 +1471,5 @@ def _detectar_compra_insumo(texto: str, valor: float) -> dict | None:
         "_compra_insumo_nome": melhor.nome,
         "_compra_quantidade": quantidade,
         "_compra_custo_unitario": round(valor / quantidade, 4),
+        "_imovel_id": imovel_id,
     }
