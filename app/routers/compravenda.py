@@ -213,56 +213,155 @@ def listar_compras(
 # VENDAS
 # ─────────────────────────────────────────────────────────────
 
+PRAZO_FISCAL = {"confinamento": 52, "pasto": 138}  # Decreto 9.580/2018 — mesmo prazo do /alertas-fiscais
+
+
 @router.post("/vendas", status_code=201)
 def registrar_venda(dados: VendaCreate):
+    """
+    Registra a venda e baixa o estoque por FIFO (Primeiro que Entra,
+    Primeiro que Sai), consumindo as compras mais antigas primeiro.
+
+    Cada porção baixada é classificada individualmente:
+      - RURAL:      dias em estoque > prazo fiscal do regime da compra
+                     (52d confinamento / 138d pasto) -> entra no Livro Caixa
+      - NEGOCIACAO: dias em estoque <= prazo fiscal -> NAO entra no Livro
+                     Caixa Rural; deve ser declarado a parte como ganho de
+                     capital / atividade comercial na Declaracao Anual.
+
+    Se a venda consumir compras de mais de uma classificacao (parte ja
+    "rural", parte ainda "negociacao"), a venda fica com classificacao
+    = 'MISTA' e o valor e dividido proporcionalmente entre valor_rural
+    e valor_negociacao. So o valor_rural gera lancamento no Livro Caixa.
+    """
     conn = get_db()
     try:
         cur = conn.cursor()
-        # Verificar estoque disponível
+
+        # Saldo disponivel por compra (FIFO), mais antiga primeiro
         cur.execute("""
-            SELECT COALESCE(SUM(quantidade), 0) AS comprado FROM cv_compras
-            WHERE produto_id = %s AND imovel_id = %s
+            SELECT c.id, c.data_compra, c.quantidade, c.valor_total, c.valor_unitario,
+                   c.regime,
+                   c.quantidade - COALESCE((
+                       SELECT SUM(b.quantidade_baixada) FROM cv_vendas_baixas b
+                       WHERE b.compra_id = c.id
+                   ), 0) AS saldo
+            FROM cv_compras c
+            WHERE c.produto_id = %s AND c.imovel_id = %s
+            ORDER BY c.data_compra ASC, c.id ASC
         """, (dados.produto_id, dados.imovel_id))
-        comprado = float(cur.fetchone()["comprado"])
-        cur.execute("""
-            SELECT COALESCE(SUM(quantidade), 0) AS vendido FROM cv_vendas
-            WHERE produto_id = %s AND imovel_id = %s
-        """, (dados.produto_id, dados.imovel_id))
-        vendido = float(cur.fetchone()["vendido"])
-        estoque = comprado - vendido
-        if dados.quantidade > estoque:
+        compras = [dict(r) for r in cur.fetchall() if float(r["saldo"]) > 0]
+
+        estoque_disponivel = sum(float(c["saldo"]) for c in compras)
+        if dados.quantidade > estoque_disponivel:
             raise HTTPException(
                 status_code=400,
-                detail=f"Estoque insuficiente. Disponível: {estoque:.2f}"
+                detail=f"Estoque insuficiente. Disponivel: {estoque_disponivel:.2f}"
             )
 
-        # Calcular custo médio para lucro bruto
-        cur.execute("""
-            SELECT CASE WHEN SUM(quantidade) > 0
-                   THEN SUM(valor_total) / SUM(quantidade)
-                   ELSE 0 END AS custo_medio
-            FROM cv_compras WHERE produto_id = %s AND imovel_id = %s
-        """, (dados.produto_id, dados.imovel_id))
-        custo_medio = float(cur.fetchone()["custo_medio"] or 0)
-
         valor_total = dados.quantidade * dados.valor_unitario
-        custo_total = dados.quantidade * custo_medio
+        restante = dados.quantidade
+        baixas = []
+
+        for c in compras:
+            if restante <= 0:
+                break
+            qtd_baixa = min(restante, float(c["saldo"]))
+            dias = (dados.data_venda - c["data_compra"]).days
+            prazo_max = PRAZO_FISCAL.get(c["regime"], 138)
+            classificacao = "RURAL" if dias > prazo_max else "NEGOCIACAO"
+
+            valor_baixado = round(qtd_baixa * dados.valor_unitario, 2)
+            custo_baixado = round(qtd_baixa * float(c["valor_unitario"]), 2)
+
+            baixas.append({
+                "compra_id": c["id"],
+                "quantidade_baixada": qtd_baixa,
+                "dias_permanencia": dias,
+                "prazo_max": prazo_max,
+                "classificacao": classificacao,
+                "valor_baixado": valor_baixado,
+                "custo_baixado": custo_baixado,
+            })
+            restante -= qtd_baixa
+
+        custo_total = sum(b["custo_baixado"] for b in baixas)
         lucro_bruto = valor_total - custo_total
         margem_pct = round((lucro_bruto / valor_total * 100), 2) if valor_total > 0 else 0
+
+        valor_rural = sum(b["valor_baixado"] for b in baixas if b["classificacao"] == "RURAL")
+        valor_negociacao = sum(b["valor_baixado"] for b in baixas if b["classificacao"] == "NEGOCIACAO")
+        classificacoes_presentes = {b["classificacao"] for b in baixas}
+        classificacao_venda = (
+            classificacoes_presentes.pop() if len(classificacoes_presentes) == 1 else "MISTA"
+        )
+
+        # So a parte RURAL gera lancamento no Livro Caixa (conta 1.1.2 -
+        # Venda de produtos pecuarios). A parte NEGOCIACAO fica de fora
+        # e deve ser tratada separadamente na Declaracao Anual (DAA).
+        lancamento_id = None
+        if valor_rural > 0:
+            cur.execute("""
+                INSERT INTO lancamentos
+                    (imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento,
+                     origem, origem_modulo, origem_tipo, origem_descricao)
+                VALUES (%s, '1.1.2', 'receita', %s, %s, %s,
+                        'compravenda', 'compravenda', 'venda', %s)
+                RETURNING id
+            """, (
+                dados.imovel_id,
+                f"Venda comercial (parte rural) - {dados.comprador or 'comprador nao informado'}",
+                round(valor_rural, 2),
+                dados.data_venda,
+                "Classificado automaticamente pela regra dos 52/138 dias (Decreto 9.580/2018)",
+            ))
+            lancamento_id = cur.fetchone()["id"]
 
         cur.execute("""
             INSERT INTO cv_vendas
                 (imovel_id, produto_id, data_venda, quantidade, valor_unitario,
                  valor_total, custo_total, lucro_bruto, margem_pct,
-                 comprador, nota_fiscal, observacoes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+                 comprador, nota_fiscal, observacoes,
+                 classificacao, valor_rural, valor_negociacao, lancamento_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (dados.imovel_id, dados.produto_id, dados.data_venda,
               dados.quantidade, dados.valor_unitario, valor_total,
               custo_total, lucro_bruto, margem_pct,
-              dados.comprador, dados.nota_fiscal, dados.observacoes))
+              dados.comprador, dados.nota_fiscal, dados.observacoes,
+              classificacao_venda, round(valor_rural, 2), round(valor_negociacao, 2),
+              lancamento_id))
         vid = cur.fetchone()["id"]
+
+        if lancamento_id:
+            cur.execute("UPDATE lancamentos SET origem_id = %s WHERE id = %s", (vid, lancamento_id))
+
+        for b in baixas:
+            cur.execute("""
+                INSERT INTO cv_vendas_baixas
+                    (venda_id, compra_id, quantidade_baixada, dias_permanencia,
+                     prazo_max, classificacao, valor_baixado, custo_baixado)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (vid, b["compra_id"], b["quantidade_baixada"], b["dias_permanencia"],
+                  b["prazo_max"], b["classificacao"], b["valor_baixado"], b["custo_baixado"]))
+
         conn.commit()
-        return {"id": vid, "valor_total": valor_total, "lucro_bruto": lucro_bruto, "margem_pct": margem_pct}
+        return {
+            "id": vid,
+            "valor_total": valor_total,
+            "lucro_bruto": lucro_bruto,
+            "margem_pct": margem_pct,
+            "classificacao": classificacao_venda,
+            "valor_rural": round(valor_rural, 2),
+            "valor_negociacao": round(valor_negociacao, 2),
+            "lancamento_id": lancamento_id,
+            "aviso": (
+                None if classificacao_venda == "RURAL" else
+                "Parte ou toda a venda ficou dentro do prazo fiscal (regime comercial) - "
+                "nao entrou no Livro Caixa Rural. Declare o valor_negociacao separadamente "
+                "como ganho de capital / atividade comercial na Declaracao Anual."
+            ),
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -578,6 +677,69 @@ def dre(
             "total_despesas": round(total_despesas, 2),
             "lucro_operacional": round(lucro_operacional, 2),
             "margem_operacional_pct": round(lucro_operacional / receita_bruta * 100, 2) if receita_bruta > 0 else 0,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────
+# RELATÓRIO FISCAL — RURAL vs NEGOCIAÇÃO (regra dos 52/138 dias)
+# ─────────────────────────────────────────────────────────────
+
+@router.get("/relatorio-fiscal/{imovel_id}")
+def relatorio_fiscal(
+    imovel_id: int,
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+):
+    """
+    Consolida as vendas por classificação fiscal (RURAL / NEGOCIACAO),
+    já com a baixa por FIFO aplicada em /vendas. Serve de base para a
+    tela "Compra e Venda" e para o contador separar o que vai no Livro
+    Caixa Rural do que precisa ser declarado na DAA como negociação.
+    """
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        filtros = ["v.imovel_id = %s"]
+        params: list = [imovel_id]
+        if data_inicio:
+            filtros.append("v.data_venda >= %s"); params.append(data_inicio)
+        if data_fim:
+            filtros.append("v.data_venda <= %s"); params.append(data_fim)
+
+        cur.execute(f"""
+            SELECT b.classificacao,
+                   COUNT(DISTINCT v.id) AS qtd_vendas,
+                   SUM(b.valor_baixado) AS valor,
+                   SUM(b.custo_baixado) AS custo,
+                   SUM(b.valor_baixado - b.custo_baixado) AS resultado
+            FROM cv_vendas_baixas b
+            JOIN cv_vendas v ON v.id = b.venda_id
+            WHERE {' AND '.join(filtros)}
+            GROUP BY b.classificacao
+        """, params)
+        por_classificacao = {r["classificacao"]: dict(r) for r in cur.fetchall()}
+
+        cur.execute(f"""
+            SELECT v.id, p.nome AS produto_nome, p.especie, v.data_venda,
+                   v.quantidade, v.classificacao, v.valor_rural, v.valor_negociacao,
+                   v.lancamento_id
+            FROM cv_vendas v
+            JOIN cv_produtos p ON p.id = v.produto_id
+            WHERE {' AND '.join(filtros)}
+            ORDER BY v.data_venda DESC
+        """, params)
+        vendas = [dict(r) for r in cur.fetchall()]
+
+        return {
+            "resumo": {
+                "rural": por_classificacao.get("RURAL", {"qtd_vendas": 0, "valor": 0, "custo": 0, "resultado": 0}),
+                "negociacao": por_classificacao.get("NEGOCIACAO", {"qtd_vendas": 0, "valor": 0, "custo": 0, "resultado": 0}),
+            },
+            "vendas": vendas,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
