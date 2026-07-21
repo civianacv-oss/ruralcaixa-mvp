@@ -299,6 +299,21 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 logger.error("Erro ao gravar compra CV: %s", e)
                 return "Erro ao gravar a compra. Tente novamente ou lance pelo app."
 
+        # Sub-fluxo: módulo zootécnico (bovino/ovino/caprino/piscicultura)
+        # pediu um complemento (valor, peso, brinco etc.) e está esperando
+        # a resposta — sem isso, a próxima mensagem virava um lançamento
+        # novo do zero e perdia todo o contexto (ex: "compra de bezerro" +
+        # "300" caindo no fluxo genérico de classificação financeira).
+        if sessoes[key].get("_aguardando_complemento_zootecnico"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            modulo = sessoes[key]["_zootecnico_modulo"]
+            texto_original = sessoes[key]["_zootecnico_texto_original"]
+            sessoes.pop(key, None)
+            texto_combinado = f"{texto_original} {texto}".strip()
+            return await _processar_zootecnico(msg, modulo, texto_combinado, sessoes, key)
+
         # Sub-fluxo: usuário já rejeitou a conta sugerida e está escolhendo a certa
         if sessoes[key].get("_aguardando_conta"):
             if texto_up in ("0", "CANCELAR", "CANCELA"):
@@ -526,21 +541,21 @@ async def processar_mensagem(msg: MsgIn) -> str:
                       "pesagem", "vacina", "vermifug", "parto", "monta",
                       "famacha", "abate", "desmame"]
     if any(k in texto.lower() for k in keywords_ovino):
-        return await _processar_zootecnico(msg, "ovino", texto)
+        return await _processar_zootecnico(msg, "ovino", texto, sessoes, key)
 
     keywords_caprino = ["cabra", "caprino", "bode", "cabrito", "chibato", "cabrita"]
     if any(k in texto.lower() for k in keywords_caprino):
-        return await _processar_zootecnico(msg, "caprino", texto)
+        return await _processar_zootecnico(msg, "caprino", texto, sessoes, key)
 
     keywords_bovino = ["boi", "vaca", "novilho", "bezerro", "bovino",
                        "nelore", "angus", "gado"]
     if any(k in texto.lower() for k in keywords_bovino):
-        return await _processar_zootecnico(msg, "bovino", texto)
+        return await _processar_zootecnico(msg, "bovino", texto, sessoes, key)
 
     keywords_pisc = ["peixe", "tilapia", "tambaqui", "viveiro", "tanque",
                      "aerador", "biometria", "despesca", "alevino"]
     if any(k in texto.lower() for k in keywords_pisc):
-        return await _processar_zootecnico(msg, "piscicultura", texto)
+        return await _processar_zootecnico(msg, "piscicultura", texto, sessoes, key)
 
     # Consumo de insumo já cadastrado no estoque — NUNCA vira lançamento
     # (a despesa já foi registrada na aquisição). É só baixa de estoque +
@@ -935,7 +950,20 @@ def _cmd_ajuda() -> str:
     )
 
 
-async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
+async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str,
+                                  sessoes: dict = None, key: str = None) -> str:
+    def _marcar_pendencia_se_necessario(resultado: dict):
+        # Qualquer status "pendente" nesses módulos significa que o bot fez
+        # uma pergunta de volta (valor, peso, brinco...) — registra a
+        # pendência pra próxima mensagem ser tratada como complemento desse
+        # mesmo lançamento, e não como uma mensagem nova do zero.
+        if sessoes is not None and key is not None and resultado.get("status") == "pendente":
+            sessoes[key] = {
+                "_aguardando_complemento_zootecnico": True,
+                "_zootecnico_modulo": modulo,
+                "_zootecnico_texto_original": texto,
+            }
+
     try:
         if modulo == "ovino":
             from app.routers.ovino import webhook_whatsapp_ovino, WhatsAppMensagem
@@ -952,6 +980,7 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
                 conteudo=texto, imovel_id=imovel_id,
             )
             resultado = webhook_whatsapp_ovino(payload)
+            _marcar_pendencia_se_necessario(resultado)
             return resultado.get("resumo", "Registrado.")
 
         if modulo == "caprino":
@@ -969,6 +998,7 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
                 conteudo=texto, imovel_id=imovel_id,
             )
             resultado = webhook_whatsapp_caprino(payload)
+            _marcar_pendencia_se_necessario(resultado)
             return resultado.get("resumo", "Registrado.")
 
         if modulo == "bovino":
@@ -986,6 +1016,7 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
                 conteudo=texto, imovel_id=imovel_id,
             )
             resultado = webhook_whatsapp_bovino(payload)
+            _marcar_pendencia_se_necessario(resultado)
             return resultado.get("resumo", "Registrado.")
 
         if modulo == "piscicultura":
@@ -1003,6 +1034,7 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str) -> str:
                 conteudo=texto, imovel_id=imovel_id,
             )
             resultado = webhook_whatsapp_piscicultura(payload)
+            _marcar_pendencia_se_necessario(resultado)
             return resultado.get("resumo", "Registrado.")
 
         return f"Módulo {modulo} recebido. Acesse o app para detalhes."
