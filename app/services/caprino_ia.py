@@ -40,7 +40,7 @@ Intents disponíveis e seus campos:
 - tratamento     → brinco (str), produto (str), diagnostico? (str)
 - desmame        → brinco_cordeiro (str), peso_kg? (float)
 - morte          → brinco (str), causa? (str)
-- compra         → quantidade (int), valor_total (float), raca? (str), fornecedor? (str)
+- compra         → quantidade (int), valor_total (float), regime? ("pasto"|"confinamento"), raca? (str), fornecedor? (str)
 - venda          → quantidade (int), valor_total (float), brinco? (str), comprador? (str)
 - outro          → descricao (str)
 
@@ -49,6 +49,7 @@ Regras:
 - Pesos em arrobas (@): multiplique por 15 para obter kg.
 - Se confiança < 0.4, use intent "outro".
 - "Comprei/adquiri N cabras/bodes/cabritos por R$ X" → intent "compra".
+- Regime da compra: "confinamento", "cocho", "curral", "engorda confinada" → regime "confinamento" (prazo fiscal: 52 dias). "Pasto", "solto", "campo", ou se não mencionar nada → regime "pasto" (prazo fiscal: 138 dias, é o padrão mais comum).
 - "Vendi N cabras/bodes/cabritos por R$ X" → intent "venda".
 """
 

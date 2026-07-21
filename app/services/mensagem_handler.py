@@ -785,7 +785,7 @@ def _texto_lista_contas(prefixo: str = "") -> str:
     for i, (codigo, label) in enumerate(CONTAS_DISPONIVEIS, start=1):
         linhas.append(f"{i}. {codigo} — {label}")
     linhas.append("\n0. Cancelar o lançamento")
-    linhas.append("\nResponda com o número da conta.")
+    linhas.append("\nDigite só o número da lista acima (ex: 1), não o código da conta.")
     return "\n".join(linhas)
 
 
@@ -870,15 +870,19 @@ def _tipo_da_conta(codigo: str) -> str:
 
 def _resolver_escolha_conta(texto: str):
     """Aceita tanto o número da lista (ex: '3') quanto o código direto
-    (ex: '3.1.2'). Retorna (codigo, label) ou None se não reconhecer."""
-    texto = texto.strip()
-    if texto.isdigit():
-        idx = int(texto)
+    (ex: '3.1.2', ou '312' sem pontuação). Retorna (codigo, label) ou
+    None se não reconhecer."""
+    texto_norm = _normalizar_entrada_conta(texto)
+    if texto_norm.isdigit():
+        idx = int(texto_norm)
         if 1 <= idx <= len(CONTAS_DISPONIVEIS):
             return CONTAS_DISPONIVEIS[idx - 1]
+        for codigo, label in CONTAS_DISPONIVEIS:
+            if codigo.replace(".", "") == texto_norm:
+                return (codigo, label)
         return None
     for codigo, label in CONTAS_DISPONIVEIS:
-        if texto == codigo:
+        if texto_norm == codigo:
             return (codigo, label)
     return None
 
@@ -1136,6 +1140,12 @@ def _texto_pergunta_tipo_lancamento(prefixo: str = "") -> str:
     )
 
 
+def _normalizar_entrada_conta(texto: str) -> str:
+    """Normaliza variações comuns de digitação: vírgula como separador,
+    espaços, e código sem pontuação (ex: '53' -> compara com '5.3')."""
+    return texto.strip().replace(",", ".").replace(" ", "")
+
+
 def _contas_por_tipo(tipo: str) -> list:
     return [(c, l) for c, l in CONTAS_DISPONIVEIS if _tipo_da_conta(c) == tipo]
 
@@ -1146,20 +1156,25 @@ def _texto_lista_contas_por_tipo(tipo: str, prefixo: str = "") -> str:
     for i, (codigo, label) in enumerate(contas, start=1):
         linhas.append(f"{i}. {codigo} — {label}")
     linhas.append("\n0. Cancelar o lançamento")
-    linhas.append("\nResponda com o número.")
+    linhas.append("\nDigite só o número da lista acima (ex: 1), não o código da conta.")
     return "\n".join(linhas)
 
 
 def _resolver_escolha_conta_por_tipo(texto: str, tipo: str):
     contas = _contas_por_tipo(tipo)
-    texto = texto.strip()
-    if texto.isdigit():
-        idx = int(texto)
+    texto_norm = _normalizar_entrada_conta(texto)
+    if texto_norm.isdigit():
+        idx = int(texto_norm)
         if 1 <= idx <= len(contas):
             return contas[idx - 1]
+        # Não bateu como índice da lista — tenta como código sem pontuação
+        # (ex: usuário digitou "53" querendo dizer "5.3")
+        for codigo, label in contas:
+            if codigo.replace(".", "") == texto_norm:
+                return (codigo, label)
         return None
     for codigo, label in contas:
-        if texto == codigo:
+        if texto_norm == codigo:
             return (codigo, label)
     return None
 

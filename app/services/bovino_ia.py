@@ -41,7 +41,7 @@ Intents disponíveis e seus campos:
 - abate           → brinco (str), peso_vivo_kg? (float), peso_carcaca_kg? (float), preco_arroba? (float), valor_total? (float), comprador? (str)
 - cadastro        → brinco (str), sexo ("M"|"F"), raca? (str), categoria? (str), data_nascimento? (str YYYY-MM-DD)
 - morte           → brinco (str), causa? (str)
-- compra          → quantidade (int), valor_total (float), raca? (str), fornecedor? (str)
+- compra          → quantidade (int), valor_total (float), regime? ("pasto"|"confinamento"), raca? (str), fornecedor? (str)
 - venda           → quantidade (int), valor_total (float), brinco? (str), comprador? (str)
 - outro           → descricao (str)
 
@@ -49,6 +49,7 @@ Regras:
 - Datas sem ano assumem o ano atual.
 - Pesos em arrobas (@): multiplique por 15 para obter kg.
 - "Comprei/adquiri N boi(s)/vaca(s)/novilho(s)/nelore/angus por R$ X" → intent "compra".
+- Regime da compra: "confinamento", "cocho", "curral", "engorda confinada" → regime "confinamento" (prazo fiscal: 52 dias). "Pasto", "solto", "campo", ou se não mencionar nada → regime "pasto" (prazo fiscal: 138 dias, é o padrão mais comum).
 - "Vendi N boi(s)/vaca(s)... por R$ X" (venda de animal vivo, não abate) → intent "venda".
 - Venda para frigorífico/abate → intent "abate", não "venda".
 - Se confiança < 0.4, use intent "outro".

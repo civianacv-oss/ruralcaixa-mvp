@@ -1727,57 +1727,109 @@ def webhook_whatsapp_bovino(payload: WhatsAppMensagemBovino):
                     resumo = f"Não encontrei o animal {entidades.get('brinco')}. Confira o brinco."
 
             elif intent == "compra":
-                produtor_id = _produtor_do_imovel_bovino(cur, payload.imovel_id)
+                from app.services.compravenda_zootecnico import registrar_compra_zootecnico
                 valor_total = entidades.get("valor_total")
                 qtd = entidades.get("quantidade")
-                if valor_total:
-                    lanc_id = _criar_lancamento_lcdpr_bovino(
-                        conn, produtor_id, entidades.get("data_evento"), "despesa",
-                        valor_total, f"Compra de {qtd or '?'} bovino(s)"
-                                     + (f" — {entidades['raca']}" if entidades.get("raca") else ""),
-                        subconta_id_fixo="456d01f4-e0b9-48e4-8b71-5ab8021fb50f",  # Animais
-                    )
-                    if lanc_id:
-                        evento_id = lanc_id
-                        evento_tab = "lancamentos"
-                        resumo = (
-                            f"✅ Compra registrada: {qtd or '?'} animal(is) por "
-                            f"R$ {float(valor_total):,.2f}. Cadastre os animais individualmente "
-                            f"(com brinco) quando possível para o rebanho ficar completo."
+                regime = entidades.get("regime") or "pasto"
+                if valor_total and qtd:
+                    try:
+                        resultado_cv = registrar_compra_zootecnico(
+                            cur, payload.imovel_id, "bovino",
+                            entidades.get("data_evento"), qtd, valor_total, regime,
+                            fornecedor=entidades.get("fornecedor"),
+                            observacoes=f"Raça: {entidades['raca']}" if entidades.get("raca") else None,
                         )
-                    else:
+                        evento_id = resultado_cv["compra_id"]
+                        evento_tab = "cv_compras"
+                        resumo = (
+                            f"✅ Compra registrada no Compra e Venda: {qtd} bovino(s) por "
+                            f"R$ {float(valor_total):,.2f} (regime: {regime}).\n\n"
+                            f"⚠️ Prazo fiscal: {resultado_cv['prazo_texto']} a partir de hoje. "
+                            f"Se vender antes, fica fora do Livro Caixa Rural (declare como ganho "
+                            f"de capital na DAA). Depois do prazo, a venda já entra automaticamente "
+                            f"como receita rural. Acompanhe em Compra e Venda → Alertas Fiscais."
+                        )
+                    except Exception as e:
+                        logger.error("Erro ao registrar compra CV (bovino): %s", e)
                         status_log = "erro"
-                        resumo = "Entendi a compra, mas não consegui gravar o lançamento financeiro. Confira manualmente."
-                else:
+                        resumo = "Entendi a compra, mas não consegui gravar no módulo Compra e Venda. Confira manualmente."
+                elif not valor_total:
                     status_log = "pendente"
                     resumo = "Entendi que foi uma compra, mas não identifiquei o valor. Pode informar o valor total?"
+                else:
+                    status_log = "pendente"
+                    resumo = "Entendi a compra, mas não identifiquei a quantidade de animais. Quantos foram comprados?"
 
             elif intent == "venda":
-                produtor_id = _produtor_do_imovel_bovino(cur, payload.imovel_id)
+                from app.services.compravenda_zootecnico import registrar_venda_zootecnico
                 valor_total = entidades.get("valor_total")
                 qtd = entidades.get("quantidade")
-                if valor_total:
-                    lanc_id = _criar_lancamento_lcdpr_bovino(
-                        conn, produtor_id, entidades.get("data_evento"), "receita",
-                        valor_total, f"Venda de {qtd or '?'} bovino(s)"
-                                     + (f" — brinco {entidades['brinco']}" if entidades.get("brinco") else ""),
-                        subconta_id_fixo="93f28dea-0242-462c-a4ef-65eed3478815",  # Venda de Bovinos
-                    )
-                    if lanc_id:
-                        evento_id = lanc_id
-                        evento_tab = "lancamentos"
-                        resumo = f"✅ Venda registrada: {qtd or '?'} animal(is) por R$ {float(valor_total):,.2f}."
-                        brinco_vendido = entidades.get("brinco")
+                brinco_vendido = entidades.get("brinco")
+
+                if valor_total and qtd:
+                    # Tenta primeiro pelo módulo Compra e Venda (aplica a regra
+                    # fiscal dos 52/138 dias). Só cai no lançamento direto no
+                    # Livro Caixa se não houver estoque de compra-e-venda pra
+                    # essa espécie (animal que já nasceu na propriedade, ou
+                    # comprado antes dessa integração existir).
+                    resultado_cv = None
+                    try:
+                        resultado_cv = registrar_venda_zootecnico(
+                            cur, payload.imovel_id, "bovino",
+                            entidades.get("data_evento"), qtd, valor_total,
+                            comprador=entidades.get("comprador"),
+                        )
+                    except ValueError:
+                        resultado_cv = None
+                    except Exception as e:
+                        logger.error("Erro ao registrar venda CV (bovino): %s", e)
+                        resultado_cv = None
+
+                    if resultado_cv:
+                        evento_id = resultado_cv["id"]
+                        evento_tab = "cv_vendas"
+                        if resultado_cv["classificacao"] == "RURAL":
+                            resumo = (
+                                f"✅ Venda registrada: {qtd} animal(is) por R$ {float(valor_total):,.2f} "
+                                f"— já passou do prazo fiscal, entrou como receita rural no Livro Caixa."
+                            )
+                        else:
+                            resumo = (
+                                f"✅ Venda registrada: {qtd} animal(is) por R$ {float(valor_total):,.2f}.\n\n"
+                                f"⚠️ {resultado_cv['aviso'] or 'Dentro do prazo fiscal — fora do Livro Caixa Rural.'}"
+                            )
                         if brinco_vendido:
                             animal = _buscar_animal_bovino(cur, brinco_vendido, payload.imovel_id)
                             if animal:
                                 cur.execute("UPDATE bovino_animais SET status='vendido', updated_at=NOW() WHERE id=%s", (animal["id"],))
                     else:
-                        status_log = "erro"
-                        resumo = "Entendi a venda, mas não consegui gravar o lançamento financeiro. Confira manualmente."
-                else:
+                        # Fallback: sem histórico de compra em Compra e Venda —
+                        # trata como atividade rural direta, do jeito que já
+                        # funcionava antes desta integração.
+                        produtor_id = _produtor_do_imovel_bovino(cur, payload.imovel_id)
+                        lanc_id = _criar_lancamento_lcdpr_bovino(
+                            conn, produtor_id, entidades.get("data_evento"), "receita",
+                            valor_total, f"Venda de {qtd or '?'} bovino(s)"
+                                         + (f" — brinco {entidades['brinco']}" if entidades.get("brinco") else ""),
+                            subconta_id_fixo="93f28dea-0242-462c-a4ef-65eed3478815",  # Venda de Bovinos
+                        )
+                        if lanc_id:
+                            evento_id = lanc_id
+                            evento_tab = "lancamentos"
+                            resumo = f"✅ Venda registrada: {qtd or '?'} animal(is) por R$ {float(valor_total):,.2f}."
+                            if brinco_vendido:
+                                animal = _buscar_animal_bovino(cur, brinco_vendido, payload.imovel_id)
+                                if animal:
+                                    cur.execute("UPDATE bovino_animais SET status='vendido', updated_at=NOW() WHERE id=%s", (animal["id"],))
+                        else:
+                            status_log = "erro"
+                            resumo = "Entendi a venda, mas não consegui gravar o lançamento financeiro. Confira manualmente."
+                elif not valor_total:
                     status_log = "pendente"
                     resumo = "Entendi que foi uma venda, mas não identifiquei o valor. Pode informar o valor total?"
+                else:
+                    status_log = "pendente"
+                    resumo = "Entendi a venda, mas não identifiquei a quantidade de animais. Quantos foram vendidos?"
 
             else:
                 status_log = "ignorado"
