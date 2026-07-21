@@ -299,6 +299,39 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 logger.error("Erro ao gravar compra CV: %s", e)
                 return "Erro ao gravar a compra. Tente novamente ou lance pelo app."
 
+        # Sub-fluxo: compra/venda de animal (bovino/ovino/caprino) já tem
+        # todos os dados identificados e está esperando confirmação (SIM/
+        # NÃO) antes de gravar — envolve valor e classificação fiscal, não
+        # deve ser gravado sem o produtor confirmar.
+        if sessoes[key].get("_aguardando_confirmacao_compravenda"):
+            resp = texto_up.strip()
+            dados = sessoes[key]["_dados_pendentes"]
+            if resp in ("0", "NAO", "NÃO", "N", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Nada foi gravado."
+            if resp in ("SIM", "S", "OK", "CONFIRMA"):
+                sessoes.pop(key, None)
+                return _executar_acao_compravenda(dados)
+            return "Não entendi. Responda SIM para confirmar ou NÃO para cancelar."
+
+        # Sub-fluxo: venda cuja classificação fiscal depende do regime real
+        # da compra original (zona cinzenta: 52-138 dias, regime gravado
+        # como pasto) — a resposta aqui já serve como confirmação da venda.
+        if sessoes[key].get("_aguardando_regime_venda"):
+            resp = texto_up.strip()
+            dados = sessoes[key]["_dados_pendentes"]
+            if resp in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Nada foi gravado."
+            if resp in ("1", "PASTO"):
+                sessoes.pop(key, None)
+                return _executar_acao_compravenda(dados)
+            if resp in ("2", "CONFINAMENTO"):
+                sessoes.pop(key, None)
+                dados["regime_override"] = {dados["compra_id_ambiguo"]: "confinamento"}
+                return _executar_acao_compravenda(dados)
+            return "Não entendi. Responda 1 (pasto), 2 (confinamento) ou 0 (cancelar)."
+
         # Sub-fluxo: módulo zootécnico (bovino/ovino/caprino/piscicultura)
         # pediu um complemento (valor, peso, brinco etc.) e está esperando
         # a resposta — sem isso, a próxima mensagem virava um lançamento
@@ -961,11 +994,30 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str,
         # uma pergunta de volta (valor, peso, brinco...) — registra a
         # pendência pra próxima mensagem ser tratada como complemento desse
         # mesmo lançamento, e não como uma mensagem nova do zero.
-        if sessoes is not None and key is not None and resultado.get("status") == "pendente":
+        if sessoes is None or key is None:
+            return
+        status = resultado.get("status")
+        if status == "pendente":
             sessoes[key] = {
                 "_aguardando_complemento_zootecnico": True,
                 "_zootecnico_modulo": modulo,
                 "_zootecnico_texto_original": texto,
+            }
+        elif status == "confirmar":
+            # Compra/venda com todos os dados já identificados, mas ainda
+            # não gravados — espera confirmação explícita (SIM/NÃO) antes
+            # de comprometer valor e classificação fiscal.
+            sessoes[key] = {
+                "_aguardando_confirmacao_compravenda": True,
+                "_dados_pendentes": resultado.get("dados_pendentes"),
+            }
+        elif status == "confirmar_regime":
+            # Venda cuja classificação fiscal depende do regime real da
+            # compra original (zona cinzenta: 52-138 dias, regime pasto)
+            # — pergunta antes de decidir RURAL vs NEGOCIACAO.
+            sessoes[key] = {
+                "_aguardando_regime_venda": True,
+                "_dados_pendentes": resultado.get("dados_pendentes"),
             }
 
     try:
@@ -1045,6 +1097,90 @@ async def _processar_zootecnico(msg: MsgIn, modulo: str, texto: str,
     except Exception as e:
         logger.error("Erro zootécnico %s: %s", modulo, e)
         return f"Erro ao processar registro {modulo}."
+
+
+def _executar_acao_compravenda(dados: dict) -> str:
+    """
+    Executa de fato a compra/venda de animal já confirmada pelo produtor
+    (SIM, ou resposta ao esclarecimento de regime). Só é chamada depois
+    da confirmação — nunca grava nada sozinha.
+    """
+    from app.routers.compravenda import get_db as get_db_cv
+    from app.services.compravenda_zootecnico import registrar_compra_zootecnico, registrar_venda_zootecnico
+
+    imovel_id = dados["imovel_id"]
+    conn = get_db_cv()
+    try:
+        cur = conn.cursor()
+
+        if dados["acao"] == "compra":
+            resultado = registrar_compra_zootecnico(
+                cur, imovel_id, dados["especie"], dados["data_evento"],
+                dados["quantidade"], dados["valor_total"], dados["regime"],
+                fornecedor=dados.get("fornecedor"),
+                observacoes=f"Raça: {dados['raca']}" if dados.get("raca") else None,
+            )
+            conn.commit()
+            return (
+                f"✅ Compra registrada no Compra e Venda: {dados['quantidade']} {dados['especie']}(s) "
+                f"por R$ {float(dados['valor_total']):,.2f} (regime: {dados['regime']}).\n\n"
+                f"⚠️ Prazo fiscal: {resultado['prazo_texto']} a partir de hoje. Se vender antes, fica "
+                f"fora do Livro Caixa Rural (declare como ganho de capital na DAA). Depois do prazo, a "
+                f"venda já entra automaticamente como receita rural."
+            )
+
+        # acao == "venda"
+        if dados.get("fallback_lcdpr"):
+            cur.execute("SELECT produtor_id FROM imoveis_rurais WHERE id = %s", (imovel_id,))
+            row = cur.fetchone()
+            produtor_id = row["produtor_id"] if row else None
+
+            modulo = dados["modulo"]
+            kwargs = {}
+            if modulo == "bovino":
+                from app.routers.bovino import _criar_lancamento_lcdpr_bovino as _criar_lanc
+                kwargs["subconta_id_fixo"] = "93f28dea-0242-462c-a4ef-65eed3478815"
+            elif modulo == "ovino":
+                from app.routers.ovino import _criar_lancamento_lcdpr_ovino as _criar_lanc
+            else:
+                from app.routers.caprino import _criar_lancamento_lcdpr_caprino as _criar_lanc
+
+            lanc_id = _criar_lanc(
+                None, produtor_id, dados["data_evento"], "receita", dados["valor_total"],
+                f"Venda de {dados['quantidade']} {dados['especie']}(s)"
+                + (f" — brinco {dados['brinco']}" if dados.get("brinco") else ""),
+                **kwargs,
+            )
+            conn.commit()
+            if lanc_id:
+                return f"✅ Venda registrada: {dados['quantidade']} animal(is) por R$ {float(dados['valor_total']):,.2f}."
+            return "Não consegui gravar o lançamento financeiro. Confira manualmente."
+
+        regime_overrides = None
+        if dados.get("regime_override"):
+            regime_overrides = dados["regime_override"]
+
+        resultado = registrar_venda_zootecnico(
+            cur, imovel_id, dados["especie"], dados["data_evento"],
+            dados["quantidade"], dados["valor_total"],
+            comprador=dados.get("comprador"), regime_overrides=regime_overrides,
+        )
+        conn.commit()
+        if resultado["classificacao"] == "RURAL":
+            return (
+                f"✅ Venda registrada: {dados['quantidade']} animal(is) por R$ {float(dados['valor_total']):,.2f} "
+                f"— já passou do prazo fiscal, entrou como receita rural no Livro Caixa."
+            )
+        return (
+            f"✅ Venda registrada: {dados['quantidade']} animal(is) por R$ {float(dados['valor_total']):,.2f}.\n\n"
+            f"⚠️ {resultado['aviso'] or 'Dentro do prazo fiscal — fora do Livro Caixa Rural.'}"
+        )
+    except Exception as e:
+        conn.rollback()
+        logger.error("Erro ao executar ação compra/venda: %s", e)
+        return "Ocorreu um erro ao gravar. Tente novamente ou lance pelo app."
+    finally:
+        conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
