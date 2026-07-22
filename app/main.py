@@ -323,6 +323,13 @@ CORS_ORIGINS = [
 # Auth middleware (executa depois do CORS)
 # Auth executa por ULTIMO (adicionado primeiro)
 try:
+    from app.routers.condominio_docx import router as condominio_docx_router
+    app.include_router(condominio_docx_router)
+    print('CONDOMINIO DOCX ROUTER LOADED OK')
+except Exception as _e:
+    print(f'CONDOMINIO DOCX ROUTER FAILED: {_e}')
+
+try:
     from app.routers.condominio import router as condominio_router
     app.include_router(condominio_router)
     print('CONDOMINIO ROUTER LOADED OK')
