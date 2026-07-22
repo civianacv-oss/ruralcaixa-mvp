@@ -151,7 +151,7 @@ def relatorio_rebanho(
         conn.close()
 
 
-def _gpd_e_peso(cur, tabela_animais, tabela_pesagens, imovel_id, extra_where=""):
+def _gpd_e_peso(cur, tabela_animais, tabela_pesagens, imovel_id, extra_where="", coluna_data="data_pesagem"):
     """
     Calcula cabecas ativas, peso medio (ultima pesagem de cada animal ativo)
     e GPD medio (Ganho de Peso Diario), usando TODO o historico de pesagens
@@ -159,6 +159,10 @@ def _gpd_e_peso(cur, tabela_animais, tabela_pesagens, imovel_id, extra_where="")
     diaria, entao "GPD do mes passado" seria maioria nula/enganoso).
     GPD e uma media ponderada: soma dos ganhos de todo animal com 2+
     pesagens dividido pela soma dos dias entre a 1a e a ultima pesagem.
+
+    `coluna_data`: nome da coluna de data em tabela_pesagens -- a maioria
+    usa "data_pesagem" (ovino/caprino/suino), mas bovino_pesagens usa so
+    "data" (schema mais antigo, criado antes do padrao se firmar).
     """
     cur.execute(f"""
         SELECT COUNT(*) AS cabecas_ativas
@@ -172,7 +176,7 @@ def _gpd_e_peso(cur, tabela_animais, tabela_pesagens, imovel_id, extra_where="")
         FROM {tabela_animais} a
         LEFT JOIN LATERAL (
             SELECT peso_kg FROM {tabela_pesagens}
-            WHERE animal_id = a.id ORDER BY data_pesagem DESC LIMIT 1
+            WHERE animal_id = a.id ORDER BY {coluna_data} DESC LIMIT 1
         ) p ON TRUE
         WHERE a.imovel_id = %s AND a.status = 'ativo' {extra_where}
     """, (imovel_id,))
@@ -181,14 +185,14 @@ def _gpd_e_peso(cur, tabela_animais, tabela_pesagens, imovel_id, extra_where="")
     cur.execute(f"""
         WITH pesos AS (
             SELECT p.animal_id,
-                   MIN(p.data_pesagem) AS d0, MAX(p.data_pesagem) AS d1,
-                   (ARRAY_AGG(p.peso_kg ORDER BY p.data_pesagem ASC))[1] AS peso0,
-                   (ARRAY_AGG(p.peso_kg ORDER BY p.data_pesagem DESC))[1] AS peso1
+                   MIN(p.{coluna_data}) AS d0, MAX(p.{coluna_data}) AS d1,
+                   (ARRAY_AGG(p.peso_kg ORDER BY p.{coluna_data} ASC))[1] AS peso0,
+                   (ARRAY_AGG(p.peso_kg ORDER BY p.{coluna_data} DESC))[1] AS peso1
             FROM {tabela_pesagens} p
             JOIN {tabela_animais} a ON a.id = p.animal_id
             WHERE a.imovel_id = %s AND a.status = 'ativo' {extra_where}
             GROUP BY p.animal_id
-            HAVING COUNT(*) >= 2 AND MAX(p.data_pesagem) > MIN(p.data_pesagem)
+            HAVING COUNT(*) >= 2 AND MAX(p.{coluna_data}) > MIN(p.{coluna_data})
         )
         SELECT
             SUM(peso1 - peso0) AS ganho_total_kg,
@@ -243,8 +247,8 @@ def relatorio_eficiencia_alimentar(imovel_id: int, produtor_id: int):
         custo_racao_mensal_medio = float(cur.fetchone()["custo_racao_mensal_medio"] or 0)
 
         grupos = {
-            "bovino_corte": _gpd_e_peso(cur, "bovino_animais", "bovino_pesagens", imovel_id, "AND aptidao_manejo = 'corte'"),
-            "bovino_leite": _gpd_e_peso(cur, "bovino_animais", "bovino_pesagens", imovel_id, "AND aptidao_manejo = 'leite'"),
+            "bovino_corte": _gpd_e_peso(cur, "bovino_animais", "bovino_pesagens", imovel_id, "AND aptidao_manejo = 'corte'", coluna_data="data"),
+            "bovino_leite": _gpd_e_peso(cur, "bovino_animais", "bovino_pesagens", imovel_id, "AND aptidao_manejo = 'leite'", coluna_data="data"),
             "ovino": _gpd_e_peso(cur, "ovino_animais", "ovino_pesagens", imovel_id),
             "caprino": _gpd_e_peso(cur, "caprino_animais", "caprino_pesagens", imovel_id),
             "suino": _gpd_e_peso(cur, "suino_animais", "suino_pesagens", imovel_id),
