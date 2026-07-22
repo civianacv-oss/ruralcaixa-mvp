@@ -580,8 +580,10 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if any(k in texto.lower() for k in keywords_caprino):
         return await _processar_zootecnico(msg, "caprino", texto, sessoes, key)
 
-    keywords_bovino = ["boi", "vaca", "novilho", "bezerro", "bovino",
-                       "nelore", "angus", "gado"]
+    keywords_bovino = ["boi", "vaca", "novilho", "novilha", "bezerro", "bezerra",
+                       "garrote", "garrota", "touro", "vitelo", "vitela",
+                       "bovino", "rês", "reses", "boiada",
+                       "nelore", "angus", "gado", "girolando", "brahman"]
     if any(k in texto.lower() for k in keywords_bovino):
         return await _processar_zootecnico(msg, "bovino", texto, sessoes, key)
 

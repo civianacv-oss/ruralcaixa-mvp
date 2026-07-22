@@ -215,6 +215,42 @@ def listar_compras(
 
 PRAZO_FISCAL = {"confinamento": 52, "pasto": 138}  # Decreto 9.580/2018 — mesmo prazo do /alertas-fiscais
 
+# Subcontas conhecidas de "Venda de {especie}" — mesmas UUIDs já usadas
+# nos módulos zootécnicos (bovino.py etc). Se a espécie não estiver
+# aqui, tenta achar dinamicamente na tabela subcontas pelo nome.
+SUBCONTAS_VENDA_POR_ESPECIE = {
+    "bovino": "93f28dea-0242-462c-a4ef-65eed3478815",
+}
+
+
+def _subconta_venda(cur, produto_id: int) -> str:
+    """Resolve a subconta de receita a usar no lançamento de venda,
+    a partir da espécie do produto. Lança HTTPException clara se não
+    encontrar nenhuma opção — evita gravar num UUID inventado."""
+    cur.execute("SELECT especie FROM cv_produtos WHERE id = %s", (produto_id,))
+    row = cur.fetchone()
+    especie = (row["especie"] if row else None) or ""
+    especie = especie.lower()
+
+    if especie in SUBCONTAS_VENDA_POR_ESPECIE:
+        return SUBCONTAS_VENDA_POR_ESPECIE[especie]
+
+    cur.execute("""
+        SELECT id FROM subcontas
+        WHERE LOWER(nome) LIKE %s AND LOWER(nome) LIKE '%%venda%%'
+        LIMIT 1
+    """, (f"%{especie}%",))
+    achou = cur.fetchone()
+    if achou:
+        return achou["id"]
+
+    raise HTTPException(
+        500,
+        f"Não encontrei uma subconta de 'Venda de {especie}' cadastrada. "
+        f"Crie essa subconta no plano de contas antes de registrar a venda, "
+        f"ou avise o desenvolvedor pra mapear a subconta certa pra essa espécie."
+    )
+
 
 def _registrar_venda_fifo(cur, imovel_id: int, produto_id: int, data_venda: date,
                            quantidade: float, valor_unitario: float,
@@ -292,24 +328,41 @@ def _registrar_venda_fifo(cur, imovel_id: int, produto_id: int, data_venda: date
         classificacoes_presentes.pop() if len(classificacoes_presentes) == 1 else "MISTA"
     )
 
-    # So a parte RURAL gera lancamento no Livro Caixa (conta 1.1.2 -
-    # Venda de produtos pecuarios). A parte NEGOCIACAO fica de fora
-    # e deve ser tratada separadamente na Declaracao Anual (DAA).
+    # So a parte RURAL gera lancamento no Livro Caixa. A parte NEGOCIACAO
+    # fica de fora e deve ser tratada separadamente na Declaracao Anual (DAA).
+    #
+    # IMPORTANTE: a tabela `lancamentos` real NAO tem conta_codigo/tipo/
+    # descricao/imovel_id/data_lancamento (isso so existe no banco.sql de
+    # referencia, desatualizado). O schema real e:
+    #   propriedade_id, subconta_id (uuid), valor, data, origem,
+    #   origem_modulo, origem_tipo, origem_id, origem_descricao.
+    # A "conta" e definida pela subconta_id (tabela subcontas), nao por
+    # um codigo textual.
     lancamento_id = None
     if valor_rural > 0:
+        subconta_id = _subconta_venda(cur, produto_id)
+        cur.execute("SELECT produtor_id FROM imoveis_rurais WHERE id = %s", (imovel_id,))
+        row_produtor = cur.fetchone()
+        produtor_id_lanc = row_produtor["produtor_id"] if row_produtor else None
+        if not produtor_id_lanc:
+            raise HTTPException(
+                500, f"Não encontrei produtor_id para imovel_id={imovel_id} — "
+                     f"não dá pra gravar o lançamento (coluna obrigatória)."
+            )
         cur.execute("""
             INSERT INTO lancamentos
-                (imovel_id, conta_codigo, tipo, descricao, valor, data_lancamento,
-                 origem, origem_modulo, origem_tipo, origem_descricao)
-            VALUES (%s, '1.1.2', 'receita', %s, %s, %s,
-                    'compravenda', 'compravenda', 'venda', %s)
+                (produtor_id, propriedade_id, subconta_id, valor, data, origem,
+                 origem_modulo, origem_tipo, origem_descricao)
+            VALUES (%s, %s, %s, %s, %s, 'compravenda', 'compravenda', 'venda', %s)
             RETURNING id
         """, (
+            produtor_id_lanc,
             imovel_id,
-            f"Venda comercial (parte rural) - {comprador or 'comprador nao informado'}",
+            subconta_id,
             round(valor_rural, 2),
             data_venda,
-            "Classificado automaticamente pela regra dos 52/138 dias (Decreto 9.580/2018)",
+            f"Venda comercial (parte rural) - {comprador or 'comprador nao informado'} - "
+            f"classificado automaticamente pela regra dos 52/138 dias (Decreto 9.580/2018)",
         ))
         lancamento_id = cur.fetchone()["id"]
 
@@ -431,17 +484,17 @@ def reclassificar_lancamento(dados: ReclassificarLancamento):
         cur = conn.cursor()
 
         cur.execute(
-            "SELECT id, valor, data_lancamento, descricao, imovel_id FROM lancamentos WHERE id = %s",
+            "SELECT id, valor, data, propriedade_id, subconta_id FROM lancamentos WHERE id = %s",
             (dados.lancamento_id,),
         )
         original = cur.fetchone()
         if not original:
             raise HTTPException(404, "Lançamento não encontrado")
-        if original["imovel_id"] and int(original["imovel_id"]) != dados.imovel_id:
+        if original["propriedade_id"] and int(original["propriedade_id"]) != dados.imovel_id:
             raise HTTPException(400, "Lançamento pertence a outro imóvel")
 
         valor_original = abs(float(original["valor"]))
-        data_compra_original = original["data_lancamento"]
+        data_compra_original = original["data"]
 
         # 1. Resolve produto_id (reaproveita por espécie, ou cria um novo)
         produto_id = dados.produto_id
@@ -463,23 +516,17 @@ def reclassificar_lancamento(dados: ReclassificarLancamento):
                 """, (dados.imovel_id, dados.especie.capitalize(), dados.especie))
                 produto_id = cur.fetchone()["id"]
 
-        # 2. Estorna o lançamento original — copia conta_codigo/subconta_id/
-        #    produtor_id do que já existir na linha (funciona tanto pro
-        #    esquema antigo por subconta quanto pelo mais novo por
-        #    conta_codigo, sem precisar saber qual dos dois foi usado),
-        #    invertendo o tipo receita<->despesa pra cancelar no relatório.
+        # 2. Estorna o lançamento original — lançamento reverso (valor
+        #    negativo), mesma subconta/produtor, pra cancelar na mesma
+        #    categoria e manter rastro de auditoria. A tabela real não
+        #    tem conta_codigo/tipo/descricao (só existiam no banco.sql
+        #    de referência, desatualizado) — usa subconta_id + valor.
         cur.execute("""
             INSERT INTO lancamentos
-                (produtor_id, imovel_id, conta_codigo, subconta_id, tipo,
-                 descricao, valor, data_lancamento, origem,
+                (produtor_id, propriedade_id, subconta_id, valor, data, origem,
                  origem_modulo, origem_tipo, origem_id, origem_descricao)
-            SELECT produtor_id, imovel_id, conta_codigo, subconta_id,
-                   CASE WHEN tipo = 'despesa' THEN 'receita'
-                        WHEN tipo = 'receita' THEN 'despesa'
-                        ELSE 'estorno' END,
-                   'Estorno (reclassificado p/ Compra e Venda): ' || COALESCE(descricao, ''),
-                   valor, %s, 'compravenda_reclassificacao',
-                   'compravenda', 'estorno', NULL,
+            SELECT produtor_id, propriedade_id, subconta_id, -valor, %s,
+                   'compravenda_estorno', 'compravenda', 'estorno', NULL,
                    'Lancamento original ' || id::text || ' reclassificado pela regra dos 52/138 dias'
             FROM lancamentos WHERE id = %s
             RETURNING id
