@@ -802,7 +802,7 @@ export default function ContratosRurais() {
       />
 
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" style={{overflowY: "auto"}}>
 
           {/* ── MODO SELETOR: grade rápida + CTA do assistente ── */}
           {modoNovo === "seletor" && (
