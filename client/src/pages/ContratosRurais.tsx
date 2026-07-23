@@ -635,17 +635,41 @@ export default function ContratosRurais() {
 
   const [enviandoAssinaturaId, setEnviandoAssinaturaId] = useState<number | null>(null);
 
-  const handleEnviarParaAssinatura = async (contratoId: number) => {
+  const handleEnviarParaAssinatura = async (contratoId: number, tipo: string) => {
     if (!confirm("Enviar este contrato para assinatura? Cada parte receberá um código por WhatsApp.")) return;
     setEnviandoAssinaturaId(contratoId);
     try {
-      const resultado = await apiFetch<{ partes_notificadas: { nome: string; whatsapp_enviado: boolean }[] }>(
-        `/contratos/${contratoId}/enviar`,
-        { method: "POST" }
-      );
-      const semWhatsapp = resultado.partes_notificadas.filter((p) => !p.whatsapp_enviado);
+      let partesNotificadas: { nome: string; whatsapp_enviado: boolean }[] = [];
+
+      if (tipo === "condominio_rural") {
+        // Condomínio Rural tem N condôminos (não 2 partes fixas) — a rota genérica
+        // /contratos/{id}/enviar não sabe lidar com isso. Busca os condôminos e
+        // envia o OTP individualmente para cada um via a rota dedicada.
+        const detalhe = await apiFetch<{ condominos: { id: number; nome: string }[] }>(
+          `/condominio/${contratoId}`
+        );
+        for (const cond of detalhe.condominos) {
+          try {
+            const r = await apiFetch<{ enviado_whatsapp?: boolean }>(
+              `/condominio/${contratoId}/condominos/${cond.id}/enviar-assinatura`,
+              { method: "POST" }
+            );
+            partesNotificadas.push({ nome: cond.nome, whatsapp_enviado: !!r.enviado_whatsapp });
+          } catch {
+            partesNotificadas.push({ nome: cond.nome, whatsapp_enviado: false });
+          }
+        }
+      } else {
+        const resultado = await apiFetch<{ partes_notificadas: { nome: string; whatsapp_enviado: boolean }[] }>(
+          `/contratos/${contratoId}/enviar`,
+          { method: "POST" }
+        );
+        partesNotificadas = resultado.partes_notificadas;
+      }
+
+      const semWhatsapp = partesNotificadas.filter((p) => !p.whatsapp_enviado);
       if (semWhatsapp.length > 0) {
-        toast.warning(`Enviado, mas sem telefone cadastrado para: ${semWhatsapp.map((p) => p.nome).join(", ")}`);
+        toast.warning(`Envio falhou ou sem telefone cadastrado para: ${semWhatsapp.map((p) => p.nome).join(", ")}`);
       } else {
         toast.success("Enviado para assinatura! Cada parte recebeu um código por WhatsApp.");
       }
@@ -769,7 +793,7 @@ export default function ContratosRurais() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleEnviarParaAssinatura(c.id)}
+                          onClick={() => handleEnviarParaAssinatura(c.id, c.tipo)}
                           disabled={enviandoAssinaturaId === c.id}
                           title="Enviar para assinatura (código por WhatsApp)"
                           className="text-emerald-600 hover:text-emerald-700"
