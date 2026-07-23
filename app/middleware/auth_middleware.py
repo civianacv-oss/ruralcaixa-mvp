@@ -26,6 +26,7 @@ ROTAS_PUBLICAS = {
 PREFIXOS_PUBLICOS = (
     "/telegram/",
     "/whatsapp/",
+    "/wapp/",
     "/assinar/",
     "/contratos",
     "/contratos-rurais",
