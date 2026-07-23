@@ -163,7 +163,7 @@ def criar_tipo(body: TipoContratoIn):
 _PARCERIAS = {"agricola", "pecuaria", "agroindustrial", "extrativa"}
 
 # Todos os slugs que o motor sabe pontuar por padrão (tipos "core" do app)
-_TODOS_TIPOS_CORE = _PARCERIAS | {"arrendamento", "comodato", "condominio", "compra_venda", "prestacao_servico"}
+_TODOS_TIPOS_CORE = _PARCERIAS | {"arrendamento", "comodato", "condominio_rural", "compra_venda", "prestacao_servico"}
 
 
 def _calcular_recomendacao(respostas: RespostasQuestionario, tipos_disponiveis: List[dict]) -> dict:
@@ -202,7 +202,7 @@ def _calcular_recomendacao(respostas: RespostasQuestionario, tipos_disponiveis: 
         # não há um lado "cedendo uso" pro outro — não é parceria nem
         # arrendamento, mesmo que a atividade seja agrícola/pecuária/etc.
         for slug in scores:
-            scores[slug] = 100 if slug == "condominio" else 0
+            scores[slug] = 100 if slug == "condominio_rural" else 0
         return {"alerta_vinculo": None, "scores": scores, "alertas_inconsistencia": []}
 
     # 2) REMUNERAÇÃO — eliminatório (zera TODOS os tipos não alinhados, não só alguns)
@@ -211,7 +211,7 @@ def _calcular_recomendacao(respostas: RespostasQuestionario, tipos_disponiveis: 
         "divisao_resultado": _PARCERIAS,
         "valor_fixo": {"arrendamento"},
         "gratuito": {"comodato"},
-        "rateio_cotas": {"condominio"},
+        "rateio_cotas": {"condominio_rural"},
         "preco_unico": {"compra_venda"},
         "por_servico_executado": {"prestacao_servico"},
     }
@@ -256,7 +256,7 @@ def _calcular_recomendacao(respostas: RespostasQuestionario, tipos_disponiveis: 
                 scores[slug] += 5
 
     if respostas.prazo == "indeterminado":
-        for slug in ("comodato", "condominio"):
+        for slug in ("comodato", "condominio_rural"):
             if slug in scores and scores[slug] > 0:
                 scores[slug] += 5
         if "arrendamento" in scores and scores["arrendamento"] > 0:

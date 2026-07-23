@@ -27,7 +27,7 @@ import io
 router = APIRouter(prefix="/contratos", tags=["Contratos Rurais"])
 
 # Tipos que NÃO usam divisão percentual outorgante/outorgado
-TIPOS_SEM_PERCENTUAL = {"condominio", "comodato"}
+TIPOS_SEM_PERCENTUAL = {"condominio_rural", "comodato"}
 
 def get_db():
     return psycopg2.connect(
@@ -67,7 +67,8 @@ _TIPO_MAP = {
     "pecuaria": "pecuaria",
     "agroindustrial": "agroindustrial",
     "extrativa": "extrativa",
-    "condominio": "condominio",
+    "condominio": "condominio_rural",
+    "condominio_rural": "condominio_rural",
     "arrendamento": "arrendamento",
     "comodato": "comodato",
     "compra_venda": "compra_venda",
@@ -76,8 +77,8 @@ _TIPO_MAP = {
     "parceria rural": "pecuaria",
     "arrendamento rural": "arrendamento",
     "comodato rural": "comodato",
-    "condomínio rural": "condominio",
-    "condominio rural": "condominio",
+    "condomínio rural": "condominio_rural",
+    "condominio rural": "condominio_rural",
     "integração agroindustrial": "integracao_agroindustrial",
     "integracao agroindustrial": "integracao_agroindustrial",
 }
@@ -248,7 +249,7 @@ TIPO_LABELS_DOC = {
     "pecuaria": "Contrato de Parceria Pecuária",
     "agroindustrial": "Contrato de Parceria Agroindustrial",
     "extrativa": "Contrato de Parceria Extrativa",
-    "condominio": "Contrato de Condomínio Rural",
+    "condominio_rural": "Contrato de Condomínio Rural",
     "arrendamento": "Contrato de Arrendamento Rural",
     "comodato": "Contrato de Comodato Rural",
     "compra_venda": "Contrato de Compra e Venda Rural",

@@ -200,7 +200,7 @@ def criar_condominio(body: CondominioCriar, request: Request):
                 clausulas_adicionais,
                 percentual_outorgante,
                 percentual_outorgado
-            ) VALUES (%s, 'condominio', 'rascunho', %s, %s, %s, %s, %s, NULL, NULL)
+            ) VALUES (%s, 'condominio_rural', 'rascunho', %s, %s, %s, %s, %s, NULL, NULL)
             RETURNING *
         """, (
             body.fazenda_id,

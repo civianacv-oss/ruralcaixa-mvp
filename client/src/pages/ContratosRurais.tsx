@@ -170,7 +170,7 @@ const TIPO_LABELS: Record<string, string> = {
   pecuaria:          "Parceria Pecuária",
   agroindustrial:    "Parceria Agroindustrial",
   extrativa:         "Parceria Extrativa",
-  condominio:        "Condomínio Rural",
+  condominio_rural:  "Condomínio Rural",
   comodato:          "Comodato",
   prestacao_servico: "Prestação de Serviço",
   compra_venda:      "Compra e Venda",
@@ -178,7 +178,7 @@ const TIPO_LABELS: Record<string, string> = {
 
 const TIPO_ICONS: Record<string, string> = {
   agricola: "🌾", pecuaria: "🐄", agroindustrial: "🏭",
-  extrativa: "🌲", condominio: "🤝", arrendamento: "📋",
+  extrativa: "🌲", condominio_rural: "🤝", arrendamento: "📋",
   parceria: "🤝", comodato: "🏠", compra_venda: "💰",
 };
 
@@ -196,14 +196,14 @@ const TIPOS_FORM = [
   { value: "pecuaria",       label: "Parceria Pecuária" },
   { value: "agroindustrial", label: "Parceria Agroindustrial" },
   { value: "extrativa",      label: "Parceria Extrativa" },
-  { value: "condominio",     label: "Condomínio Rural" },
+  { value: "condominio_rural", label: "Condomínio Rural" },
   { value: "arrendamento",   label: "Arrendamento" },
   { value: "comodato",       label: "Comodato" },
   { value: "compra_venda",   label: "Compra e Venda" },
 ];
 
 // Tipos que NÃO usam outorgante/outorgado
-const TIPOS_SEM_PARTES = ["condominio"];
+const TIPOS_SEM_PARTES = ["condominio_rural"];
 
 // Tipos de parceria (usados pra decidir quando pré-preencher a cláusula
 // padrão de rateio de custos — não faz sentido pra arrendamento/comodato/
@@ -249,7 +249,7 @@ export default function ContratosRurais() {
 
   const semPartes = TIPOS_SEM_PARTES.includes(form.tipo);
   const ehPecuaria = form.tipo === "pecuaria";
-  const ehCondominio = form.tipo === "condominio";
+  const ehCondominio = form.tipo === "condominio_rural";
 
   const [condominos, setCondominos] = useState<Condomino[]>([
     { nome: "", documento: "", area_ha: "", papel: "administrador" },

@@ -17,7 +17,7 @@ TIPO_LABELS = {
     "comodato": "Comodato",
     "prestacao_servico": "Prestacao de Servico",
     "compra_venda": "Compra e Venda",
-    "condominio": "Condominio Rural",
+    "condominio_rural": "Condominio Rural",
 }
 
 
@@ -25,7 +25,7 @@ class ContratoSalvar(BaseModel):
     imovel_id: Optional[int] = None
     nome_imovel: Optional[str] = None
     matricula: Optional[str] = None
-    tipo: str                           # arrendamento | parceria | comodato | prestacao_servico | compra_venda | condominio
+    tipo: str                           # arrendamento | parceria | comodato | prestacao_servico | compra_venda | condominio_rural
     modalidade: Optional[str] = None
     titulo: Optional[str] = None
     ano_safra: Optional[int] = None

@@ -62,7 +62,7 @@ def buscar_dados_contrato(contrato_id: str) -> dict:
                    i.municipio, i.uf, i.area_ha AS area_total_imovel_ha
             FROM contratos c
             JOIN imoveis_rurais i ON i.id = c.fazenda_id
-            WHERE c.id = %s AND c.tipo = 'condominio'
+            WHERE c.id = %s AND c.tipo = 'condominio_rural'
         """, (contrato_id,))
         contrato = cur.fetchone()
         if not contrato:

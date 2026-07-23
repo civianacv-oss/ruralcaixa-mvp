@@ -38,7 +38,7 @@ class DadosEnquadramento:
 # ------------------------------------------------------------------
 @dataclass
 class ResultadoEnquadramento:
-    tipo_contrato: str          # agricola|pecuaria|agroindustrial|extrativa|condominio|sociedade
+    tipo_contrato: str          # agricola|pecuaria|agroindustrial|extrativa|condominio_rural|sociedade
     subtipo: str                # clássica|mútua|condomínio_animais|condomínio_financeiro etc.
     base_legal: str
     descricao: str
@@ -99,7 +99,7 @@ def enquadrar_contrato(dados: DadosEnquadramento) -> ResultadoEnquadramento:
 
         if todos_com_animais and not tem_terra:
             return ResultadoEnquadramento(
-                tipo_contrato="condominio",
+                tipo_contrato="condominio_rural",
                 subtipo="condominio_animais",
                 base_legal="Art. 96, §1º, Lei 4.504/1964 c/c CC Art. 1.314",
                 descricao=(
@@ -132,7 +132,7 @@ def enquadrar_contrato(dados: DadosEnquadramento) -> ResultadoEnquadramento:
             # Condomínio misto — determinar atividade principal
             tipo_ativ = _tipo_por_finalidade(dados.finalidade, todos_bens)
             return ResultadoEnquadramento(
-                tipo_contrato="condominio",
+                tipo_contrato="condominio_rural",
                 subtipo=f"condominio_{tipo_ativ}",
                 base_legal="Art. 92-96, Lei 4.504/1964 c/c CC Art. 1.314",
                 descricao=(
@@ -219,7 +219,7 @@ def enquadrar_contrato(dados: DadosEnquadramento) -> ResultadoEnquadramento:
     # ------------------------------------------------------------------
     alertas.append("Não foi possível determinar o enquadramento automaticamente. Revisão manual necessária.")
     return ResultadoEnquadramento(
-        tipo_contrato="condominio",
+        tipo_contrato="condominio_rural",
         subtipo="indeterminado",
         base_legal="Lei 4.504/1964 — revisão manual recomendada",
         descricao="Enquadramento indeterminado. Revise os aportes e a finalidade.",
@@ -236,15 +236,15 @@ def enquadrar_contrato(dados: DadosEnquadramento) -> ResultadoEnquadramento:
 def _calcular_scores(bens_por_participante: list, finalidade: str) -> dict:
     """Pontuação de cada tipo para debug/transparência."""
     scores = {"agricola": 0, "pecuaria": 0, "agroindustrial": 0,
-              "extrativa": 0, "condominio": 0}
+              "extrativa": 0, "condominio_rural": 0}
     todos = set().union(*bens_por_participante)
     todos_aportam = all(len(b) > 0 for b in bens_por_participante)
 
     if todos_aportam and len(bens_por_participante) >= 2:
-        scores["condominio"] += 40
+        scores["condominio_rural"] += 40
     if "animais" in todos:
         scores["pecuaria"] += 30
-        scores["condominio"] += 10
+        scores["condominio_rural"] += 10
     if "terra" in todos:
         scores["agricola"] += 20
         scores["extrativa"] += 15
