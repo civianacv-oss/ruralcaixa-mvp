@@ -1,41 +1,44 @@
 """
-telegram_router.py — RuralCaixa MVP
+telegram_router.py — RuralCaixa MVP (CORRIGIDO)
 Alertas via Telegram: grupo + individual por produtor
-Padrão: psycopg2 + RealDictCursor (mesmo padrão de ovino.py)
 
-Instalação:
-    pip install httpx
-
-Variáveis de ambiente necessárias (.env):
-    TELEGRAM_BOT_TOKEN=7xxxxxxxxx:AAF...
-    TELEGRAM_GROUP_CHAT_ID=-100xxxxxxxxxx    # Chat ID do grupo (negativo)
-    DATABASE_URL=postgresql://...
+Correções aplicadas:
+- Conexão usando SQLAlchemy engine compartilhado (pool)
+- Rate limiting básico no envio de mensagens
+- Sem fallback hardcoded para tokens
+- Tratamento de erros robusto
 """
 
 import os
-import httpx
-import psycopg2
-import psycopg2.extras
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+import time
+import logging
 from datetime import datetime
+from typing import Optional
+
+import httpx
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from app.db import engine
+from sqlalchemy import text
 
 router = APIRouter(prefix="/telegram", tags=["Telegram"])
+
+logger = logging.getLogger(__name__)
 
 # ─── Configuração ────────────────────────────────────────────────────────────
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_GROUP_CHAT_ID = os.getenv("TELEGRAM_GROUP_CHAT_ID", "")
-DB_URL = os.getenv("DATABASE_URL", "")
 
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+if not TELEGRAM_BOT_TOKEN:
+    logger.warning("TELEGRAM_BOT_TOKEN não configurado — alertas do Telegram desativados")
 
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}" if TELEGRAM_BOT_TOKEN else ""
 
-def get_db():
-    conn = psycopg2.connect(DB_URL)
-    conn.autocommit = False
-    return conn
+# Rate limiting simples (30 mensagens/segundo é o limite da API)
+_last_send_time = 0
+_MIN_INTERVAL = 0.035  # ~28 msg/s para segurança
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -51,49 +54,61 @@ class AlertaAgua(BaseModel):
 
 class AlertaMortalidade(BaseModel):
     piscicultura_id: int
-    quantidade: int
+    quantidade: int = Field(..., gt=0)
     sintomas: Optional[str] = None
     data_ocorrencia: Optional[str] = None   # "YYYY-MM-DD"
 
 
 class AlertaGenerico(BaseModel):
-    titulo: str
-    mensagem: str
+    titulo: str = Field(..., min_length=1, max_length=200)
+    mensagem: str = Field(..., min_length=1, max_length=2000)
     piscicultura_id: Optional[int] = None   # None = só grupo
-    nivel: str = "info"                      # info | aviso | critico
+    nivel: str = Field("info", pattern=r"^(info|aviso|critico)$")
 
 
 class MensagemDireta(BaseModel):
     telegram_chat_id: str
-    mensagem: str
+    mensagem: str = Field(..., min_length=1, max_length=2000)
 
 
 # ─── Funções core de envio ────────────────────────────────────────────────────
 
 async def _send_telegram(chat_id: str, text: str, parse_mode: str = "HTML") -> dict:
-    """Envia mensagem para qualquer chat_id via Bot API."""
+    """Envia mensagem para qualquer chat_id via Bot API com rate limiting."""
+    global _last_send_time
+
     if not TELEGRAM_BOT_TOKEN:
         raise HTTPException(500, "TELEGRAM_BOT_TOKEN não configurado")
     if not chat_id:
         raise HTTPException(500, "chat_id inválido ou vazio")
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(
-            f"{TELEGRAM_API}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode},
-        )
-    data = resp.json()
-    if not data.get("ok"):
-        raise HTTPException(502, f"Telegram API error: {data.get('description')}")
-    return data
+    # Rate limiting
+    elapsed = time.time() - _last_send_time
+    if elapsed < _MIN_INTERVAL:
+        await __import__('asyncio').sleep(_MIN_INTERVAL - elapsed)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{TELEGRAM_API}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode},
+            )
+        data = resp.json()
+        _last_send_time = time.time()
+
+        if not data.get("ok"):
+            logger.error(f"Telegram API error: {data.get('description')}")
+            raise HTTPException(502, f"Telegram API error: {data.get('description')}")
+        return data
+    except httpx.TimeoutException:
+        logger.error("Timeout ao enviar mensagem para Telegram")
+        raise HTTPException(504, "Timeout ao enviar mensagem")
 
 
 def _get_piscicultura_info(piscicultura_id: int) -> dict:
     """Retorna nome do viveiro e telegram_chat_id do produtor responsável."""
-    conn = get_db()
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""
+    with engine.connect() as conn:
+        row = conn.execute(text("""
             SELECT
                 p.nome        AS nome_viveiro,
                 p.especie,
@@ -101,12 +116,10 @@ def _get_piscicultura_info(piscicultura_id: int) -> dict:
                 u.telegram_chat_id
             FROM piscicultura p
             JOIN produtores u ON u.id = p.produtor_id
-            WHERE p.id = %s
-        """, (piscicultura_id,))
-        row = cur.fetchone()
-        return dict(row) if row else {}
-    finally:
-        conn.close()
+            WHERE p.id = :pid
+        """), {"pid": piscicultura_id}).fetchone()
+
+        return dict(row._mapping) if row else {}
 
 
 def _nivel_emoji(nivel: str) -> str:
@@ -251,11 +264,14 @@ async def status_bot():
     """Verifica se o bot está ativo e retorna informações dele."""
     if not TELEGRAM_BOT_TOKEN:
         raise HTTPException(500, "TELEGRAM_BOT_TOKEN não configurado")
+
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{TELEGRAM_API}/getMe")
     data = resp.json()
+
     if not data.get("ok"):
         raise HTTPException(502, f"Bot inativo: {data.get('description')}")
+
     bot = data["result"]
     return {
         "status": "ativo",
@@ -273,9 +289,11 @@ async def descobrir_chat_id():
     """
     if not TELEGRAM_BOT_TOKEN:
         raise HTTPException(500, "TELEGRAM_BOT_TOKEN não configurado")
+
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{TELEGRAM_API}/getUpdates")
     data = resp.json()
+
     if not data.get("ok"):
         raise HTTPException(502, data.get("description"))
 
