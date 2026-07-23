@@ -19,6 +19,7 @@ Como integrar ao main.py:
 import json
 import hashlib
 import random
+import time
 from typing import Optional, List
 from datetime import datetime, timedelta
 
@@ -26,6 +27,24 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, validator, model_validator, ConfigDict, Field
 
 router = APIRouter(prefix="/condominio", tags=["Condomínio Rural"])
+
+# Rate limiting para geração de OTP (max 3 por condômino por hora)
+_otp_attempts: dict = {}
+_MAX_OTP_PER_HOUR = 3
+
+
+def _check_otp_rate_limit(condomino_id: int) -> bool:
+    """Retorna True se o condômino ainda pode gerar um novo OTP nesta hora."""
+    now = time.time()
+    tentativas = _otp_attempts.setdefault(condomino_id, [])
+    # Mantém só as tentativas da última hora
+    tentativas[:] = [t for t in tentativas if now - t < 3600]
+
+    if len(tentativas) >= _MAX_OTP_PER_HOUR:
+        return False
+
+    tentativas.append(now)
+    return True
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -512,6 +531,12 @@ def remover_condomino(contrato_id: int, condomino_id: int, request: Request):
 @router.post("/{contrato_id}/condominos/{condomino_id}/enviar-assinatura")
 def enviar_assinatura(contrato_id: int, condomino_id: int, request: Request):
     """Gera OTP e envia notificação de assinatura para o condômino."""
+    if not _check_otp_rate_limit(condomino_id):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Limite de {_MAX_OTP_PER_HOUR} OTPs por hora atingido para este condômino. Tente novamente mais tarde.",
+        )
+
     conn = get_db()
     try:
         cur = conn.cursor()

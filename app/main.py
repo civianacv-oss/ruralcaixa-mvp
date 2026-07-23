@@ -955,7 +955,10 @@ async def verify_webhook(
     print(f"--- TENTATIVA DE VALIDAÃ‡ÃƒO ---")
     print(f"Mode: {mode}, Token: {token}, Challenge: {challenge}")
     
-    VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "campo_digital_2026")
+    if not VERIFY_TOKEN:
+        print("VALIDACAO FALHOU: WHATSAPP_VERIFY_TOKEN nao configurado no ambiente.")
+        raise HTTPException(status_code=500, detail="WHATSAPP_VERIFY_TOKEN nao configurado")
+
     if mode == "subscribe" and token == VERIFY_TOKEN:
         print("VALIDAÃ‡ÃƒO APROVADA!")
         from fastapi.responses import Response
