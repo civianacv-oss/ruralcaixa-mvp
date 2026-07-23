@@ -23,6 +23,10 @@ import hashlib
 import json
 import os
 import io
+import logging
+import httpx
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/contratos", tags=["Contratos Rurais"])
 
@@ -827,8 +831,9 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
                     return t[:4] + "•" * (len(t) - 6) + t[-2:]
                 return "•" * len(t)
 
+            enviado = False
             if parte.get("telefone"):
-                _enviar_whatsapp_otp(parte["telefone"], parte["nome"], otp, link)
+                enviado = _enviar_whatsapp_otp(parte["telefone"], parte["nome"], otp, link)
 
             log_auditoria(cur, contrato_id, "link_assinatura_enviado",
                          f"Link enviado para {parte['nome']} ({parte['papel']})",
@@ -838,7 +843,7 @@ def enviar_para_assinatura(contrato_id: str, request: Request):
                 "papel": parte["papel"],
                 "nome": parte["nome"],
                 "assinatura_id": str(assinatura_id),
-                "whatsapp_enviado": bool(parte.get("telefone")),
+                "whatsapp_enviado": enviado,
                 "telefone_mascarado": _mascarar_telefone(parte.get("telefone", ""))
             })
 
@@ -1043,14 +1048,14 @@ def _resolver_partes(cur, contrato):
     return partes
 
 
-def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
-    import os, requests
-    phone_id = os.getenv("WHATSAPP_PHONE_ID", "1154361321082939")
-    token    = os.getenv("WHATSAPP_TOKEN", "")
-    if not token:
-        print(f"[WARN] WHATSAPP_TOKEN não configurado. OTP para {nome}: {otp}")
-        return None
-    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str) -> bool:
+    """Envia o OTP via template assinatura_contrato. Retorna True/False se enviou de fato."""
+    phone_id = os.getenv("WHATSAPP_PHONE_ID")
+    token = os.getenv("WHATSAPP_TOKEN")
+    if not phone_id or not token:
+        logger.warning(f"WHATSAPP_TOKEN/WHATSAPP_PHONE_ID nao configurado. OTP para {nome}: {otp}")
+        return False
+    url = f"https://graph.facebook.com/v23.0/{phone_id}/messages"
     payload = {
         "messaging_product": "whatsapp",
         "to": telefone,
@@ -1067,9 +1072,13 @@ def _enviar_whatsapp_otp(telefone: str, nome: str, otp: str, link: str):
     }
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=10)
-        print(f"[WhatsApp] Status: {r.status_code} Resposta: {r.text}")
-        return r.json().get("messages", [{}])[0].get("id")
+        with httpx.Client(timeout=10) as client:
+            r = client.post(url, json=payload, headers=headers)
+        data = r.json()
+        if "error" in data:
+            logger.error(f"Erro ao enviar template WhatsApp para {telefone}: {data['error']}")
+            return False
+        return True
     except Exception as e:
-        print(f"[WARN] Erro WhatsApp para {telefone}: {e}")
-        return None
+        logger.error(f"Excecao ao enviar WhatsApp para {telefone}: {e}")
+        return False

@@ -43,10 +43,10 @@ def _enviar_otp_whatsapp(telefone: str, nome: str, otp: str) -> tuple[bool, str]
     Envia o OTP de assinatura via template aprovado do WhatsApp (assinatura_contrato).
     Retorna (sucesso, mensagem_detalhe) para facilitar diagnostico.
 
-    IMPORTANTE: ajuste a lista "parameters" abaixo para bater exatamente com as
-    variaveis do template configurado no WhatsApp Manager da Meta. Foi implementado
-    assumindo {{1}} = nome do condomino e {{2}} = codigo OTP - confirme e corrija
-    se a estrutura real do template aprovado for diferente.
+    O template "assinatura_contrato" e categoria AUTHENTICATION, que tem uma
+    estrutura especifica na API: o corpo tem só {{1}} = codigo OTP (nao inclui
+    nome), e o botao de "copiar codigo" tambem precisa do mesmo codigo como
+    parametro. Confirmado consultando GET /{waba_id}/message_templates.
     """
     if not WAPP_TOKEN or not PHONE_ID:
         msg = "WHATSAPP_TOKEN/WHATSAPP_PHONE_ID nao configurado no ambiente"
@@ -69,10 +69,17 @@ def _enviar_otp_whatsapp(telefone: str, nome: str, otp: str) -> tuple[bool, str]
                 {
                     "type": "body",
                     "parameters": [
-                        {"type": "text", "text": nome},
                         {"type": "text", "text": otp},
                     ],
-                }
+                },
+                {
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": "0",
+                    "parameters": [
+                        {"type": "text", "text": otp},
+                    ],
+                },
             ],
         },
     }
