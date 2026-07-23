@@ -16,10 +16,13 @@ Como integrar ao main.py:
   app.include_router(condominio_router)
 """
 
+import os
 import json
 import hashlib
 import random
 import time
+import logging
+import httpx
 from typing import Optional, List
 from datetime import datetime, timedelta
 
@@ -27,6 +30,69 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, validator, model_validator, ConfigDict, Field
 
 router = APIRouter(prefix="/condominio", tags=["Condomínio Rural"])
+logger = logging.getLogger(__name__)
+
+# WhatsApp Cloud API - config (mesmas variaveis usadas no restante do app)
+WAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
+GRAPH = "https://graph.facebook.com/v23.0"
+
+
+def _enviar_otp_whatsapp(telefone: str, nome: str, otp: str) -> tuple[bool, str]:
+    """
+    Envia o OTP de assinatura via template aprovado do WhatsApp (assinatura_contrato).
+    Retorna (sucesso, mensagem_detalhe) para facilitar diagnostico.
+
+    IMPORTANTE: ajuste a lista "parameters" abaixo para bater exatamente com as
+    variaveis do template configurado no WhatsApp Manager da Meta. Foi implementado
+    assumindo {{1}} = nome do condomino e {{2}} = codigo OTP - confirme e corrija
+    se a estrutura real do template aprovado for diferente.
+    """
+    if not WAPP_TOKEN or not PHONE_ID:
+        msg = "WHATSAPP_TOKEN/WHATSAPP_PHONE_ID nao configurado no ambiente"
+        logger.warning(msg)
+        return False, msg
+    if not telefone:
+        msg = "Condomino sem telefone cadastrado"
+        logger.warning(msg)
+        return False, msg
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": telefone,
+        "type": "template",
+        "template": {
+            "name": "assinatura_contrato",
+            "language": {"code": "pt_BR"},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": nome},
+                        {"type": "text", "text": otp},
+                    ],
+                }
+            ],
+        },
+    }
+
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(
+                f"{GRAPH}/{PHONE_ID}/messages",
+                headers={"Authorization": f"Bearer {WAPP_TOKEN}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        data = resp.json()
+        if "error" in data:
+            erro = data["error"].get("message", str(data["error"]))
+            logger.error(f"Erro ao enviar template WhatsApp: {erro}")
+            return False, erro
+        return True, "enviado"
+    except Exception as e:
+        logger.error(f"Excecao ao enviar OTP via WhatsApp: {e}")
+        return False, str(e)
 
 # Rate limiting para geração de OTP (max 3 por condômino por hora)
 _otp_attempts: dict = {}
@@ -557,13 +623,26 @@ def enviar_assinatura(contrato_id: int, condomino_id: int, request: Request):
                       f"OTP gerado para condômino {condomino_id}", str(request.client.host))
         conn.commit()
 
-        # TODO: integrar com WhatsApp/Telegram para envio do OTP
-        import os as _os
+        # Busca nome e telefone do condomino (socio interno ou parceiro externo)
+        cur.execute(
+            "SELECT nome_condomino, telefone_condomino "
+            "FROM vw_condominio_participacoes "
+            "WHERE contrato_id = %s AND condomino_id = %s",
+            (contrato_id, condomino_id)
+        )
+        contato = cur.fetchone()
+        nome_condomino = contato["nome_condomino"] if contato else ""
+        telefone_condomino = contato["telefone_condomino"] if contato else None
+
+        enviado, detalhe_envio = _enviar_otp_whatsapp(telefone_condomino, nome_condomino, otp)
+
         response = {
-            "message": "OTP gerado. Integre com WhatsApp/Telegram para envio.",
+            "message": "OTP gerado e enviado via WhatsApp." if enviado
+                        else f"OTP gerado, mas o envio via WhatsApp falhou: {detalhe_envio}",
+            "enviado_whatsapp": enviado,
             "expira_em": expira.isoformat(),
         }
-        if _os.getenv("DEBUG") == "true":
+        if os.getenv("DEBUG") == "true":
             response["otp_debug"] = otp
         return response
 
