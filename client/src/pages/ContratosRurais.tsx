@@ -404,12 +404,14 @@ export default function ContratosRurais() {
             })),
           }
         : body;
-      const novo = await apiFetch<{ data: ContratoRural }>(endpoint, {
+      await apiFetch<{ data: ContratoRural }>(endpoint, {
         method: "POST",
         body: JSON.stringify(bodyFinal),
       });
 
-      setContratos((prev) => [novo.data ?? novo as unknown as ContratoRural, ...prev]);
+      // Recarrega do servidor em vez de inserir localmente — evita qualquer
+      // chance do card novo ficar com dado desatualizado/id errado.
+      await load();
       setShowNew(false);
       setForm({
         tipo: "", descricao: "", valor: "", data_inicio: "", data_fim: "",
