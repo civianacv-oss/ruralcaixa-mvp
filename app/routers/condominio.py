@@ -364,10 +364,31 @@ def detalhe_condominio(contrato_id: str):
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM vw_condominio_participacoes WHERE contrato_id = %s",
-            (contrato_id,)
-        )
+        # Consulta direta (não usa vw_condominio_participacoes) porque a view
+        # não tem coluna de telefone - precisamos dela para o envio de WhatsApp.
+        cur.execute("""
+            SELECT c.id AS contrato_id, c.fazenda_id, c.status, c.data_inicio, c.data_fim,
+                   c.area_parceria_hectares AS area_total_ha,
+                   c.area_parceria_hectares - COALESCE((
+                       SELECT sum(x.area_ha) FROM condominio_condominos x
+                       WHERE x.contrato_id = c.id
+                   ), 0) AS area_disponivel_ha,
+                   cc.id AS condomino_id,
+                   COALESCE(p.nome, pe.nome::character varying) AS nome_condomino,
+                   COALESCE(p.cpf, pe.documento::character varying) AS documento_condomino,
+                   COALESCE(p.telefone, pe.telefone::character varying) AS telefone_condomino,
+                   cc.area_ha,
+                   CASE WHEN c.area_parceria_hectares > 0
+                        THEN round(cc.area_ha / c.area_parceria_hectares * 100, 4)
+                        ELSE NULL END AS percentual_participacao,
+                   cc.papel, cc.assinatura_status, cc.assinado_em
+            FROM contratos c
+            JOIN condominio_condominos cc ON cc.contrato_id = c.id
+            LEFT JOIN produtores p ON p.id = cc.socio_id
+            LEFT JOIN parceiros_externos pe ON pe.id = cc.parceiro_externo_id
+            WHERE c.id = %s AND c.tipo = 'condominio_rural'
+            ORDER BY cc.area_ha DESC
+        """, (contrato_id,))
         rows = cur.fetchall()
         if not rows:
             raise HTTPException(status_code=404, detail="Condomínio não encontrado.")
@@ -624,12 +645,15 @@ def enviar_assinatura(contrato_id: str, condomino_id: int, request: Request):
         conn.commit()
 
         # Busca nome e telefone do condomino (socio interno ou parceiro externo)
-        cur.execute(
-            "SELECT nome_condomino, telefone_condomino "
-            "FROM vw_condominio_participacoes "
-            "WHERE contrato_id = %s AND condomino_id = %s",
-            (contrato_id, condomino_id)
-        )
+        # Consulta direta - vw_condominio_participacoes nao tem coluna de telefone.
+        cur.execute("""
+            SELECT COALESCE(p.nome, pe.nome::character varying) AS nome_condomino,
+                   COALESCE(p.telefone, pe.telefone::character varying) AS telefone_condomino
+            FROM condominio_condominos cc
+            LEFT JOIN produtores p ON p.id = cc.socio_id
+            LEFT JOIN parceiros_externos pe ON pe.id = cc.parceiro_externo_id
+            WHERE cc.contrato_id = %s AND cc.id = %s
+        """, (contrato_id, condomino_id))
         contato = cur.fetchone()
         nome_condomino = contato["nome_condomino"] if contato else ""
         telefone_condomino = contato["telefone_condomino"] if contato else None
