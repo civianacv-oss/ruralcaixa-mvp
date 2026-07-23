@@ -32,6 +32,7 @@ interface ContratoRural {
 interface Condomino {
   nome: string;
   documento: string;
+  telefone: string;
   area_ha: string;          // string no form, convertido pra number no envio
   papel: "administrador" | "condomino" | "inventariante";
 }
@@ -239,8 +240,10 @@ export default function ContratosRurais() {
     peso_medio_entrada: "",
     outorgante_nome: "",
     outorgante_documento: "",
+    outorgante_telefone: "",
     outorgado_nome: "",
     outorgado_documento: "",
+    outorgado_telefone: "",
     frequencia_pagamento: "safra",
     clausula_denuncia_dias: "",
     responsabilidade_custos: "",
@@ -253,14 +256,14 @@ export default function ContratosRurais() {
   const ehCondominio = form.tipo === "condominio_rural";
 
   const [condominos, setCondominos] = useState<Condomino[]>([
-    { nome: "", documento: "", area_ha: "", papel: "administrador" },
-    { nome: "", documento: "", area_ha: "", papel: "condomino" },
+    { nome: "", documento: "", telefone: "", area_ha: "", papel: "administrador" },
+    { nome: "", documento: "", telefone: "", area_ha: "", papel: "condomino" },
   ]);
 
   const adicionarCondomino = () => {
     setCondominos((prev) => [
       ...prev,
-      { nome: "", documento: "", area_ha: "", papel: "condomino" },
+      { nome: "", documento: "", telefone: "", area_ha: "", papel: "condomino" },
     ]);
   };
 
@@ -315,7 +318,15 @@ export default function ContratosRurais() {
     }
     if (!semPartes) {
       if (!form.outorgante_nome.trim()) { toast.error("Informe o nome do Outorgante"); return; }
+      if (!form.outorgante_telefone.trim()) {
+        toast.error("Informe o telefone (WhatsApp) do Outorgante — é necessário para enviar o código de assinatura.");
+        return;
+      }
       if (!form.outorgado_nome.trim()) { toast.error("Informe o nome do Outorgado"); return; }
+      if (!form.outorgado_telefone.trim()) {
+        toast.error("Informe o telefone (WhatsApp) do Outorgado — é necessário para enviar o código de assinatura.");
+        return;
+      }
     }
     if (ehCondominio) {
       if (!form.data_fim) {
@@ -332,6 +343,10 @@ export default function ContratosRurais() {
       }
       for (const c of condominos) {
         if (!c.nome.trim()) { toast.error("Preencha o nome de todos os condôminos."); return; }
+        if (!c.telefone.trim()) {
+          toast.error(`Informe o telefone (WhatsApp) do condômino "${c.nome || "sem nome"}" — é necessário para enviar o código de assinatura.`);
+          return;
+        }
         if (!c.area_ha || Number(c.area_ha) <= 0) {
           toast.error(`Informe a área (ha) do condômino "${c.nome || "sem nome"}".`);
           return;
@@ -364,10 +379,10 @@ export default function ContratosRurais() {
         frequencia_pagamento: form.frequencia_pagamento,
         area_parceria_hectares: form.valor ? Number(form.valor) : undefined,
         outorgante_externo: !semPartes && form.outorgante_nome
-          ? { nome: form.outorgante_nome, tipo_documento: tipoDocumento(form.outorgante_documento), documento: form.outorgante_documento || "não informado" }
+          ? { nome: form.outorgante_nome, tipo_documento: tipoDocumento(form.outorgante_documento), documento: form.outorgante_documento || "não informado", telefone: form.outorgante_telefone }
           : undefined,
         outorgado_externo: !semPartes && form.outorgado_nome
-          ? { nome: form.outorgado_nome, tipo_documento: tipoDocumento(form.outorgado_documento), documento: form.outorgado_documento || "não informado" }
+          ? { nome: form.outorgado_nome, tipo_documento: tipoDocumento(form.outorgado_documento), documento: form.outorgado_documento || "não informado", telefone: form.outorgado_telefone }
           : undefined,
         clausulas_adicionais: {
           ...(ehPecuaria ? {
@@ -400,6 +415,7 @@ export default function ContratosRurais() {
                 nome: c.nome,
                 tipo_documento: c.documento.replace(/\D/g, "").length > 11 ? "CNPJ" : "CPF",
                 documento: c.documento || "não informado",
+                telefone: c.telefone,
               },
             })),
           }
@@ -418,14 +434,14 @@ export default function ContratosRurais() {
         percentual_outorgante: "50", quantidade_animais: "",
         valor_investido_outorgante: "", valor_investido_outorgado: "",
         modalidade_parceria: "", especie_raca: "", peso_medio_entrada: "",
-        outorgante_nome: "", outorgante_documento: "",
-        outorgado_nome: "", outorgado_documento: "",
+        outorgante_nome: "", outorgante_documento: "", outorgante_telefone: "",
+        outorgado_nome: "", outorgado_documento: "", outorgado_telefone: "",
         frequencia_pagamento: "safra", clausula_denuncia_dias: "",
         responsabilidade_custos: "", responsabilidade_riscos: "",
       });
       setCondominos([
-        { nome: "", documento: "", area_ha: "", papel: "administrador" },
-        { nome: "", documento: "", area_ha: "", papel: "condomino" },
+        { nome: "", documento: "", telefone: "", area_ha: "", papel: "administrador" },
+        { nome: "", documento: "", telefone: "", area_ha: "", papel: "condomino" },
       ]);
       toast.success("Contrato criado com sucesso");
     } catch (e: unknown) {
@@ -1063,6 +1079,11 @@ export default function ContratosRurais() {
                           onChange={(e) => setForm({ ...form, outorgante_documento: e.target.value })} />
                       </div>
                     </div>
+                    <div className="space-y-1.5">
+                      <Label>Telefone (WhatsApp) do Outorgante *</Label>
+                      <Input placeholder="(00) 00000-0000" value={form.outorgante_telefone}
+                        onChange={(e) => setForm({ ...form, outorgante_telefone: e.target.value })} />
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label>Outorgado *</Label>
@@ -1074,6 +1095,11 @@ export default function ContratosRurais() {
                         <Input placeholder="000.000.000-00" value={form.outorgado_documento}
                           onChange={(e) => setForm({ ...form, outorgado_documento: e.target.value })} />
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Telefone (WhatsApp) do Outorgado *</Label>
+                      <Input placeholder="(00) 00000-0000" value={form.outorgado_telefone}
+                        onChange={(e) => setForm({ ...form, outorgado_telefone: e.target.value })} />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -1185,6 +1211,11 @@ export default function ContratosRurais() {
                             onChange={(e) => atualizarCondomino(i, "documento", e.target.value)}
                           />
                         </div>
+                        <Input
+                          placeholder="Telefone (WhatsApp) — com DDD"
+                          value={c.telefone}
+                          onChange={(e) => atualizarCondomino(i, "telefone", e.target.value)}
+                        />
                         <div className="grid grid-cols-2 gap-2">
                           <Input
                             type="number"
