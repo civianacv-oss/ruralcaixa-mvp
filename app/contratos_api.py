@@ -61,6 +61,88 @@ class ParceiroExterno(BaseModel):
     telefone: Optional[str] = None
     email: Optional[str] = None
 
+
+class ContratoPartesAtualizar(BaseModel):
+    """Atualiza dados de outorgante/outorgado externos de um contrato existente."""
+    outorgante_nome: Optional[str] = None
+    outorgante_documento: Optional[str] = None
+    outorgante_telefone: Optional[str] = None
+    outorgado_nome: Optional[str] = None
+    outorgado_documento: Optional[str] = None
+    outorgado_telefone: Optional[str] = None
+
+
+@router.patch("/{contrato_id}/partes")
+def atualizar_partes_contrato(contrato_id: str, body: ContratoPartesAtualizar):
+    """Atualiza nome/documento/telefone do outorgante e/ou outorgado externos."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT outorgante_externo_id, outorgado_externo_id FROM contratos WHERE id = %s",
+            (contrato_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Contrato não encontrado.")
+
+        atualizou_algo = False
+
+        outorgante_fields = {}
+        if body.outorgante_nome is not None:
+            outorgante_fields["nome"] = body.outorgante_nome
+        if body.outorgante_documento is not None:
+            outorgante_fields["documento"] = body.outorgante_documento
+        if body.outorgante_telefone is not None:
+            outorgante_fields["telefone"] = body.outorgante_telefone
+        if outorgante_fields:
+            if not row["outorgante_externo_id"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Outorgante deste contrato é um sócio interno cadastrado - "
+                           "nome/documento/telefone não podem ser editados por aqui."
+                )
+            sets = ", ".join(f"{k} = %s" for k in outorgante_fields)
+            cur.execute(
+                f"UPDATE parceiros_externos SET {sets} WHERE id = %s",
+                list(outorgante_fields.values()) + [row["outorgante_externo_id"]]
+            )
+            atualizou_algo = True
+
+        outorgado_fields = {}
+        if body.outorgado_nome is not None:
+            outorgado_fields["nome"] = body.outorgado_nome
+        if body.outorgado_documento is not None:
+            outorgado_fields["documento"] = body.outorgado_documento
+        if body.outorgado_telefone is not None:
+            outorgado_fields["telefone"] = body.outorgado_telefone
+        if outorgado_fields:
+            if not row["outorgado_externo_id"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Outorgado deste contrato é um sócio interno cadastrado - "
+                           "nome/documento/telefone não podem ser editados por aqui."
+                )
+            sets = ", ".join(f"{k} = %s" for k in outorgado_fields)
+            cur.execute(
+                f"UPDATE parceiros_externos SET {sets} WHERE id = %s",
+                list(outorgado_fields.values()) + [row["outorgado_externo_id"]]
+            )
+            atualizou_algo = True
+
+        if not atualizou_algo:
+            raise HTTPException(status_code=400, detail="Nenhum campo para atualizar.")
+
+        conn.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 # Mapeamento de nomes em PT-BR para os valores internos aceitos pelo banco
 _TIPO_MAP = {
     "agricola": "agricola",

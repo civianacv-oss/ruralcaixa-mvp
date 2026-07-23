@@ -234,9 +234,12 @@ class CondominoAdicionar(BaseModel):
 
 
 class CondominoAtualizar(BaseModel):
-    """Atualiza a área ou papel de um condômino existente."""
+    """Atualiza dados de um condômino existente."""
     area_ha: Optional[float] = Field(None, gt=0)
     papel: Optional[str] = Field(None, pattern="^(administrador|condomino|inventariante)$")
+    nome: Optional[str] = None
+    documento: Optional[str] = None
+    telefone: Optional[str] = None
 
 
 class AssinarRequest(BaseModel):
@@ -508,7 +511,7 @@ def adicionar_condomino(contrato_id: str, body: CondominoAdicionar, request: Req
 
 @router.patch("/{contrato_id}/condominos/{condomino_id}")
 def atualizar_condomino(contrato_id: str, condomino_id: int, body: CondominoAtualizar, request: Request):
-    """Atualiza a área ou papel de um condômino."""
+    """Atualiza dados de um condômino (área, papel, nome, documento, telefone)."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -546,25 +549,64 @@ def atualizar_condomino(contrato_id: str, condomino_id: int, body: CondominoAtua
             updates.append("papel = %s")
             params.append(body.papel)
 
-        if not updates:
+        houve_atualizacao = bool(updates)
+        if updates:
+            updates.append("atualizado_em = NOW()")
+            upd_params = params + [condomino_id, contrato_id]
+            cur.execute(
+                f"UPDATE condominio_condominos SET {', '.join(updates)} "
+                f"WHERE id = %s AND contrato_id = %s RETURNING id",
+                upd_params
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Condômino não encontrado.")
+
+        # nome/documento/telefone ficam em parceiros_externos (condôminos
+        # externos). Não mexe em sócios internos (dados vêm de produtores).
+        if body.nome is not None or body.documento is not None or body.telefone is not None:
+            cur.execute(
+                "SELECT parceiro_externo_id FROM condominio_condominos "
+                "WHERE id = %s AND contrato_id = %s",
+                (condomino_id, contrato_id)
+            )
+            cc_row = cur.fetchone()
+            if not cc_row:
+                raise HTTPException(status_code=404, detail="Condômino não encontrado.")
+            if not cc_row["parceiro_externo_id"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Este condômino é um sócio interno cadastrado - nome/documento/telefone "
+                           "não podem ser editados por aqui."
+                )
+            pe_updates = []
+            pe_params = []
+            if body.nome is not None:
+                pe_updates.append("nome = %s")
+                pe_params.append(body.nome)
+            if body.documento is not None:
+                pe_updates.append("documento = %s")
+                pe_params.append(body.documento)
+            if body.telefone is not None:
+                pe_updates.append("telefone = %s")
+                pe_params.append(body.telefone)
+            pe_params.append(cc_row["parceiro_externo_id"])
+            cur.execute(
+                f"UPDATE parceiros_externos SET {', '.join(pe_updates)} WHERE id = %s",
+                pe_params
+            )
+            houve_atualizacao = True
+
+        if not houve_atualizacao:
             raise HTTPException(status_code=400, detail="Nenhum campo para atualizar.")
-
-        updates.append("atualizado_em = NOW()")
-        params.extend([condomino_id, contrato_id])
-
-        cur.execute(
-            f"UPDATE condominio_condominos SET {', '.join(updates)} "
-            f"WHERE id = %s AND contrato_id = %s RETURNING *",
-            params
-        )
-        atualizado = cur.fetchone()
-        if not atualizado:
-            raise HTTPException(status_code=404, detail="Condômino não encontrado.")
 
         log_auditoria(cur, contrato_id, "condomino_atualizado",
                       f"Condômino {condomino_id} atualizado", str(request.client.host))
         conn.commit()
-        return {"data": dict(atualizado)}
+
+        cur.execute("SELECT * FROM condominio_condominos WHERE id = %s AND contrato_id = %s",
+                    (condomino_id, contrato_id))
+        final_row = cur.fetchone()
+        return {"data": dict(final_row) if final_row else {}}
 
     except HTTPException:
         raise

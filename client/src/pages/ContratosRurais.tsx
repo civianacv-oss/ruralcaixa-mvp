@@ -1,7 +1,7 @@
 "use client";
 // build-20260712131406
 import { useState, useEffect, useRef } from "react";
-import { Plus, FileSignature, Search, RefreshCw, Trash2, Download, Sparkles, ArrowLeft, AlertTriangle, CheckCircle2, Upload, Send } from "lucide-react";
+import { Plus, FileSignature, Search, RefreshCw, Trash2, Download, Sparkles, ArrowLeft, AlertTriangle, CheckCircle2, Upload, Send, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -700,6 +700,94 @@ export default function ContratosRurais() {
     }
   };
 
+  // ── Edição de partes (nome/documento/telefone) ────────────────────────────
+  interface EditCondomino { id: number; nome: string; documento: string; telefone: string; }
+
+  const [editandoContrato, setEditandoContrato] = useState<ContratoRural | null>(null);
+  const [carregandoEdicao, setCarregandoEdicao] = useState(false);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [editCondominos, setEditCondominos] = useState<EditCondomino[]>([]);
+  const [editPartes, setEditPartes] = useState({
+    outorgante_nome: "", outorgante_documento: "", outorgante_telefone: "",
+    outorgado_nome: "", outorgado_documento: "", outorgado_telefone: "",
+  });
+
+  const abrirEdicao = async (c: ContratoRural) => {
+    setEditandoContrato(c);
+    setCarregandoEdicao(true);
+    try {
+      if (c.tipo === "condominio_rural") {
+        const detalhe = await apiFetch<{ condominos: { id: number; nome: string; documento: string; telefone: string }[] }>(
+          `/condominio/${c.id}`
+        );
+        setEditCondominos(
+          detalhe.condominos.map((cond) => ({
+            id: cond.id,
+            nome: cond.nome ?? "",
+            documento: cond.documento ?? "",
+            telefone: cond.telefone ?? "",
+          }))
+        );
+      } else {
+        setEditPartes({
+          outorgante_nome: c.outorgante_nome ?? "",
+          outorgante_documento: "",
+          outorgante_telefone: "",
+          outorgado_nome: c.outorgado_nome ?? "",
+          outorgado_documento: "",
+          outorgado_telefone: "",
+        });
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar dados para edição");
+      setEditandoContrato(null);
+    } finally {
+      setCarregandoEdicao(false);
+    }
+  };
+
+  const atualizarEditCondomino = (index: number, campo: "nome" | "documento" | "telefone", valor: string) => {
+    setEditCondominos((prev) => prev.map((c, i) => (i === index ? { ...c, [campo]: valor } : c)));
+  };
+
+  const salvarEdicao = async () => {
+    if (!editandoContrato) return;
+    setSalvandoEdicao(true);
+    try {
+      if (editandoContrato.tipo === "condominio_rural") {
+        for (const cond of editCondominos) {
+          await apiFetch(`/condominio/${editandoContrato.id}/condominos/${cond.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              nome: cond.nome,
+              documento: cond.documento,
+              telefone: cond.telefone,
+            }),
+          });
+        }
+      } else {
+        const body: Record<string, string> = {};
+        if (editPartes.outorgante_nome) body.outorgante_nome = editPartes.outorgante_nome;
+        if (editPartes.outorgante_documento) body.outorgante_documento = editPartes.outorgante_documento;
+        if (editPartes.outorgante_telefone) body.outorgante_telefone = editPartes.outorgante_telefone;
+        if (editPartes.outorgado_nome) body.outorgado_nome = editPartes.outorgado_nome;
+        if (editPartes.outorgado_documento) body.outorgado_documento = editPartes.outorgado_documento;
+        if (editPartes.outorgado_telefone) body.outorgado_telefone = editPartes.outorgado_telefone;
+        await apiFetch(`/contratos/${editandoContrato.id}/partes`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+      }
+      toast.success("Dados atualizados com sucesso");
+      setEditandoContrato(null);
+      load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar edição");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  };
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -794,6 +882,14 @@ export default function ContratosRurais() {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => abrirEdicao(c)}
+                      title="Editar nome/documento/telefone das partes"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1338,6 +1434,68 @@ export default function ContratosRurais() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editandoContrato} onOpenChange={(open) => !open && setEditandoContrato(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar dados das partes</DialogTitle>
+          </DialogHeader>
+          {carregandoEdicao ? (
+            <p className="text-sm text-muted-foreground py-4">Carregando...</p>
+          ) : editandoContrato?.tipo === "condominio_rural" ? (
+            <div className="space-y-4">
+              {editCondominos.map((cond, i) => (
+                <div key={cond.id} className="space-y-2 border-t pt-3 first:border-t-0 first:pt-0">
+                  <p className="text-xs font-semibold">Condômino {i + 1}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="Nome completo" value={cond.nome}
+                      onChange={(e) => atualizarEditCondomino(i, "nome", e.target.value)} />
+                    <Input placeholder="CPF/CNPJ" value={cond.documento}
+                      onChange={(e) => atualizarEditCondomino(i, "documento", e.target.value)} />
+                  </div>
+                  <Input placeholder="Telefone (WhatsApp) — com DDD" value={cond.telefone}
+                    onChange={(e) => atualizarEditCondomino(i, "telefone", e.target.value)} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold">Outorgante</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Nome completo" value={editPartes.outorgante_nome}
+                    onChange={(e) => setEditPartes({ ...editPartes, outorgante_nome: e.target.value })} />
+                  <Input placeholder="CPF/CNPJ" value={editPartes.outorgante_documento}
+                    onChange={(e) => setEditPartes({ ...editPartes, outorgante_documento: e.target.value })} />
+                </div>
+                <Input placeholder="Telefone (WhatsApp) — com DDD" value={editPartes.outorgante_telefone}
+                  onChange={(e) => setEditPartes({ ...editPartes, outorgante_telefone: e.target.value })} />
+              </div>
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-semibold">Outorgado</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Nome completo" value={editPartes.outorgado_nome}
+                    onChange={(e) => setEditPartes({ ...editPartes, outorgado_nome: e.target.value })} />
+                  <Input placeholder="CPF/CNPJ" value={editPartes.outorgado_documento}
+                    onChange={(e) => setEditPartes({ ...editPartes, outorgado_documento: e.target.value })} />
+                </div>
+                <Input placeholder="Telefone (WhatsApp) — com DDD" value={editPartes.outorgado_telefone}
+                  onChange={(e) => setEditPartes({ ...editPartes, outorgado_telefone: e.target.value })} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Deixe em branco os campos que não quiser alterar.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditandoContrato(null)}>Cancelar</Button>
+            <Button onClick={salvarEdicao} disabled={salvandoEdicao || carregandoEdicao}
+              style={{ background: "oklch(0.42 0.14 145)" }}>
+              {salvandoEdicao ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
