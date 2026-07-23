@@ -533,11 +533,14 @@ def enviar_assinatura(contrato_id: int, condomino_id: int, request: Request):
         conn.commit()
 
         # TODO: integrar com WhatsApp/Telegram para envio do OTP
-        return {
+        import os as _os
+        response = {
             "message": "OTP gerado. Integre com WhatsApp/Telegram para envio.",
-            "otp_debug": otp,          # REMOVER EM PRODUÇÃO
             "expira_em": expira.isoformat(),
         }
+        if _os.getenv("DEBUG") == "true":
+            response["otp_debug"] = otp
+        return response
 
     except HTTPException:
         raise

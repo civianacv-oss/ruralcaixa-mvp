@@ -10,7 +10,6 @@ from typing import Optional, List
 from app.routers.piscicultura import router as piscicultura_router
 from backend.routers.telegram_router import router as telegram_router
 from app.routers.telegram_bot_router import router as telegram_bot_router
-from backend.routers.telegram_router import router as telegram_router
 from app.routers.agricultura import router as agricultura_router
 
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
@@ -956,7 +955,8 @@ async def verify_webhook(
     print(f"--- TENTATIVA DE VALIDAÃ‡ÃƒO ---")
     print(f"Mode: {mode}, Token: {token}, Challenge: {challenge}")
     
-    if mode == "subscribe" and token == "campo_digital_2026":
+    VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "campo_digital_2026")
+    if mode == "subscribe" and token == VERIFY_TOKEN:
         print("VALIDAÃ‡ÃƒO APROVADA!")
         from fastapi.responses import Response
         return Response(content=challenge, media_type="text/plain")
@@ -1685,7 +1685,7 @@ def create_nota(produtor_id: int, data: NFeCreate):
     with engine.connect() as conn:
         # PrÃ³ximo nÃºmero
         cfg = conn.execute(text(
-            "SELECT serie, proxima_numero FROM nfe_config WHERE produtor_id=:pid"
+            "SELECT serie, proxima_numero FROM nfe_config WHERE produtor_id=:pid FOR UPDATE"
         ), {"pid":produtor_id}).fetchone()
         serie = cfg[0] if cfg else "001"
         numero = cfg[1] if cfg else 1
