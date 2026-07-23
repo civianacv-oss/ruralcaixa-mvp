@@ -1167,6 +1167,20 @@ def fechar_mes_produtor(produtor_id: int):
     fechar_mes(produtor_id)
     return {"status": "ok"}
 
+@app.get("/produtores/{produtor_id}")
+def get_produtor(produtor_id: int):
+    from app.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, nome, cpf, telefone, nirf, inscricao_estadual,
+                   caepf, municipio, uf, cep, endereco, numero, bairro
+            FROM produtores WHERE id = :pid
+        """), {"pid": produtor_id}).fetchone()
+        if not row:
+            raise HTTPException(404, "Produtor nao encontrado")
+        return dict(row._mapping)
+
 @app.delete("/produtores/{produtor_id}")
 def excluir_produtor(produtor_id: int):
     from app.db import engine
