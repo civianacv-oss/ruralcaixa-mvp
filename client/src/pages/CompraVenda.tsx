@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId, getRcToken } from "@/lib/api";
+import { API_BASE, getImovelId, getApiToken } from "@/lib/api";
 
 interface Produto {
   id: number;
@@ -19,7 +19,7 @@ interface Produto {
 }
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
-  const token = getRcToken();
+  const token = getApiToken();
   return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
 }
 
@@ -148,7 +148,7 @@ export default function CompraVenda() {
     if (!imovelId) { toast.error("Selecione uma propriedade"); return; }
     setBaixandoRelatorio(true);
     try {
-      const token = getRcToken();
+      const token = getApiToken();
       const ano = new Date().getFullYear();
       const res = await fetch(
         `${API_BASE}/compravenda/relatorio-ganho-capital/${imovelId}?ano=${ano}`,

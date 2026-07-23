@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { setSession, setImovelNome, clearSession, setRole, setRcToken } from "@/lib/api";
+import { setSession, setImovelNome, clearSession, setRole, setRcToken, setApiToken } from "@/lib/api";
 import { Leaf, ShieldCheck, Users, Tractor, FileText, ChevronRight, Upload, CheckCircle, Clock, XCircle } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -109,6 +109,7 @@ export default function Login() {
       const resolvedRole = result.role ?? "user";
       setRole(resolvedRole);
       if (result.rcClaimsToken) setRcToken(result.rcClaimsToken);
+      if (result.apiToken) setApiToken(result.apiToken);
 
       if (result.imovelCount === 1 && result.imovelId) {
         navigate("/dashboard");

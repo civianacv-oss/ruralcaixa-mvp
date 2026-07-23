@@ -54,6 +54,7 @@ export function clearSession() {
   localStorage.removeItem("rc_produtor_cpf");
   localStorage.removeItem("rc_role");
   localStorage.removeItem("rc_claims_token");
+  localStorage.removeItem("rc_api_token");
 }
 
 export function isAuthenticated(): boolean {
@@ -61,6 +62,8 @@ export function isAuthenticated(): boolean {
 }
 
 // ─── rc_claims JWT token (sent as Authorization header when cookies are blocked) ─
+// This is a tRPC/Vercel-session JWT — do NOT send this directly to the Railway
+// FastAPI backend, it will never match produtores.api_token there.
 
 export function getRcToken(): string | null {
   return localStorage.getItem("rc_claims_token");
@@ -72,6 +75,21 @@ export function setRcToken(token: string) {
 
 export function clearRcToken() {
   localStorage.removeItem("rc_claims_token");
+}
+
+// ─── Real FastAPI api_token (sent as Authorization header to the Railway backend) ─
+// This is the actual value stored in produtores.api_token, distinct from the JWT above.
+
+export function getApiToken(): string | null {
+  return localStorage.getItem("rc_api_token");
+}
+
+export function setApiToken(token: string) {
+  localStorage.setItem("rc_api_token", token);
+}
+
+export function clearApiToken() {
+  localStorage.removeItem("rc_api_token");
 }
 
 // ─── Generic fetch wrapper ────────────────────────────────────────────────────

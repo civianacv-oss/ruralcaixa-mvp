@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { API_BASE, getImovelId, getRcToken } from "@/lib/api";
+import { API_BASE, getImovelId, getApiToken } from "@/lib/api";
 
 interface ContratoRural {
   id: number;
@@ -141,7 +141,7 @@ const PERGUNTAS_ASSISTENTE: {
 ];
 
 function authHeaders(): Record<string, string> {
-  const token = getRcToken();
+  const token = getApiToken();
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -616,7 +616,7 @@ export default function ContratosRurais() {
     try {
       const formData = new FormData();
       formData.append("arquivo", file, file.name);
-      const token = getRcToken();
+      const token = getApiToken();
       const res = await fetch(`${API_BASE}/contratos/${contratoId}/documento-final`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},

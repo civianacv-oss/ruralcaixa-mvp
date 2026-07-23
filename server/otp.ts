@@ -243,6 +243,7 @@ export interface VerifyOtpResult {
   imovelCount: number;
   role: "user" | "admin";
   openId: string;
+  apiToken?: string;
 }
 
 export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpResult> {
@@ -320,7 +321,7 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
     success: true,
     produtorId: data.produtor_id,
     produtorNome: data.nome,
-    rcClaimsToken: data.token,
+    apiToken: data.token,
     imovelId,
     imovelCount,
     role,

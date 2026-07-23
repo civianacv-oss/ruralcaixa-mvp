@@ -107,6 +107,9 @@ export const appRouter = router({
           // Return token so client can store it in localStorage as fallback
           // when cookies are blocked (cross-site preview environments)
           rcClaimsToken: claimsToken,
+          // Real FastAPI api_token — used for direct calls to the Railway backend
+          // (do NOT confuse with rcClaimsToken above, which is the tRPC session JWT)
+          apiToken: result.apiToken,
         };
       }),
 
