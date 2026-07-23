@@ -359,7 +359,7 @@ def criar_condominio(body: CondominioCriar, request: Request):
 
 
 @router.get("/{contrato_id}")
-def detalhe_condominio(contrato_id: int):
+def detalhe_condominio(contrato_id: str):
     """Retorna o contrato de condomínio com todos os condôminos e percentuais calculados."""
     conn = get_db()
     try:
@@ -406,7 +406,7 @@ def detalhe_condominio(contrato_id: int):
 
 
 @router.post("/{contrato_id}/condominos", status_code=201)
-def adicionar_condomino(contrato_id: int, body: CondominoAdicionar, request: Request):
+def adicionar_condomino(contrato_id: str, body: CondominoAdicionar, request: Request):
     """
     Adiciona um condômino a um contrato de condomínio existente.
     Valida que a nova área não excede a área disponível.
@@ -486,7 +486,7 @@ def adicionar_condomino(contrato_id: int, body: CondominoAdicionar, request: Req
 
 
 @router.patch("/{contrato_id}/condominos/{condomino_id}")
-def atualizar_condomino(contrato_id: int, condomino_id: int, body: CondominoAtualizar, request: Request):
+def atualizar_condomino(contrato_id: str, condomino_id: int, body: CondominoAtualizar, request: Request):
     """Atualiza a área ou papel de um condômino."""
     conn = get_db()
     try:
@@ -555,7 +555,7 @@ def atualizar_condomino(contrato_id: int, condomino_id: int, body: CondominoAtua
 
 
 @router.delete("/{contrato_id}/condominos/{condomino_id}", status_code=204)
-def remover_condomino(contrato_id: int, condomino_id: int, request: Request):
+def remover_condomino(contrato_id: str, condomino_id: int, request: Request):
     """Remove um condômino do contrato. Mínimo de 2 condôminos deve ser mantido."""
     conn = get_db()
     try:
@@ -595,7 +595,7 @@ def remover_condomino(contrato_id: int, condomino_id: int, request: Request):
 
 
 @router.post("/{contrato_id}/condominos/{condomino_id}/enviar-assinatura")
-def enviar_assinatura(contrato_id: int, condomino_id: int, request: Request):
+def enviar_assinatura(contrato_id: str, condomino_id: int, request: Request):
     """Gera OTP e envia notificação de assinatura para o condômino."""
     if not _check_otp_rate_limit(condomino_id):
         raise HTTPException(
@@ -656,7 +656,7 @@ def enviar_assinatura(contrato_id: int, condomino_id: int, request: Request):
 
 
 @router.post("/{contrato_id}/condominos/{condomino_id}/assinar")
-def assinar_condominio(contrato_id: int, condomino_id: int, body: AssinarRequest, request: Request):
+def assinar_condominio(contrato_id: str, condomino_id: int, body: AssinarRequest, request: Request):
     """Registra a assinatura de um condômino via OTP."""
     conn = get_db()
     try:
@@ -729,7 +729,7 @@ def assinar_condominio(contrato_id: int, condomino_id: int, body: AssinarRequest
 
 
 @router.get("/{contrato_id}/resumo-areas")
-def resumo_areas(contrato_id: int):
+def resumo_areas(contrato_id: str):
     """Retorna o resumo de áreas alocadas e disponíveis no condomínio."""
     conn = get_db()
     try:
