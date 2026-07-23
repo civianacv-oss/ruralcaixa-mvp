@@ -285,15 +285,11 @@ export default function ContratosRurais() {
   const load = async () => {
     setLoading(true);
     try {
-      let data: ContratoRural[] = [];
-      try {
-        const r = await apiFetch<ContratoRural[]>(`/contratos-rurais?imovel_id=${imovelId}`);
-        data = Array.isArray(r) ? r : [];
-      } catch {
-        const r2 = await apiFetch<{ data: ContratoRural[] }>(`/contratos/?fazenda_id=${imovelId}`);
-        data = Array.isArray(r2.data) ? r2.data : [];
-      }
-      setContratos(data);
+      // /contratos-rurais consulta uma tabela legada (contratos_rurais) que não
+      // recebe gravações da criação atual — a fonte real é /contratos/, que
+      // consulta a tabela "contratos" (onde tudo é criado, inclusive Condomínio Rural).
+      const r2 = await apiFetch<{ data: ContratoRural[] }>(`/contratos/?fazenda_id=${imovelId}`);
+      setContratos(Array.isArray(r2.data) ? r2.data : []);
     } catch {
       toast.error("Não foi possível carregar os contratos");
     } finally {
