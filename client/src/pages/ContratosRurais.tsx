@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { API_BASE, getImovelId, getApiToken } from "@/lib/api";
 
 interface ContratoRural {
-  id: number;
+  id: string;
   tipo: string;
   descricao?: string;
   valor?: number;
@@ -21,6 +21,7 @@ interface ContratoRural {
   data_fim?: string;
   status?: string;
   imovel_id?: number;
+  criado_em?: string;
   outorgante_nome?: string;
   outorgado_nome?: string;
   percentual_outorgante?: number;
@@ -432,7 +433,7 @@ export default function ContratosRurais() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Excluir este contrato?")) return;
     try {
       await apiFetch(`/contratos/${id}`, { method: "DELETE" });
@@ -559,7 +560,7 @@ export default function ContratosRurais() {
     setResultadoAssist(null);
   };
 
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const handleDownload = async (c: ContratoRural) => {
     setDownloadingId(c.id);
@@ -588,11 +589,11 @@ export default function ContratosRurais() {
     }
   };
 
-  const [uploadingFinalId, setUploadingFinalId] = useState<number | null>(null);
-  const [contratoAlvoUpload, setContratoAlvoUpload] = useState<number | null>(null);
+  const [uploadingFinalId, setUploadingFinalId] = useState<string | null>(null);
+  const [contratoAlvoUpload, setContratoAlvoUpload] = useState<string | null>(null);
   const fileInputFinalRef = useRef<HTMLInputElement>(null);
 
-  const abrirSeletorDocxCorrigido = (contratoId: number) => {
+  const abrirSeletorDocxCorrigido = (contratoId: string) => {
     setContratoAlvoUpload(contratoId);
     fileInputFinalRef.current?.click();
   };
@@ -633,9 +634,9 @@ export default function ContratosRurais() {
     }
   };
 
-  const [enviandoAssinaturaId, setEnviandoAssinaturaId] = useState<number | null>(null);
+  const [enviandoAssinaturaId, setEnviandoAssinaturaId] = useState<string | null>(null);
 
-  const handleEnviarParaAssinatura = async (contratoId: number, tipo: string) => {
+  const handleEnviarParaAssinatura = async (contratoId: string, tipo: string) => {
     if (!confirm("Enviar este contrato para assinatura? Cada parte receberá um código por WhatsApp.")) return;
     setEnviandoAssinaturaId(contratoId);
     try {
@@ -766,6 +767,11 @@ export default function ContratosRurais() {
                       <div className="flex gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                         {c.data_inicio && <span>📅 {fmtDate(c.data_inicio)} → {fmtDate(c.data_fim) ?? "—"}</span>}
                         {c.area_parceria_hectares != null && <span>🌱 {c.area_parceria_hectares} ha</span>}
+                        {c.criado_em && (
+                          <span title={c.id}>
+                            🕒 Criado em {new Date(c.criado_em).toLocaleString("pt-BR")}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
