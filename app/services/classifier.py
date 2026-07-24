@@ -108,6 +108,31 @@ def detectar_produto(texto_norm):
             return produto
     return None
 
+def classificar_insumo(texto):
+    """
+    Detecta se a mensagem descreve uma COMPRA DE INSUMO com quantidade e
+    unidade explicitas (ex: "comprei 50 sacos de calcario dolomitico por
+    800 reais"). Usado para, alem do lancamento financeiro, tambem dar
+    entrada no estoque de insumos automaticamente.
+    Retorna None se nao encontrar o padrao quantidade+unidade+produto.
+    """
+    texto_norm = normalizar(texto)
+    m = re.search(
+        r'(\d+(?:[.,]\d+)?)\s*(sac[oa]s?|kg|quilos?|litros?|toneladas?|ton|'
+        r'unidades?|un|fardos?|caixas?|cx|pacotes?|rolos?)\s+de\s+'
+        r'([a-z\s]+?)(?=\s+por\b|\s+r\$|\s*$)',
+        texto_norm
+    )
+    if not m:
+        return None
+    quantidade = float(m.group(1).replace(",", "."))
+    unidade = m.group(2)
+    produto = m.group(3).strip()
+    if not produto or quantidade <= 0:
+        return None
+    return {"produto": produto, "quantidade": quantidade, "unidade": unidade}
+
+
 def classificar_recibo(texto):
     """
     Detecta se a mensagem descreve a criacao de um recibo (menciona CPF e

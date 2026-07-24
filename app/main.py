@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from app.contratos_api import router as contratos_router
 from app.lancamentos_contrato import router as lanc_router
 
-from app.services.classifier import classificar, classificar_recibo
+from app.services.classifier import classificar, classificar_recibo, classificar_insumo
 try:
     from app.routers.ovino import router as ovino_router
     print("OVINO ROUTER LOADED OK")
@@ -1360,13 +1360,55 @@ async def processar(payload: dict):
                     from app.db import buscar_descricao_conta
                     desc_conta = buscar_descricao_conta(sess.get("conta"))
                     conta_txt = f"{sess['conta']} - {desc_conta}" if desc_conta else sess['conta']
+
+                    insumo_txt_final = ""
+                    if sess.get("_insumo"):
+                        try:
+                            from app.db import get_db as get_db_psycopg2
+                            from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                            ins = sess["_insumo"]
+                            conn_ins = get_db_psycopg2()
+                            cur_ins = conn_ins.cursor()
+                            nome_norm = ins["produto"].strip().lower()
+                            cur_ins.execute("""
+                                SELECT id FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
+                                AND LOWER(TRIM(nome)) LIKE %s LIMIT 1
+                            """, (f"%{nome_norm}%",))
+                            row_ins = cur_ins.fetchone()
+                            if row_ins:
+                                insumo_id = row_ins["id"]
+                            else:
+                                cur_ins.execute("""
+                                    INSERT INTO insumos (fazenda_id, nome, categoria, unidade, origem, estoque_atual)
+                                    VALUES (1, %s, 'outros', %s, 'comprado', 0)
+                                    RETURNING id
+                                """, (ins["produto"].title(), ins["unidade"]))
+                                insumo_id = cur_ins.fetchone()["id"]
+
+                            custo_unitario = round(sess["valor"] / ins["quantidade"], 4) if ins["quantidade"] else None
+                            aplicar_movimentacao_insumo(
+                                cur_ins, fazenda_id=1, insumo_id=insumo_id,
+                                tipo="compra", quantidade=ins["quantidade"],
+                                custo_unitario=custo_unitario,
+                                origem_modulo="whatsapp_bot",
+                                origem_descricao=f"Lancamento #{lancamento_id}",
+                                observacao="Compra registrada via WhatsApp",
+                            )
+                            conn_ins.commit()
+                            conn_ins.close()
+                            insumo_txt_final = f"\n📦 Estoque atualizado: +{ins['quantidade']:g} {ins['unidade']} de {ins['produto'].title()}"
+                        except Exception as e:
+                            print(f"Erro ao dar entrada no estoque: {e}")
+                            insumo_txt_final = "\n⚠️ Nao foi possivel atualizar o estoque automaticamente."
+
                     resposta = (
                         f"Lancamento #{lancamento_id} gravado!\n"
                         f"Tipo: {sess['tipo'].upper()}\n"
                         f"Conta: {conta_txt}\n"
                         f"Produto: {produto_txt}\n"
                         f"Valor: R$ {sess['valor']:,.2f}\n"
-                        f"Data: {sess['data']}\n\n"
+                        f"Data: {sess['data']}"
+                        f"{insumo_txt_final}\n\n"
                         f"Envie a foto ou PDF do comprovante para vincular ao lancamento."
                     )
                     await send_msg(numero, resposta)
@@ -1427,13 +1469,18 @@ async def processar(payload: dict):
                 from app.db import buscar_descricao_conta
                 desc_conta = buscar_descricao_conta(sess.get("conta"))
                 conta_txt = f"{sess['conta']} - {desc_conta}" if desc_conta else sess['conta']
+                insumo_txt = ""
+                if sess.get("_insumo"):
+                    ins = sess["_insumo"]
+                    insumo_txt = f"\n📦 Tambem dara entrada no estoque: {ins['quantidade']:g} {ins['unidade']} de {ins['produto']}"
                 msg_resposta = (
                     f"Recebi! Lancamento sugerido:\n\n"
                     f"{tipo_label} {sess['tipo'].upper()}\n"
                     f"Valor: R$ {sess['valor']:,.2f}\n"
                     f"Conta: {conta_txt}\n"
                     f"Produto: {produto_txt}\n"
-                    f"Confianca: {sess['confianca']}%\n\n"
+                    f"Confianca: {sess['confianca']}%"
+                    f"{insumo_txt}\n\n"
                     f"Responda SIM para confirmar ou NAO para cancelar."
                 )
                 await send_msg(numero, msg_resposta)
@@ -1487,6 +1534,12 @@ async def processar(payload: dict):
 
             sessoes[numero] = resultado
 
+            if resultado["tipo"] == "despesa":
+                dados_insumo = classificar_insumo(texto)
+                if dados_insumo:
+                    resultado["_insumo"] = dados_insumo
+                    sessoes[numero] = resultado
+
             if resultado["valor"] is None:
                 sessoes[numero]["_tipo"] = "aguardando_valor"
                 await send_msg(numero, "Nao consegui identificar o valor. Qual foi o valor (em R$)?")
@@ -1503,13 +1556,18 @@ async def processar(payload: dict):
             from app.db import buscar_descricao_conta
             desc_conta = buscar_descricao_conta(resultado.get("conta"))
             conta_txt = f"{resultado['conta']} - {desc_conta}" if desc_conta else resultado['conta']
+            insumo_txt = ""
+            if resultado.get("_insumo"):
+                ins = resultado["_insumo"]
+                insumo_txt = f"\n📦 Tambem dara entrada no estoque: {ins['quantidade']:g} {ins['unidade']} de {ins['produto']}"
             msg_resposta = (
                 f"Recebi! Lancamento sugerido:\n\n"
                 f"{tipo_label} {resultado['tipo'].upper()}\n"
                 f"Valor: R$ {resultado['valor']:,.2f}\n"
                 f"Conta: {conta_txt}\n"
                 f"Produto: {produto_txt}\n"
-                f"Confianca: {resultado['confianca']}%\n\n"
+                f"Confianca: {resultado['confianca']}%"
+                f"{insumo_txt}\n\n"
                 f"Responda SIM para confirmar ou NAO para cancelar."
             )
             await send_msg(numero, msg_resposta)

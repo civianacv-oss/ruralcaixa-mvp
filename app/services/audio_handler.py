@@ -1,5 +1,5 @@
 import httpx
-from app.services.classifier import classificar, classificar_recibo
+from app.services.classifier import classificar, classificar_recibo, classificar_insumo
 from app.services.groq_stt import transcrever_audio
 
 GRAPH = "https://graph.facebook.com/v23.0"
@@ -58,6 +58,12 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
 
         sessoes[numero] = resultado
 
+        if resultado["tipo"] == "despesa":
+            dados_insumo = classificar_insumo(texto)
+            if dados_insumo:
+                resultado["_insumo"] = dados_insumo
+                sessoes[numero] = resultado
+
         if resultado["valor"] is None:
             sessoes[numero]["_tipo"] = "aguardando_valor"
             await send_msg_func(
@@ -73,13 +79,18 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
         from app.db import buscar_descricao_conta
         desc_conta = buscar_descricao_conta(resultado.get("conta"))
         conta_txt = f"{resultado['conta']} - {desc_conta}" if desc_conta else resultado['conta']
+        insumo_txt = ""
+        if resultado.get("_insumo"):
+            ins = resultado["_insumo"]
+            insumo_txt = f"\n📦 Tambem dara entrada no estoque: {ins['quantidade']:g} {ins['unidade']} de {ins['produto']}"
         await send_msg_func(numero,
             f"🎙️ Audio recebido!\n"
             f"📝 Transcricao: {texto}\n\n"
             f"{tipo_label} {resultado['tipo'].upper()}\n"
             f"Valor: R$ {resultado['valor']:,.2f}\n"
             f"Conta: {conta_txt}\n"
-            f"Produto: {produto_txt}\n\n"
+            f"Produto: {produto_txt}"
+            f"{insumo_txt}\n\n"
             f"Responda SIM para confirmar ou NAO para cancelar."
         )
     except Exception as e:
