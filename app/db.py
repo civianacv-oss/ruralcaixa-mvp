@@ -35,8 +35,8 @@ def gravar_lancamento(dados: dict):
             else:
                 atividade = 'INVESTIMENTO'
             sub_id = str(_uuid.uuid4())
-            conn.execute(text('INSERT INTO subcontas (id, nome, tipo, atividade_tipo) VALUES (:id, :nome, :tipo, :atv)'),
-                {'id': sub_id, 'nome': nome_sub[:100], 'tipo': tipo_raw, 'atv': atividade})
+            conn.execute(text('INSERT INTO subcontas (id, nome, tipo, atividade_tipo, codigo_conta) VALUES (:id, :nome, :tipo, :atv, :conta)'),
+                {'id': sub_id, 'nome': nome_sub[:100], 'tipo': tipo_raw, 'atv': atividade, 'conta': dados.get('conta')})
         else:
             sub_id = sub[0]
         import uuid as _uuid2
