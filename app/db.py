@@ -24,7 +24,7 @@ def gravar_lancamento(dados: dict):
         # Busca subconta pelo nome/tipo
         tipo_raw = dados.get('tipo', 'despesa').upper()
         nome_sub = dados.get('produto') or dados.get('subconta') or dados.get('descricao', 'Outros')
-        sub = conn.execute(text('SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) LIMIT 1'), {'nome': f'%{nome_sub[:20]}%'}).fetchone()
+        sub = conn.execute(text('SELECT id FROM subcontas WHERE LOWER(nome) LIKE LOWER(:nome) AND tipo = :tipo LIMIT 1'), {'nome': f'%{nome_sub[:20]}%', 'tipo': tipo_raw}).fetchone()
         if not sub:
             import uuid as _uuid
             atividade_raw = (dados.get('atividade') or 'rural').upper()
