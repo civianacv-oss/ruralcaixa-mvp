@@ -18,6 +18,7 @@ import AdminProcuracoes from "./pages/AdminProcuracoes";
 // Novos módulos
 import Propriedades from "./pages/Propriedades";
 import ContratosRurais from "./pages/ContratosRurais";
+import Recibos from "./pages/Recibos";
 import AcertoContrato from "./pages/AcertoContrato";
 import Lancamentos from "./pages/Lancamentos";
 import Rebanhos from "./pages/Rebanhos";
@@ -96,6 +97,7 @@ function Router() {
       {/* Gestão Rural */}
       <Route path="/propriedades">{() => <ProtectedRoute component={Propriedades} />}</Route>
       <Route path="/contratos-rurais">{() => <ProtectedRoute component={ContratosRurais} />}</Route>
+      <Route path="/recibos">{() => <ProtectedRoute component={Recibos} />}</Route>
       <Route path="/acerto-contrato">{() => <ProtectedRoute component={AcertoContrato} />}</Route>
       <Route path="/lancamentos">{() => <ProtectedRoute component={Lancamentos} />}</Route>
 

@@ -37,6 +37,7 @@ import {
   Rabbit,
   Cat,
   Ham,
+  FileCheck,
 } from "lucide-react";
 import { getImovelId } from "@/lib/api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -78,6 +79,7 @@ const NAV_SECTIONS: NavSection[] = [
       { icon: LayoutDashboard, label: "Painel Principal", path: "/dashboard" },
       { icon: Building2, label: "Propriedades", path: "/propriedades" },
       { icon: FileSignature, label: "Contratos Rurais", path: "/contratos-rurais" },
+      { icon: FileCheck, label: "Recibos", path: "/recibos" },
       { icon: Calculator, label: "Acerto de Contrato", path: "/acerto-contrato" },
       { icon: Receipt, label: "Lançamentos", path: "/lancamentos" },
     ],
