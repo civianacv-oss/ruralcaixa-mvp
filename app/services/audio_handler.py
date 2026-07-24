@@ -30,6 +30,17 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
             return
 
         sessoes[numero] = resultado
+
+        if resultado["valor"] is None:
+            sessoes[numero]["_tipo"] = "aguardando_valor"
+            await send_msg_func(
+                numero,
+                f"🎙️ Audio recebido!\n"
+                f"📝 Transcricao: {texto}\n\n"
+                f"Nao consegui identificar o valor. Qual foi o valor (em R$)?"
+            )
+            return
+
         tipo_label = "[RECEITA]" if resultado["tipo"] == "receita" else "[DESPESA]" if resultado["tipo"] == "despesa" else "[INVESTIMENTO]"
         produto_txt = resultado.get("produto") or "N/A"
         await send_msg_func(numero,
