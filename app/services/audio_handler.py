@@ -1,5 +1,5 @@
 import httpx
-from app.services.classifier import classificar
+from app.services.classifier import classificar, classificar_recibo
 from app.services.groq_stt import transcrever_audio
 
 GRAPH = "https://graph.facebook.com/v23.0"
@@ -17,6 +17,23 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
         texto = await transcrever_audio(audio_bytes)
         print(f"Transcricao: {texto}")
 
+        dados_recibo = classificar_recibo(texto)
+        if dados_recibo:
+            sessoes[numero] = {**dados_recibo, "_tipo": "recibo_pendente"}
+            await send_msg_func(
+                numero,
+                f"🎙️ Audio recebido!\n"
+                f"📝 Transcricao: {texto}\n\n"
+                f"Recibo detectado:\n\n"
+                f"Destinatario: {dados_recibo['destinatario_nome']}\n"
+                f"CPF/CNPJ: {dados_recibo['destinatario_documento']}\n"
+                f"Telefone: {dados_recibo['destinatario_telefone']}\n"
+                f"Valor: R$ {dados_recibo['valor']:,.2f}\n"
+                f"Objeto: {dados_recibo['objeto']}\n\n"
+                f"Responda SIM para criar e enviar o recibo, ou NAO para cancelar."
+            )
+            return
+
         # Tenta regras primeiro, fallback para AI
         resultado = classificar(texto)
         if not resultado:
@@ -26,6 +43,11 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
                 resultado = _normalizar_ai(resultado)
 
         if not resultado:
+            from app.services.recibo_handler import detectar_intencao_recibo, iniciar_recibo_wizard
+            if detectar_intencao_recibo(texto):
+                resposta = iniciar_recibo_wizard(sessoes, numero)
+                await send_msg_func(numero, f"🎙️ Audio recebido!\n📝 Transcricao: {texto}\n\n{resposta}")
+                return
             await send_msg_func(numero, "Nao entendi o audio. Digite o lancamento.")
             return
 

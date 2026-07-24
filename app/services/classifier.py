@@ -64,6 +64,10 @@ def extrair_valor(texto):
         candidatos_moeda.append(float(m.group(1).replace(",", ".")))
     for m in re.finditer(r'(\d+(?:,\d{2})?)\s*reais', texto_norm):
         candidatos_moeda.append(float(m.group(1).replace(",", ".")))
+    # "10 mil reais" / "10 mil" (fala transcrita costuma separar o numero da
+    # palavra "mil" em vez de escrever "10000" direto)
+    for m in re.finditer(r'(\d+(?:[.,]\d+)?)\s*mil\b', texto_norm):
+        candidatos_moeda.append(float(m.group(1).replace(",", ".")) * 1000)
     if candidatos_moeda:
         return max(candidatos_moeda)
 
