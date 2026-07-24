@@ -89,12 +89,16 @@ def _normalizar_ai(r: dict) -> dict:
         "venda_produto": "1.1.1", "servico_prestado": "1.2",
         "custeio": "3.1.1", "combustivel": "3.1.2",
         "manutencao": "3.1.5", "salario": "3.1.4",
-        "investimento": "5.1", "outros": "3.9",
+        "investimento": "5.2", "outros": "3.9",
     }
     import datetime
+    categoria = r.get("categoria", "outros")
+    tipo = r.get("tipo", "despesa")
+    if categoria == "investimento":
+        tipo = "investimento"
     return {
-        "conta": MAPA_CATEGORIA.get(r.get("categoria", "outros"), "3.9"),
-        "tipo": r.get("tipo", "despesa"),
+        "conta": MAPA_CATEGORIA.get(categoria, "3.9"),
+        "tipo": tipo,
         "valor": float(r.get("valor", 0)),
         "data": r.get("data") or datetime.date.today().isoformat(),
         "confianca": 70 if r.get("confianca") == "alta" else 50,
