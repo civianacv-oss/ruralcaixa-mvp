@@ -70,12 +70,15 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
 
         tipo_label = "[RECEITA]" if resultado["tipo"] == "receita" else "[DESPESA]" if resultado["tipo"] == "despesa" else "[INVESTIMENTO]"
         produto_txt = resultado.get("produto") or "N/A"
+        from app.db import buscar_descricao_conta
+        desc_conta = buscar_descricao_conta(resultado.get("conta"))
+        conta_txt = f"{resultado['conta']} - {desc_conta}" if desc_conta else resultado['conta']
         await send_msg_func(numero,
             f"🎙️ Audio recebido!\n"
             f"📝 Transcricao: {texto}\n\n"
             f"{tipo_label} {resultado['tipo'].upper()}\n"
             f"Valor: R$ {resultado['valor']:,.2f}\n"
-            f"Conta: {resultado['conta']}\n"
+            f"Conta: {conta_txt}\n"
             f"Produto: {produto_txt}\n\n"
             f"Responda SIM para confirmar ou NAO para cancelar."
         )

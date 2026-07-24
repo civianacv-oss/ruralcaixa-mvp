@@ -1357,10 +1357,13 @@ async def processar(payload: dict):
                             print(f"Erro upload drive: {e}")
 
                     produto_txt = sess.get("produto") or "N/A"
+                    from app.db import buscar_descricao_conta
+                    desc_conta = buscar_descricao_conta(sess.get("conta"))
+                    conta_txt = f"{sess['conta']} - {desc_conta}" if desc_conta else sess['conta']
                     resposta = (
                         f"Lancamento #{lancamento_id} gravado!\n"
                         f"Tipo: {sess['tipo'].upper()}\n"
-                        f"Conta: {sess['conta']}\n"
+                        f"Conta: {conta_txt}\n"
                         f"Produto: {produto_txt}\n"
                         f"Valor: R$ {sess['valor']:,.2f}\n"
                         f"Data: {sess['data']}\n\n"
@@ -1421,11 +1424,14 @@ async def processar(payload: dict):
 
                 tipo_label = "[RECEITA]" if sess["tipo"] == "receita" else "[DESPESA]" if sess["tipo"] == "despesa" else "[INVESTIMENTO]"
                 produto_txt = sess.get("produto") or "N/A"
+                from app.db import buscar_descricao_conta
+                desc_conta = buscar_descricao_conta(sess.get("conta"))
+                conta_txt = f"{sess['conta']} - {desc_conta}" if desc_conta else sess['conta']
                 msg_resposta = (
                     f"Recebi! Lancamento sugerido:\n\n"
                     f"{tipo_label} {sess['tipo'].upper()}\n"
                     f"Valor: R$ {sess['valor']:,.2f}\n"
-                    f"Conta: {sess['conta']}\n"
+                    f"Conta: {conta_txt}\n"
                     f"Produto: {produto_txt}\n"
                     f"Confianca: {sess['confianca']}%\n\n"
                     f"Responda SIM para confirmar ou NAO para cancelar."
@@ -1494,11 +1500,14 @@ async def processar(payload: dict):
                 tipo_label = "[INVESTIMENTO]"
 
             produto_txt = resultado.get("produto") or "N/A"
+            from app.db import buscar_descricao_conta
+            desc_conta = buscar_descricao_conta(resultado.get("conta"))
+            conta_txt = f"{resultado['conta']} - {desc_conta}" if desc_conta else resultado['conta']
             msg_resposta = (
                 f"Recebi! Lancamento sugerido:\n\n"
                 f"{tipo_label} {resultado['tipo'].upper()}\n"
                 f"Valor: R$ {resultado['valor']:,.2f}\n"
-                f"Conta: {resultado['conta']}\n"
+                f"Conta: {conta_txt}\n"
                 f"Produto: {produto_txt}\n"
                 f"Confianca: {resultado['confianca']}%\n\n"
                 f"Responda SIM para confirmar ou NAO para cancelar."

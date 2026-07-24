@@ -17,6 +17,16 @@ def buscar_imoveis_por_cpf(cpf: str):
         """), {"cpf": cpf_limpo}).fetchall()
         return [dict(r._mapping) for r in result]
 
+def buscar_descricao_conta(codigo: str) -> str:
+    if not codigo:
+        return ""
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT descricao FROM plano_contas WHERE codigo = :codigo"
+        ), {"codigo": codigo}).fetchone()
+        return result[0] if result else ""
+
+
 def gravar_lancamento(dados: dict):
     with engine.connect() as conn:
         prod = conn.execute(text('SELECT id FROM produtores WHERE telefone = :tel'), {'tel': dados.get('numero', '')}).fetchone()
