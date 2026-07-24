@@ -20,19 +20,30 @@ Formato:
 
 async def classificar(texto: str) -> dict:
     async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json={
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 300,
-                "system": SISTEMA,
-                "messages": [{"role": "user", "content": texto}]
-            }
-        )
-        texto_resposta = r.json()["content"][0]["text"]
-        return json.loads(texto_resposta)
+        try:
+            r = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 300,
+                    "system": SISTEMA,
+                    "messages": [{"role": "user", "content": texto}]
+                }
+            )
+            r.raise_for_status()
+            texto_resposta = r.json()["content"][0]["text"].strip()
+            # A IA as vezes responde envolto em bloco de codigo markdown
+            # (```json ... ``` ou so ``` ... ```) mesmo pedindo "so JSON".
+            if texto_resposta.startswith("```"):
+                texto_resposta = texto_resposta.strip("`").strip()
+                if texto_resposta.startswith("json"):
+                    texto_resposta = texto_resposta[4:].strip()
+            return json.loads(texto_resposta)
+        except Exception as e:
+            print(f"Erro no classificador AI: {e}")
+            return None
