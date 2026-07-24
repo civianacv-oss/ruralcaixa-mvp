@@ -14,7 +14,7 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
             r2 = await client.get(url, headers={"Authorization": f"Bearer {wapp_token}"})
             audio_bytes = r2.content
 
-        texto = await transcrever_audio(audio_bytes, mime)
+        texto = await transcrever_audio(audio_bytes)
         print(f"Transcricao: {texto}")
 
         # Tenta regras primeiro, fallback para AI

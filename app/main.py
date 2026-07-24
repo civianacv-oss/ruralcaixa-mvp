@@ -1284,7 +1284,7 @@ async def processar(payload: dict):
                 await send_msg(numero, resultado["resumo"])
                 return
 
-            if numero in sessoes and sessoes[numero].get("_tipo") not in ("cadastro", "recibo_wizard"):
+            if numero in sessoes and sessoes[numero].get("_tipo") not in ("cadastro", "recibo_wizard", "aguardando_valor"):
                 if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
                     sess = sessoes.pop(numero)
 
@@ -1403,6 +1403,36 @@ async def processar(payload: dict):
                 is_recibo_wizard_ativo, processar_etapa_recibo,
             )
 
+            if sessoes.get(numero, {}).get("_tipo") == "aguardando_valor":
+                import re as _re
+                sess = sessoes[numero]
+                texto_valor = _re.sub(r"[^\d,.]", "", texto).replace(".", "").replace(",", ".")
+                try:
+                    valor = float(texto_valor)
+                    if valor <= 0:
+                        raise ValueError
+                except ValueError:
+                    await send_msg(numero, "Valor invalido. Digite so o numero (ex: 350 ou 350,00):")
+                    return
+
+                sess["valor"] = valor
+                sess.pop("_tipo", None)
+                sessoes[numero] = sess
+
+                tipo_label = "[RECEITA]" if sess["tipo"] == "receita" else "[DESPESA]" if sess["tipo"] == "despesa" else "[INVESTIMENTO]"
+                produto_txt = sess.get("produto") or "N/A"
+                msg_resposta = (
+                    f"Recebi! Lancamento sugerido:\n\n"
+                    f"{tipo_label} {sess['tipo'].upper()}\n"
+                    f"Valor: R$ {sess['valor']:,.2f}\n"
+                    f"Conta: {sess['conta']}\n"
+                    f"Produto: {produto_txt}\n"
+                    f"Confianca: {sess['confianca']}%\n\n"
+                    f"Responda SIM para confirmar ou NAO para cancelar."
+                )
+                await send_msg(numero, msg_resposta)
+                return
+
             if is_recibo_wizard_ativo(sessoes, numero):
                 resposta = processar_etapa_recibo(sessoes, numero, texto)
                 if resposta:
@@ -1450,6 +1480,12 @@ async def processar(payload: dict):
                 return
 
             sessoes[numero] = resultado
+
+            if resultado["valor"] is None:
+                sessoes[numero]["_tipo"] = "aguardando_valor"
+                await send_msg(numero, "Nao consegui identificar o valor. Qual foi o valor (em R$)?")
+                return
+
             if resultado["tipo"] == "receita":
                 tipo_label = "[RECEITA]"
             elif resultado["tipo"] == "despesa":
