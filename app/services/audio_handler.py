@@ -1,5 +1,5 @@
 import httpx
-from app.services.classifier import classificar, classificar_recibo, classificar_insumo
+from app.services.classifier import classificar, classificar_recibo, classificar_insumo, classificar_uso_insumo
 from app.services.groq_stt import transcrever_audio
 
 GRAPH = "https://graph.facebook.com/v23.0"
@@ -36,6 +36,23 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
                 f"Valor: R$ {dados_recibo['valor']:,.2f}\n"
                 f"Objeto: {dados_recibo['objeto']}\n\n"
                 f"Responda SIM para criar e enviar o recibo, ou NAO para cancelar."
+            )
+            return
+
+        dados_uso = classificar_uso_insumo(texto)
+        if dados_uso:
+            sessoes[numero] = {**dados_uso, "_tipo": "uso_insumo_pendente"}
+            finalidade_txt = f"\nFinalidade: {dados_uso['finalidade']}" if dados_uso.get("finalidade") else ""
+            await send_msg_func(
+                numero,
+                f"🎙️ Audio recebido!\n"
+                f"📝 Transcricao: {texto}\n\n"
+                f"Uso de insumo detectado:\n\n"
+                f"Produto: {dados_uso['produto']}\n"
+                f"Quantidade: {dados_uso['quantidade']:g} {dados_uso['unidade']}"
+                f"{finalidade_txt}\n\n"
+                f"Isso vai dar baixa no estoque (sem lancamento financeiro).\n"
+                f"Responda SIM para confirmar ou NAO para cancelar."
             )
             return
 

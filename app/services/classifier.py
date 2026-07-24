@@ -108,6 +108,33 @@ def detectar_produto(texto_norm):
             return produto
     return None
 
+def classificar_uso_insumo(texto):
+    """
+    Detecta USO/CONSUMO de um insumo ja em estoque (ex: "utilizei 50 sacos
+    de calcario para calagem de solo pra milho"). Diferente de uma compra,
+    isso NAO gera lancamento financeiro - so baixa o estoque.
+    Retorna None se nao encontrar o padrao.
+    """
+    texto_norm = normalizar(texto)
+    m = re.search(
+        r'(?:usei|utilizei|apliquei|gastei)\s+(\d+(?:[.,]\d+)?)\s*'
+        r'(sac[oa]s?|kg|quilos?|litros?|toneladas?|ton|unidades?|un|fardos?|'
+        r'caixas?|cx|pacotes?|rolos?)\s+de\s+'
+        r'([a-z]+(?:\s+(?!para\b|em\b|no\b|na\b|pra\b)[a-z]+)?)'
+        r'(?:\s+(?:para|em|no|na|pra)\s+(.+))?',
+        texto_norm
+    )
+    if not m:
+        return None
+    quantidade = float(m.group(1).replace(",", "."))
+    unidade = m.group(2)
+    produto = m.group(3).strip()
+    finalidade = m.group(4).strip() if m.group(4) else None
+    if not produto or quantidade <= 0:
+        return None
+    return {"produto": produto, "quantidade": quantidade, "unidade": unidade, "finalidade": finalidade}
+
+
 def classificar_insumo(texto):
     """
     Detecta se a mensagem descreve uma COMPRA DE INSUMO com quantidade e

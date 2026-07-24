@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from app.contratos_api import router as contratos_router
 from app.lancamentos_contrato import router as lanc_router
 
-from app.services.classifier import classificar, classificar_recibo, classificar_insumo
+from app.services.classifier import classificar, classificar_recibo, classificar_insumo, classificar_uso_insumo
 try:
     from app.routers.ovino import router as ovino_router
     print("OVINO ROUTER LOADED OK")
@@ -1339,6 +1339,48 @@ async def processar(payload: dict):
                             await send_msg(numero, "Erro ao criar o recibo. Tente novamente ou use o app.")
                         return
 
+                    if sess.get("_tipo") == "uso_insumo_pendente":
+                        try:
+                            from app.db import get_db as get_db_psycopg2
+                            from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                            nome_norm = sess["produto"].strip().lower()
+                            conn_ins = get_db_psycopg2()
+                            cur_ins = conn_ins.cursor()
+                            cur_ins.execute("""
+                                SELECT id, nome FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
+                                AND LOWER(TRIM(nome)) LIKE %s LIMIT 1
+                            """, (f"%{nome_norm}%",))
+                            row_ins = cur_ins.fetchone()
+                            if not row_ins:
+                                conn_ins.close()
+                                await send_msg(
+                                    numero,
+                                    f"Nao encontrei '{sess['produto']}' cadastrado no estoque. "
+                                    f"Cadastre o insumo no app antes de registrar o uso."
+                                )
+                                return
+                            aplicar_movimentacao_insumo(
+                                cur_ins, fazenda_id=1, insumo_id=row_ins["id"],
+                                tipo="uso", quantidade=sess["quantidade"],
+                                origem_modulo="whatsapp_bot",
+                                origem_descricao=sess.get("finalidade") or "Uso registrado via WhatsApp",
+                                observacao=sess.get("finalidade") or "Uso registrado via WhatsApp",
+                            )
+                            conn_ins.commit()
+                            conn_ins.close()
+                            finalidade_txt = f"\nFinalidade: {sess['finalidade']}" if sess.get("finalidade") else ""
+                            await send_msg(
+                                numero,
+                                f"Baixa registrada no estoque!\n"
+                                f"Produto: {row_ins['nome']}\n"
+                                f"Quantidade: {sess['quantidade']:g} {sess['unidade']}"
+                                f"{finalidade_txt}"
+                            )
+                        except Exception as e:
+                            print(f"Erro ao registrar uso de insumo: {e}")
+                            await send_msg(numero, "Erro ao dar baixa no estoque. Tente novamente ou use o app.")
+                        return
+
                     sess["numero"] = numero
                     from app.db import gravar_lancamento
                     lancamento_id = gravar_lancamento(sess)
@@ -1517,6 +1559,21 @@ async def processar(payload: dict):
                     f"Valor: R$ {dados_recibo['valor']:,.2f}\n"
                     f"Objeto: {dados_recibo['objeto']}\n\n"
                     f"Responda SIM para criar e enviar o recibo, ou NAO para cancelar."
+                )
+                await send_msg(numero, msg_confirmacao)
+                return
+
+            dados_uso = classificar_uso_insumo(texto)
+            if dados_uso:
+                sessoes[numero] = {**dados_uso, "_tipo": "uso_insumo_pendente"}
+                finalidade_txt = f"\nFinalidade: {dados_uso['finalidade']}" if dados_uso.get("finalidade") else ""
+                msg_confirmacao = (
+                    f"Uso de insumo detectado:\n\n"
+                    f"Produto: {dados_uso['produto']}\n"
+                    f"Quantidade: {dados_uso['quantidade']:g} {dados_uso['unidade']}"
+                    f"{finalidade_txt}\n\n"
+                    f"Isso vai dar baixa no estoque (sem lancamento financeiro).\n"
+                    f"Responda SIM para confirmar ou NAO para cancelar."
                 )
                 await send_msg(numero, msg_confirmacao)
                 return
