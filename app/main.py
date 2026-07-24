@@ -1227,6 +1227,12 @@ async def send_msg(to: str, body: str):
 
 # â”€â”€â”€ Processamento WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+class _AbortInsumo(Exception):
+    """Usado internamente para sair do bloco de entrada de insumo quando ha
+    ambiguidade (mais de um insumo com nome parecido), sem tratar como erro."""
+    pass
+
+
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
     try:
@@ -1347,11 +1353,11 @@ async def processar(payload: dict):
                             conn_ins = get_db_psycopg2()
                             cur_ins = conn_ins.cursor()
                             cur_ins.execute("""
-                                SELECT id, nome FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
-                                AND LOWER(TRIM(nome)) LIKE %s LIMIT 1
+                                SELECT id, nome, estoque_atual FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
+                                AND LOWER(TRIM(nome)) LIKE %s
                             """, (f"%{nome_norm}%",))
-                            row_ins = cur_ins.fetchone()
-                            if not row_ins:
+                            matches = cur_ins.fetchall()
+                            if not matches:
                                 conn_ins.close()
                                 await send_msg(
                                     numero,
@@ -1359,6 +1365,17 @@ async def processar(payload: dict):
                                     f"Cadastre o insumo no app antes de registrar o uso."
                                 )
                                 return
+                            if len(matches) > 1:
+                                conn_ins.close()
+                                lista = "\n".join(f"- {m['nome']} (estoque: {float(m['estoque_atual']):g})" for m in matches)
+                                await send_msg(
+                                    numero,
+                                    f"Encontrei mais de um insumo parecido com '{sess['produto']}':\n{lista}\n\n"
+                                    f"Manda de novo dizendo o nome mais especifico (ex: o nome completo de um deles)."
+                                )
+                                sessoes.pop(numero, None)
+                                return
+                            row_ins = matches[0]
                             aplicar_movimentacao_insumo(
                                 cur_ins, fazenda_id=1, insumo_id=row_ins["id"],
                                 tipo="uso", quantidade=sess["quantidade"],
@@ -1413,10 +1430,19 @@ async def processar(payload: dict):
                             cur_ins = conn_ins.cursor()
                             nome_norm = ins["produto"].strip().lower()
                             cur_ins.execute("""
-                                SELECT id FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
-                                AND LOWER(TRIM(nome)) LIKE %s LIMIT 1
+                                SELECT id, nome FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
+                                AND LOWER(TRIM(nome)) LIKE %s
                             """, (f"%{nome_norm}%",))
-                            row_ins = cur_ins.fetchone()
+                            matches_ins = cur_ins.fetchall()
+                            if len(matches_ins) > 1:
+                                conn_ins.close()
+                                nomes = ", ".join(m["nome"] for m in matches_ins)
+                                insumo_txt_final = (
+                                    f"\n⚠️ Encontrei mais de um insumo parecido com '{ins['produto']}' "
+                                    f"({nomes}) - faca a entrada manualmente no app, especificando qual deles."
+                                )
+                                raise _AbortInsumo()
+                            row_ins = matches_ins[0] if matches_ins else None
                             if row_ins:
                                 insumo_id = row_ins["id"]
                             else:
@@ -1439,6 +1465,8 @@ async def processar(payload: dict):
                             conn_ins.commit()
                             conn_ins.close()
                             insumo_txt_final = f"\n📦 Estoque atualizado: +{ins['quantidade']:g} {ins['unidade']} de {ins['produto'].title()}"
+                        except _AbortInsumo:
+                            pass
                         except Exception as e:
                             print(f"Erro ao dar entrada no estoque: {e}")
                             insumo_txt_final = "\n⚠️ Nao foi possivel atualizar o estoque automaticamente."
