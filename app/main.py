@@ -335,6 +335,12 @@ try:
 except Exception as _e:
     print(f'CONDOMINIO ROUTER FAILED: {_e}')
 try:
+    from app.routers.recibos import router as recibos_router
+    app.include_router(recibos_router)
+    print('RECIBOS ROUTER LOADED OK')
+except Exception as _e:
+    print(f'RECIBOS ROUTER FAILED: {_e}')
+try:
     from app.routers.contratos_assistente import router as contratos_assistente_router
     app.include_router(contratos_assistente_router)
     print('CONTRATOS_ASSISTENTE ROUTER LOADED OK')
