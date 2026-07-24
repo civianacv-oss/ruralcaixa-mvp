@@ -104,6 +104,61 @@ def detectar_produto(texto_norm):
             return produto
     return None
 
+def classificar_recibo(texto):
+    """
+    Detecta se a mensagem descreve a criacao de um recibo (menciona CPF e
+    telefone de um terceiro) e extrai os campos. Espera um formato como:
+    'CPF 000.000.000-00 telefone (00) 00000-0000 Nome Completo valor R$100 objeto'
+    A ordem dos campos apos os rotulos nao importa, mas os rotulos "cpf",
+    "telefone" e "valor" precisam aparecer no texto.
+    Retorna None se o texto nao parecer ser uma criacao de recibo (assim o
+    fluxo normal de classificacao de lancamento continua funcionando).
+    """
+    if "cpf" not in texto.lower() or "telefone" not in texto.lower():
+        return None
+
+    m_cpf = re.search(r'cpf\s*[:\-]?\s*([\d\.\s\-]{11,18})', texto, re.IGNORECASE)
+    if not m_cpf:
+        return None
+    cpf_digits = re.sub(r'\D', '', m_cpf.group(1))[:14]
+    if len(cpf_digits) not in (11, 14):
+        return None
+
+    m_tel = re.search(r'telefone\s*[:\-]?\s*([\(\)\d\s\-]{8,20})', texto, re.IGNORECASE)
+    if not m_tel:
+        return None
+    tel_digits = re.sub(r'\D', '', m_tel.group(1))
+    if len(tel_digits) in (10, 11):
+        tel_digits = "55" + tel_digits
+
+    valor = extrair_valor(texto)
+    if not valor:
+        return None
+
+    m_valor_pos = re.search(r'valor', texto, re.IGNORECASE)
+    nome = ""
+    if m_valor_pos and m_valor_pos.start() > m_tel.end():
+        nome = texto[m_tel.end():m_valor_pos.start()].strip(" ,.-")
+    if not nome:
+        return None
+
+    objeto = "Recibo"
+    if m_valor_pos:
+        resto = texto[m_valor_pos.end():]
+        resto_sem_valor = re.sub(r'r?\$?\s*\d+(?:[.,]\d{2})?', '', resto, count=1, flags=re.IGNORECASE)
+        resto_sem_valor = resto_sem_valor.strip(" ,.-")
+        if resto_sem_valor:
+            objeto = resto_sem_valor
+
+    return {
+        "destinatario_nome": nome,
+        "destinatario_documento": cpf_digits,
+        "destinatario_telefone": tel_digits,
+        "valor": valor,
+        "objeto": objeto,
+    }
+
+
 def classificar(texto, termos_aprendidos: dict = None):
     """termos_aprendidos: dict opcional {termo_normalizado: (conta, tipo)},
     vindo de correções manuais anteriores do produtor (tabela

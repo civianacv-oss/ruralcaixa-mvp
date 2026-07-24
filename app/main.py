@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from app.contratos_api import router as contratos_router
 from app.lancamentos_contrato import router as lanc_router
 
-from app.services.classifier import classificar
+from app.services.classifier import classificar, classificar_recibo
 try:
     from app.routers.ovino import router as ovino_router
     print("OVINO ROUTER LOADED OK")
@@ -1284,9 +1284,61 @@ async def processar(payload: dict):
                 await send_msg(numero, resultado["resumo"])
                 return
 
-            if numero in sessoes and sessoes[numero].get("_tipo") != "cadastro":
+            if numero in sessoes and sessoes[numero].get("_tipo") not in ("cadastro", "recibo_wizard"):
                 if texto_upper in ("SIM", "S", "OK", "CONFIRMA"):
                     sess = sessoes.pop(numero)
+
+                    if sess.get("_tipo") == "recibo_pendente":
+                        from app.db import buscar_produtor_por_numero
+                        prod = buscar_produtor_por_numero(numero)
+                        if not prod:
+                            await send_msg(numero, "Nao encontrei seu cadastro. Envie CADASTRAR para se registrar primeiro.")
+                            return
+                        try:
+                            from app.routers.recibos import (
+                                get_db as recibos_get_db, gerar_otp, hash_otp,
+                                _enviar_contexto_whatsapp, _enviar_otp_whatsapp,
+                            )
+                            from datetime import datetime as _dt, timedelta as _td
+                            conn = recibos_get_db()
+                            cur = conn.cursor()
+                            cur.execute("""
+                                INSERT INTO recibos (produtor_id, destinatario_nome, destinatario_documento,
+                                    destinatario_telefone, objeto, valor, status)
+                                VALUES (%s, %s, %s, %s, %s, %s, 'aguardando_assinatura')
+                                RETURNING id
+                            """, (prod["id"], sess["destinatario_nome"], sess["destinatario_documento"],
+                                  sess["destinatario_telefone"], sess["objeto"], sess["valor"]))
+                            recibo_id = cur.fetchone()["id"]
+
+                            otp = gerar_otp()
+                            otp_hash_val = hash_otp(otp)
+                            expira = _dt.now() + _td(minutes=30)
+                            cur.execute(
+                                "UPDATE recibos SET otp_hash = %s, otp_expira_em = %s WHERE id = %s",
+                                (otp_hash_val, expira, recibo_id)
+                            )
+                            conn.commit()
+                            conn.close()
+
+                            _enviar_contexto_whatsapp(
+                                sess["destinatario_telefone"], sess["destinatario_nome"],
+                                prod["nome"], sess["valor"], sess["objeto"]
+                            )
+                            enviado, _detalhe = _enviar_otp_whatsapp(sess["destinatario_telefone"], otp)
+
+                            await send_msg(
+                                numero,
+                                f"Recibo criado! Codigo de confirmacao enviado para {sess['destinatario_nome']}.\n"
+                                f"Valor: R$ {sess['valor']:,.2f}\n"
+                                f"Objeto: {sess['objeto']}"
+                                + ("" if enviado else "\n\n(Atencao: o envio do WhatsApp para o destinatario falhou)")
+                            )
+                        except Exception as e:
+                            print(f"Erro ao criar recibo via WhatsApp: {e}")
+                            await send_msg(numero, "Erro ao criar o recibo. Tente novamente ou use o app.")
+                        return
+
                     sess["numero"] = numero
                     from app.db import gravar_lancamento
                     lancamento_id = gravar_lancamento(sess)
@@ -1347,6 +1399,16 @@ async def processar(payload: dict):
                         await send_msg(numero, resposta)
                 return
 
+            from app.services.recibo_handler import (
+                is_recibo_wizard_ativo, processar_etapa_recibo,
+            )
+
+            if is_recibo_wizard_ativo(sessoes, numero):
+                resposta = processar_etapa_recibo(sessoes, numero, texto)
+                if resposta:
+                    await send_msg(numero, resposta)
+                return
+
             if texto_upper in ("CADASTRAR", "CADASTRO", "ME CADASTRAR", "QUERO ME CADASTRAR",
                                "OI", "OLA", "INICIO"):
                 from app.db import buscar_produtor_por_numero
@@ -1361,9 +1423,29 @@ async def processar(payload: dict):
                 await send_msg(numero, resposta)
                 return
 
+            dados_recibo = classificar_recibo(texto)
+            if dados_recibo:
+                sessoes[numero] = {**dados_recibo, "_tipo": "recibo_pendente"}
+                msg_confirmacao = (
+                    f"Recibo detectado:\n\n"
+                    f"Destinatario: {dados_recibo['destinatario_nome']}\n"
+                    f"CPF/CNPJ: {dados_recibo['destinatario_documento']}\n"
+                    f"Telefone: {dados_recibo['destinatario_telefone']}\n"
+                    f"Valor: R$ {dados_recibo['valor']:,.2f}\n"
+                    f"Objeto: {dados_recibo['objeto']}\n\n"
+                    f"Responda SIM para criar e enviar o recibo, ou NAO para cancelar."
+                )
+                await send_msg(numero, msg_confirmacao)
+                return
+
             resultado = classificar(texto)
             print(f">>> resultado classificar: {resultado}")
             if not resultado:
+                from app.services.recibo_handler import detectar_intencao_recibo, iniciar_recibo_wizard
+                if detectar_intencao_recibo(texto):
+                    resposta = iniciar_recibo_wizard(sessoes, numero)
+                    await send_msg(numero, resposta)
+                    return
                 await send_msg(numero, "Nao entendi. Tente: 'vendi 5 bois por 10000 reais'")
                 return
 
