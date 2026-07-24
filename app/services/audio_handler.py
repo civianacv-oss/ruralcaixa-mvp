@@ -10,8 +10,13 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
         mime = msg["audio"].get("mime_type", "audio/ogg")
         async with httpx.AsyncClient() as client:
             r1 = await client.get(f"{GRAPH}/{media_id}", headers={"Authorization": f"Bearer {wapp_token}"})
+            print(f"[audio] media info status={r1.status_code} body={r1.text[:300]}")
+            r1.raise_for_status()
             url = r1.json()["url"]
+
             r2 = await client.get(url, headers={"Authorization": f"Bearer {wapp_token}"})
+            print(f"[audio] media download status={r2.status_code} bytes={len(r2.content)}")
+            r2.raise_for_status()
             audio_bytes = r2.content
 
         texto = await transcrever_audio(audio_bytes)
