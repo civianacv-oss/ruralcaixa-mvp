@@ -67,6 +67,58 @@ def hash_otp(otp: str) -> str:
     return hashlib.sha256(otp.encode()).hexdigest()
 
 
+def _enviar_contexto_whatsapp(telefone: str, destinatario_nome: str, emissor_nome: str, valor: float, objeto: str) -> tuple[bool, str]:
+    """
+    Envia uma mensagem de contexto (categoria UTILITY) com os dados do recibo,
+    antes do codigo de verificacao. Sem isso, a pessoa recebe so um codigo sem
+    saber o que esta confirmando (templates AUTHENTICATION nao podem ter
+    conteudo alem do codigo).
+    """
+    if not WAPP_TOKEN or not PHONE_ID:
+        return False, "WHATSAPP_TOKEN/WHATSAPP_PHONE_ID nao configurado"
+    if not telefone:
+        return False, "Destinatario sem telefone cadastrado"
+
+    valor_fmt = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": telefone,
+        "type": "template",
+        "template": {
+            "name": "recibo_confirmacao_v2",
+            "language": {"code": "pt_BR"},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": destinatario_nome},
+                        {"type": "text", "text": emissor_nome},
+                        {"type": "text", "text": valor_fmt},
+                        {"type": "text", "text": objeto[:60]},
+                    ],
+                },
+            ],
+        },
+    }
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(
+                f"{GRAPH}/{PHONE_ID}/messages",
+                headers={"Authorization": f"Bearer {WAPP_TOKEN}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        data = resp.json()
+        if "error" in data:
+            erro = data["error"].get("message", str(data["error"]))
+            logger.error(f"Erro ao enviar template de contexto do recibo: {erro}")
+            return False, erro
+        return True, "enviado"
+    except Exception as e:
+        logger.error(f"Excecao ao enviar contexto do recibo via WhatsApp: {e}")
+        return False, str(e)
+
+
 def _enviar_otp_whatsapp(telefone: str, otp: str) -> tuple[bool, str]:
     """Envia o OTP via template assinatura_contrato (categoria AUTHENTICATION)."""
     if not WAPP_TOKEN or not PHONE_ID:
@@ -276,8 +328,12 @@ def enviar_assinatura_recibo(recibo_id: str, request: Request):
     conn = get_db()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM recibos WHERE id = %s AND produtor_id = %s",
-                    (recibo_id, produtor_id))
+        cur.execute("""
+            SELECT r.*, p.nome AS emissor_nome
+            FROM recibos r
+            JOIN produtores p ON p.id = r.produtor_id
+            WHERE r.id = %s AND r.produtor_id = %s
+        """, (recibo_id, produtor_id))
         recibo = cur.fetchone()
         if not recibo:
             raise HTTPException(status_code=404, detail="Recibo não encontrado.")
@@ -295,6 +351,10 @@ def enviar_assinatura_recibo(recibo_id: str, request: Request):
         """, (otp_hash_val, expira, recibo_id))
         conn.commit()
 
+        _enviar_contexto_whatsapp(
+            recibo["destinatario_telefone"], recibo["destinatario_nome"],
+            recibo["emissor_nome"], float(recibo["valor"]), recibo["objeto"]
+        )
         enviado, detalhe_envio = _enviar_otp_whatsapp(recibo["destinatario_telefone"], otp)
 
         response = {
