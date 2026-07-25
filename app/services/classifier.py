@@ -102,6 +102,46 @@ def normalizar(texto):
     texto = unicodedata.normalize("NFD", texto.lower())
     return "".join(c for c in texto if unicodedata.category(c) != "Mn")
 
+_NUMEROS_EXTENSO = {
+    "um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "quatro": 4,
+    "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
+    "onze": 11, "doze": 12, "treze": 13, "quatorze": 14, "catorze": 14,
+    "quinze": 15, "dezesseis": 16, "dezessete": 17, "dezoito": 18,
+    "dezenove": 19, "cem": 100, "cento": 100,
+}
+_DEZENAS_EXTENSO = {
+    "vinte": 20, "trinta": 30, "quarenta": 40, "cinquenta": 50,
+    "sessenta": 60, "setenta": 70, "oitenta": 80, "noventa": 90,
+}
+
+
+def _converter_numeros_extenso(texto: str) -> str:
+    """Converte número escrito por extenso em dígito, incluindo compostos
+    (ex: 'seis sacos' -> '6 sacos', 'vinte e cinco sacos' -> '25 sacos').
+    Sem isso, só dígito puro era reconhecido, não a forma por extenso.
+    Portado de mensagem_handler.py (Telegram) para cá (WhatsApp) em 25/07,
+    já que classificar_uso_insumo não convertia extenso antes do regex."""
+    palavras = texto.split()
+    resultado = []
+    i = 0
+    while i < len(palavras):
+        p = palavras[i]
+        if (p in _DEZENAS_EXTENSO and i + 2 < len(palavras)
+                and palavras[i + 1] == "e" and palavras[i + 2] in _NUMEROS_EXTENSO
+                and _NUMEROS_EXTENSO[palavras[i + 2]] < 10):
+            resultado.append(str(_DEZENAS_EXTENSO[p] + _NUMEROS_EXTENSO[palavras[i + 2]]))
+            i += 3
+            continue
+        if p in _DEZENAS_EXTENSO:
+            resultado.append(str(_DEZENAS_EXTENSO[p]))
+        elif p in _NUMEROS_EXTENSO:
+            resultado.append(str(_NUMEROS_EXTENSO[p]))
+        else:
+            resultado.append(p)
+        i += 1
+    return " ".join(resultado)
+
+
 def detectar_produto(texto_norm):
     for produto, palavras in PRODUTOS.items():
         if any(p in texto_norm for p in palavras):
@@ -115,7 +155,7 @@ def classificar_uso_insumo(texto):
     isso NAO gera lancamento financeiro - so baixa o estoque.
     Retorna None se nao encontrar o padrao.
     """
-    texto_norm = normalizar(texto)
+    texto_norm = _converter_numeros_extenso(normalizar(texto))
     m = re.search(
         r'(?:usei|utilizei|apliquei|gastei|peguei|retirei|tirei)\s+(\d+(?:[.,]\d+)?)\s*'
         r'(sac[oa]s?|kg|quilos?|litros?|toneladas?|ton|unidades?|un|fardos?|'
