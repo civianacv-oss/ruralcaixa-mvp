@@ -1233,6 +1233,23 @@ class _AbortInsumo(Exception):
     pass
 
 
+def _resolver_fazenda_id_por_numero(numero: str) -> int:
+    """
+    Resolve o imovel_id (fazenda) do produtor a partir do telefone,
+    mesmo padrão já usado nos blocos ovino/caprino desta função.
+    Corrige o fazenda_id=1 hardcoded que só tinha sido corrigido no
+    Telegram (mensagem_handler.py), não no WhatsApp (25/07).
+    """
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        row = conn.execute(sqlt(
+            "SELECT id FROM imoveis_rurais WHERE produtor_id = "
+            "(SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1) LIMIT 1"
+        ), {"tel": "%{}".format(numero[-8:])}).fetchone()
+        return row[0] if row else 1
+
+
 async def processar(payload: dict):
     print(f">>> processar chamado: {json.dumps(payload)[:200]}")
     try:
@@ -1350,12 +1367,13 @@ async def processar(payload: dict):
                             from app.db import get_db as get_db_psycopg2
                             from app.services.estoque_insumos import aplicar_movimentacao_insumo
                             nome_norm = sess["produto"].strip().lower()
+                            imovel_id_ins = _resolver_fazenda_id_por_numero(numero)
                             conn_ins = get_db_psycopg2()
                             cur_ins = conn_ins.cursor()
                             cur_ins.execute("""
-                                SELECT id, nome, estoque_atual FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
+                                SELECT id, nome, estoque_atual FROM insumos WHERE fazenda_id = %s AND ativo = TRUE
                                 AND LOWER(TRIM(nome)) LIKE %s
-                            """, (f"%{nome_norm}%",))
+                            """, (imovel_id_ins, f"%{nome_norm}%"))
                             matches = cur_ins.fetchall()
                             if not matches:
                                 conn_ins.close()
@@ -1377,7 +1395,7 @@ async def processar(payload: dict):
                                 return
                             row_ins = matches[0]
                             aplicar_movimentacao_insumo(
-                                cur_ins, fazenda_id=1, insumo_id=row_ins["id"],
+                                cur_ins, fazenda_id=imovel_id_ins, insumo_id=row_ins["id"],
                                 tipo="uso", quantidade=sess["quantidade"],
                                 origem_modulo="whatsapp_bot",
                                 origem_descricao=sess.get("finalidade") or "Uso registrado via WhatsApp",
@@ -1429,10 +1447,11 @@ async def processar(payload: dict):
                             conn_ins = get_db_psycopg2()
                             cur_ins = conn_ins.cursor()
                             nome_norm = ins["produto"].strip().lower()
+                            imovel_id_ins = _resolver_fazenda_id_por_numero(numero)
                             cur_ins.execute("""
-                                SELECT id, nome FROM insumos WHERE fazenda_id = 1 AND ativo = TRUE
+                                SELECT id, nome FROM insumos WHERE fazenda_id = %s AND ativo = TRUE
                                 AND LOWER(TRIM(nome)) LIKE %s
-                            """, (f"%{nome_norm}%",))
+                            """, (imovel_id_ins, f"%{nome_norm}%"))
                             matches_ins = cur_ins.fetchall()
                             if len(matches_ins) > 1:
                                 conn_ins.close()
@@ -1448,14 +1467,14 @@ async def processar(payload: dict):
                             else:
                                 cur_ins.execute("""
                                     INSERT INTO insumos (fazenda_id, nome, categoria, unidade, origem, estoque_atual)
-                                    VALUES (1, %s, 'outros', %s, 'comprado', 0)
+                                    VALUES (%s, %s, 'outros', %s, 'comprado', 0)
                                     RETURNING id
-                                """, (ins["produto"].title(), ins["unidade"]))
+                                """, (imovel_id_ins, ins["produto"].title(), ins["unidade"]))
                                 insumo_id = cur_ins.fetchone()["id"]
 
                             custo_unitario = round(sess["valor"] / ins["quantidade"], 4) if ins["quantidade"] else None
                             aplicar_movimentacao_insumo(
-                                cur_ins, fazenda_id=1, insumo_id=insumo_id,
+                                cur_ins, fazenda_id=imovel_id_ins, insumo_id=insumo_id,
                                 tipo="compra", quantidade=ins["quantidade"],
                                 custo_unitario=custo_unitario,
                                 origem_modulo="whatsapp_bot",

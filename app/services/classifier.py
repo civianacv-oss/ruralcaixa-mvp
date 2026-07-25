@@ -117,11 +117,11 @@ def classificar_uso_insumo(texto):
     """
     texto_norm = normalizar(texto)
     m = re.search(
-        r'(?:usei|utilizei|apliquei|gastei)\s+(\d+(?:[.,]\d+)?)\s*'
+        r'(?:usei|utilizei|apliquei|gastei|peguei|retirei|tirei)\s+(\d+(?:[.,]\d+)?)\s*'
         r'(sac[oa]s?|kg|quilos?|litros?|toneladas?|ton|unidades?|un|fardos?|'
         r'caixas?|cx|pacotes?|rolos?)\s+de\s+'
-        r'([a-z]+(?:\s+(?!para\b|em\b|no\b|na\b|pra\b)[a-z]+)?)'
-        r'(?:\s+(?:para|em|no|na|pra)\s+(.+))?',
+        r'([a-z]+(?:\s+(?!para\b|em\b|no\b|na\b|pra\b|do\b)[a-z]+)?)'
+        r'(?:\s+(?:para|em|no|na|pra|do)\s+(.+))?',
         texto_norm
     )
     if not m:
