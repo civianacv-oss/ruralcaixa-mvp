@@ -111,6 +111,103 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if texto_up in ("/AJUDA", "/HELP", "AJUDA", "HELP", "?"):
         return _cmd_ajuda()
 
+import re
+import unicodedata
+
+
+def _normalizar_para_comando(texto: str) -> str:
+    t = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return t.lower().strip()
+
+
+_PADRAO_CADASTRO = re.compile(
+    r"^(cadastrar|adicionar|novo|nova)\s+(peao|peão|colaborador|funcionario|funcionário)\s+(.+)$"
+)
+
+
+def _eh_comando_cadastro_colaborador(texto: str) -> bool:
+    return bool(_PADRAO_CADASTRO.match(_normalizar_para_comando(texto)))
+
+
+def _extrair_nome_telefone(resto: str):
+    """
+    Extrai telefone (8+ dígitos seguidos, ignorando espaços/traços/parênteses)
+    e usa o restante do texto como nome. Retorna (nome, telefone) ou
+    (None, None) se não achar um telefone plausível.
+    """
+    match_tel = re.search(r"(\(?\d{2}\)?[\s.-]?\d{4,5}[\s.-]?\d{4})", resto)
+    if not match_tel:
+        # tenta um bloco de 8+ dígitos direto, sem formatação de DDD
+        match_tel = re.search(r"(\d{8,11})", resto)
+    if not match_tel:
+        return None, None
+
+    telefone_bruto = match_tel.group(1)
+    telefone = re.sub(r"\D", "", telefone_bruto)
+    nome = (resto[:match_tel.start()] + resto[match_tel.end():]).strip(" ,-")
+    if not nome:
+        return None, None
+    return nome, telefone
+
+
+async def _processar_cadastro_colaborador(texto: str, numero: str, canal: str) -> str:
+    """
+    Comando de texto: "cadastrar peão João 98999998888" (ou variações
+    aceitas por _PADRAO_CADASTRO). Só proprietário/administrador podem
+    cadastrar -- um colaborador_operacional não pode cadastrar outro.
+    """
+    from app.services.mensagem_handler import _autorizar_numero  # já existe no arquivo
+
+    autorizacao = _autorizar_numero(numero, canal)
+    if not autorizacao.get("autorizado"):
+        return ("Não consegui confirmar seu cadastro. Fale com quem configurou o "
+                "RuralCaixa pra essa propriedade antes de cadastrar colaboradores.")
+
+    if autorizacao.get("papel") == "colaborador_operacional":
+        return ("Você não tem permissão pra cadastrar outros colaboradores. "
+                "Peça pro proprietário ou administrador da propriedade fazer isso.")
+
+    imovel_id = autorizacao.get("imovel_id")
+    if not imovel_id:
+        return "Não consegui identificar a propriedade pra vincular esse cadastro."
+
+    match = _PADRAO_CADASTRO.match(_normalizar_para_comando(texto))
+    resto_original = texto[match.end(2):].strip()  # pega do texto ORIGINAL (com acento), não normalizado
+    nome, telefone = _extrair_nome_telefone(resto_original)
+
+    if not nome or not telefone:
+        return (
+            "Não entendi o nome e telefone. Manda assim:\n"
+            "\"cadastrar peão João 98999998888\"\n"
+            "(nome, depois o telefone com DDD)"
+        )
+
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        ja_existe = conn.execute(sqlt("""
+            SELECT id, nome FROM colaboradores_operacionais
+            WHERE imovel_id = :imovel_id AND telefone LIKE :tel AND ativo = TRUE
+        """), {"imovel_id": imovel_id, "tel": f"%{telefone[-8:]}"}).fetchone()
+        if ja_existe:
+            return f"Esse telefone já está cadastrado como \"{ja_existe[1]}\" nessa propriedade."
+
+        conn.execute(sqlt("""
+            INSERT INTO colaboradores_operacionais (imovel_id, nome, telefone)
+            VALUES (:imovel_id, :nome, :telefone)
+        """), {"imovel_id": imovel_id, "nome": nome, "telefone": telefone})
+        conn.commit()
+
+    return (
+        f"✅ {nome} cadastrado(a) como colaborador operacional.\n"
+        f"A partir de agora, quando {nome.split()[0]} reportar consumo de insumo "
+        f"pelo WhatsApp/Telegram nesse número, o sistema reconhece automaticamente.\n\n"
+        f"Se algo que {nome.split()[0]} reportar não puder ser classificado com "
+        f"segurança, você (ou outro administrador) vai receber a pergunta aqui "
+        f"mesmo -- {nome.split()[0]} não precisa (nem vai conseguir) escolher a conta contábil."
+    )
+
+
     # Confirmação de lançamento pendente na sessão
     if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
 
