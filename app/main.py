@@ -1502,7 +1502,7 @@ async def processar(payload: dict):
                     )
                     await send_msg(numero, resposta)
                     return
-                elif texto_upper in ("NAO", "N", "CANCELA"):
+                elif texto_upper in ("NAO", "NÃO", "N", "CANCELA"):
                     sessoes.pop(numero)
                     await send_msg(numero, "Cancelado. Pode mandar de novo quando quiser.")
                     return

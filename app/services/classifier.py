@@ -14,7 +14,7 @@ REGRAS = [
       "alugado", "locacao", "locado"], "2.6.6", "despesa", None),
     (["trator","maquina","equipamento","implemento"], "3.1", "investimento", None),
     (["obra","benfeitoria","cerca","curral"], "3.3", "investimento", None),
-    (["novilho","bezerra","matriz","plantel","compra animal","compra ovelha","compra cabra"], "3.5.3", "investimento", None),
+    (["novilho","bezerra","matriz","plantel","compra animal","compra ovelha","compra cabra","novilha","garrote","touro"], "3.5.3", "investimento", None),
     (["soja"], "1.1.1", "receita", "Soja"),
     (["milho"], "1.1.1", "receita", "Milho"),
     (["cafe","café"], "1.1.1", "receita", "Cafe"),
@@ -23,7 +23,7 @@ REGRAS = [
     (["arroz"], "1.1.1", "receita", "Arroz"),
     (["feijao","feijão"], "1.1.1", "receita", "Feijao"),
     (["trigo"], "1.1.1", "receita", "Trigo"),
-    (["boi","vaca","gado","bovino","bezerro","novilho"], "1.2.1", "receita", "Bovino"),
+    (["boi","vaca","gado","bovino","bezerro","novilho","novilha","garrote","touro"], "1.2.1", "receita", "Bovino"),
     (["suino","suíno","porco"], "1.2.7", "receita", "Suino"),
     (["frango","galinha","ave"], "1.2.8", "receita", "Aves"),
     (["ovelha","carneiro","ovino"], "1.2.3", "receita", "Ovino"),
@@ -41,7 +41,7 @@ PRODUTOS = {
     "Arroz": ["arroz"],
     "Feijao": ["feijao","feijão"],
     "Trigo": ["trigo"],
-    "Bovino": ["boi","vaca","gado","bovino","bezerro","novilho","bois","vacas"],
+    "Bovino": ["boi","vaca","gado","bovino","bezerro","novilho","bois","vacas","novilha","novilhas","garrote","garrotes","touro","touros"],
     "Suino": ["suino","suíno","porco","leitao"],
     "Aves": ["frango","galinha","ave","pinto"],
     "Ovino": ["ovelha","carneiro","ovino","cordeiro"],
@@ -306,7 +306,7 @@ def classificar(texto, termos_aprendidos: dict = None):
 
     # Se é compra de animal → investimento conta 5.3, não receita
     if is_compra and melhor[1] == "receita":
-        animais = ["boi", "vaca", "gado", "bovino", "bezerro", "ovelha", "carneiro", "ovino", "cabra", "bode", "porco", "suino", "frango", "galinha"]
+        animais = ["boi", "vaca", "gado", "bovino", "bezerro", "novilho", "novilha", "garrote", "touro", "ovelha", "carneiro", "ovino", "cabra", "bode", "porco", "suino", "frango", "galinha"]
         if any(p in texto_norm for p in animais):
             melhor = ("3.5.3", "investimento", "Animais")
         else:
