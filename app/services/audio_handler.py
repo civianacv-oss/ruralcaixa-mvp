@@ -117,10 +117,10 @@ async def processar_audio(numero, msg, wapp_token, sessoes, send_msg_func):
 
 def _normalizar_ai(r: dict) -> dict:
     MAPA_CATEGORIA = {
-        "venda_produto": "1.1.1", "servico_prestado": "1.2",
-        "custeio": "3.1.1", "combustivel": "3.1.2",
-        "manutencao": "3.1.5", "salario": "3.1.4",
-        "investimento": "5.2", "outros": "3.9",
+        "venda_produto": "1.1.1", "servico_prestado": "1.4.2",
+        "custeio": "2.1", "combustivel": "2.3",
+        "manutencao": "2.4.1", "salario": "2.5.1",
+        "investimento": "3.3", "outros": "9.9",
     }
     import datetime
     categoria = r.get("categoria", "outros")

@@ -1074,10 +1074,14 @@ def iofc_mensal(produtor_id: int, meses: int = Query(12, ge=1, le=36)):
     """IOFC (Income Over Feed Cost) mensal - nivel produtor.
 
     Formula: IOFC = Receita de Leite - Custo de Racao (especifico do
-    rebanho leiteiro, codigo_conta 3.1.3.1.1).
+    rebanho leiteiro, via insumos.categoria IN ('racao','nutricao') --
+    NAO usa codigo_conta; e independente da migracao do plano de
+    contas de 25/07).
 
     Receita de Leite, em ordem de prioridade:
-      1. Lancamento financeiro real na subconta "Venda de Leite" (4.1.2),
+      1. Lancamento financeiro real na subconta "Venda de Leite"
+         (via subconta_id fixo, nao codigo_conta -- cod. atual 1.3.1
+         apos a migracao de 25/07, mas isso nao afeta o filtro),
          se existir para o mes/produtor.
       2. Fallback: volume_l vendido (bovino_ordenha) x preco medio CEPEA
          do mes (cotacoes_mercado, produto='leite_litro_brasil').
@@ -1536,7 +1540,8 @@ def _criar_lancamento_lcdpr_bovino(conn, produtor_id, data, tipo: str, valor: fl
       1. subconta_id_fixo - use quando voce ja sabe o UUID exato (mais seguro,
          nao depende de nenhum outro dado - use isso sempre que possivel)
       2. codigo_conta - use quando o codigo for UNICO entre as subcontas
-         (ex: '4.1.2' Venda de Leite, que so tem 1 subconta com esse codigo)
+         (ex: '1.3.1' Venda de Leite -- codigo atualizado na migracao de
+         25/07; antes era '4.1.2')
       3. Fallback antigo por tipo (RECEITA/DESPESA) - mantido so por
          compatibilidade, NAO USE em chamadas novas, e ambiguo.
     """

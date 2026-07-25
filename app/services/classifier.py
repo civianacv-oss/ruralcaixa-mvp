@@ -3,18 +3,18 @@ import unicodedata
 from datetime import date
 
 REGRAS = [
-    (["diesel","gasolina","etanol","combustivel","abastec"], "3.1.2", "despesa", None),
-    (["semente","adubo","fertilizante","calcario","defensivo"], "3.1.1", "despesa", None),
+    (["diesel","gasolina","etanol","combustivel","abastec"], "2.3", "despesa", None),
+    (["semente","adubo","fertilizante","calcario","defensivo"], "2.1", "despesa", None),
     (["racao", "vacina", "vermifugo", "medicamento", "remedio", "farmacia",
-      "antibiotico", "antiinflamatorio", "antiflamatorio"], "3.1.3", "despesa", None),
-    (["salario","funcionario","diarista","mao de obra"], "3.1.4", "despesa", None),
-    (["manutencao","reparo","conserto","peca"], "3.1.5", "despesa", None),
-    (["energia","luz","conta de luz"], "3.1.6", "despesa", None),
+      "antibiotico", "antiinflamatorio", "antiflamatorio"], "2.2", "despesa", None),
+    (["salario","funcionario","diarista","mao de obra"], "2.5", "despesa", None),
+    (["manutencao","reparo","conserto","peca"], "2.4.1", "despesa", None),
+    (["energia","luz","conta de luz"], "2.2.7", "despesa", None),
     (["arrendamento", "arrendei", "arrendar", "aluguel", "aluguei", "alugar",
-      "alugado", "locacao", "locado"], "3.1.7", "despesa", None),
-    (["trator","maquina","equipamento","implemento"], "5.1", "investimento", None),
-    (["obra","benfeitoria","cerca","curral"], "5.2", "investimento", None),
-    (["novilho","bezerra","matriz","plantel","compra animal","compra ovelha","compra cabra"], "5.3", "investimento", None),
+      "alugado", "locacao", "locado"], "2.6.6", "despesa", None),
+    (["trator","maquina","equipamento","implemento"], "3.1", "investimento", None),
+    (["obra","benfeitoria","cerca","curral"], "3.3", "investimento", None),
+    (["novilho","bezerra","matriz","plantel","compra animal","compra ovelha","compra cabra"], "3.5.3", "investimento", None),
     (["soja"], "1.1.1", "receita", "Soja"),
     (["milho"], "1.1.1", "receita", "Milho"),
     (["cafe","café"], "1.1.1", "receita", "Cafe"),
@@ -23,11 +23,11 @@ REGRAS = [
     (["arroz"], "1.1.1", "receita", "Arroz"),
     (["feijao","feijão"], "1.1.1", "receita", "Feijao"),
     (["trigo"], "1.1.1", "receita", "Trigo"),
-    (["boi","vaca","gado","bovino","bezerro","novilho"], "1.1.2", "receita", "Bovino"),
-    (["suino","suíno","porco"], "1.1.2", "receita", "Suino"),
-    (["frango","galinha","ave"], "1.1.2", "receita", "Aves"),
-    (["ovelha","carneiro","ovino"], "1.1.2", "receita", "Ovino"),
-    (["cabra","bode","caprino"], "1.1.2", "receita", "Caprino"),
+    (["boi","vaca","gado","bovino","bezerro","novilho"], "1.2.1", "receita", "Bovino"),
+    (["suino","suíno","porco"], "1.2.7", "receita", "Suino"),
+    (["frango","galinha","ave"], "1.2.8", "receita", "Aves"),
+    (["ovelha","carneiro","ovino"], "1.2.3", "receita", "Ovino"),
+    (["cabra","bode","caprino"], "1.2.5", "receita", "Caprino"),
     (["leite"], "1.1.2", "receita", "Leite"),
     (["venda","vendi","recebi","entregue"], "1.1", "receita", None),
 ]
@@ -268,16 +268,16 @@ def classificar(texto, termos_aprendidos: dict = None):
     if is_compra and melhor[1] == "receita":
         animais = ["boi", "vaca", "gado", "bovino", "bezerro", "ovelha", "carneiro", "ovino", "cabra", "bode", "porco", "suino", "frango", "galinha"]
         if any(p in texto_norm for p in animais):
-            melhor = ("5.3", "investimento", "Animais")
+            melhor = ("3.5.3", "investimento", "Animais")
         else:
-            melhor = ("3.9", "despesa", None)
+            melhor = ("9.9", "despesa", None)
 
     # Algumas contas são ambíguas quanto à direção (quem paga x quem recebe)
     # sem mais contexto — "aluguel"/"arrendamento" pode ser tanto despesa
     # (paguei pra alugar de alguém) quanto receita (aluguei o que é meu pra
     # alguém). Tenta resolver pelo próprio texto antes de marcar como
     # ambíguo — só pergunta ao produtor quando não há pista nenhuma.
-    CONTAS_AMBIGUAS_DIRECAO = {"3.1.7"}
+    CONTAS_AMBIGUAS_DIRECAO = {"2.6.6"}
     ambiguo_direcao = False
     if melhor[0] in CONTAS_AMBIGUAS_DIRECAO:
         # Só resolve sozinho quando há um verbo inequívoco de quem recebeu ou

@@ -740,7 +740,7 @@ def _proximo_passo_compra_animal(sess: dict, numero: str) -> str:
     definido — decide se pergunta revenda-vs-rural (produtor já tem cadastro
     de compra-e-venda pra essa espécie) ou segue direto pra confirmação
     normal como atividade rural (produtor não tem esse cadastro)."""
-    if sess.get("conta") == "5.3" and sess.get("produto"):
+    if sess.get("conta") == "3.5.3" and sess.get("produto"):
         imovel_id = _resolver_imovel_id(numero)
         produto_cv_id = _produto_compra_venda(imovel_id, sess["produto"])
         if produto_cv_id:
@@ -802,16 +802,17 @@ CONTAS_DISPONIVEIS = [
     ("1.1", "Receita geral (venda não especificada)"),
     ("1.1.1", "Receita — produção agrícola (grãos, café, cana...)"),
     ("1.1.2", "Receita — produção animal (bovino, suíno, aves, leite...)"),
-    ("3.1.1", "Despesa — insumos agrícolas (semente, adubo, defensivo)"),
-    ("3.1.2", "Despesa — combustível"),
-    ("3.1.3", "Despesa — ração/medicamento animal"),
-    ("3.1.4", "Despesa — mão de obra/salários"),
-    ("3.1.5", "Despesa — manutenção/reparo"),
-    ("3.1.6", "Despesa — energia"),
-    ("3.1.7", "Despesa — arrendamento/aluguel rural"),
-    ("5.1", "Investimento — máquinas/equipamentos"),
-    ("5.2", "Investimento — obras/benfeitorias"),
-    ("5.3", "Investimento — compra de animais (matriz/plantel)"),
+    ("2.1", "Despesa — insumos agrícolas (semente, adubo, defensivo)"),
+    ("2.3", "Despesa — combustível"),
+    ("2.2", "Despesa — ração/medicamento animal"),
+    ("2.5", "Despesa — mão de obra/salários"),
+    ("2.4.1", "Despesa — manutenção/reparo"),
+    ("2.2.7", "Despesa — energia"),
+    ("2.6.6", "Despesa — arrendamento/aluguel rural"),
+    ("3.1", "Investimento — máquinas/equipamentos"),
+    ("3.3", "Investimento — obras/benfeitorias"),
+    ("3.5.3", "Investimento — compra de animais (matriz/plantel)"),
+    ("9.9", "Não sei / verificar depois — Pendente de Classificação"),
 ]
 
 
