@@ -1411,7 +1411,8 @@ def _detectar_consumo_insumo(texto: str, imovel_id: int) -> dict | None:
 
     palavras_consumo = ["consumo", "consumi", "gastei", "gasto de", "usei",
                          "utilizei", "baixa de", "baixei", "saiu", "saida de",
-                         "saida do estoque", "foi usado", "foi para"]
+                         "saida do estoque", "foi usado", "foi para",
+                         "peguei", "retirei", "tirei", "retirado", "peguei do estoque"]
     tem_verbo_consumo = any(p in texto_norm for p in palavras_consumo)
 
     # Padrão semântico: mesmo sem verbo explícito, "para o rebanho/lote/..."
@@ -1444,6 +1445,16 @@ def _detectar_consumo_insumo(texto: str, imovel_id: int) -> dict | None:
         return None
 
     produto_texto = m.group(3).strip()
+    if not produto_texto:
+        return None
+    # Remove complementos de destino/local que o regex acima pega junto
+    # por engano (ex: "milho pra ração animal" -> "milho",
+    # "milho do estoque" -> "milho") -- sem isso o nome nunca bate com o
+    # insumo cadastrado.
+    produto_texto = _re.split(
+        r'\s+(?:pra|para|pro)\s+|\s+(?:do|no)\s+estoque\b',
+        produto_texto,
+    )[0].strip()
     if not produto_texto:
         return None
     produto_texto = _juntar_numero_unidade(produto_texto)
