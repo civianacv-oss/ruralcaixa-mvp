@@ -1412,7 +1412,8 @@ def _detectar_consumo_insumo(texto: str, imovel_id: int) -> dict | None:
     palavras_consumo = ["consumo", "consumi", "gastei", "gasto de", "usei",
                          "utilizei", "baixa de", "baixei", "saiu", "saida de",
                          "saida do estoque", "foi usado", "foi para",
-                         "peguei", "retirei", "tirei", "retirado", "peguei do estoque"]
+                         "peguei", "retirei", "tirei", "retirado", "retirada",
+                         "peguei do estoque"]
     tem_verbo_consumo = any(p in texto_norm for p in palavras_consumo)
 
     # Padrão semântico: mesmo sem verbo explícito, "para o rebanho/lote/..."
@@ -1431,7 +1432,7 @@ def _detectar_consumo_insumo(texto: str, imovel_id: int) -> dict | None:
     m = _re.search(
         r'(\d+(?:[.,]\d+)?)\s*'
         r'(sacos?|sacas?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?\s*'
-        r'de\s+(.+)$',
+        r'(?:de\s+)?(.+)$',
         texto_norm,
     )
     if not m:

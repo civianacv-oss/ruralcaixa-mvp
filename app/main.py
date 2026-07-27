@@ -1272,6 +1272,94 @@ async def processar(payload: dict):
             print(f">>> texto recebido: {texto}")
             texto_upper = texto.upper()
 
+            # ── Escolha numerada: ambiguidade de insumo no USO/baixa ──────
+            if sessoes.get(numero, {}).get("_tipo") == "aguardando_escolha_insumo_uso":
+                sess_escolha = sessoes[numero]
+                candidatos = sess_escolha["_candidatos_insumo"]
+                if texto_upper in ("0", "CANCELAR", "CANCELA", "NENHUM"):
+                    sessoes.pop(numero, None)
+                    await send_msg(numero, "Cancelado. Pode mandar de novo com o nome mais especifico do insumo.")
+                    return
+                if not texto.strip().isdigit() or not (1 <= int(texto.strip()) <= len(candidatos)):
+                    linhas = ["Nao entendi a escolha. Qual desses?\n"]
+                    for i, m in enumerate(candidatos, start=1):
+                        linhas.append(f"{i}. {m['nome']} (estoque: {float(m['estoque_atual']):g})")
+                    linhas.append("\n0. Nenhum desses / cancelar")
+                    await send_msg(numero, "\n".join(linhas))
+                    return
+                escolhido = candidatos[int(texto.strip()) - 1]
+                try:
+                    from app.db import get_db as get_db_psycopg2
+                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                    imovel_id_ins = _resolver_fazenda_id_por_numero(numero)
+                    conn_ins = get_db_psycopg2()
+                    cur_ins = conn_ins.cursor()
+                    aplicar_movimentacao_insumo(
+                        cur_ins, fazenda_id=imovel_id_ins, insumo_id=escolhido["id"],
+                        tipo="uso", quantidade=sess_escolha["_quantidade"],
+                        origem_modulo="whatsapp_bot",
+                        origem_descricao=sess_escolha.get("_finalidade") or "Uso registrado via WhatsApp",
+                        observacao=sess_escolha.get("_finalidade") or "Uso registrado via WhatsApp",
+                    )
+                    conn_ins.commit()
+                    conn_ins.close()
+                    sessoes.pop(numero, None)
+                    finalidade_txt = f"\nFinalidade: {sess_escolha['_finalidade']}" if sess_escolha.get("_finalidade") else ""
+                    await send_msg(
+                        numero,
+                        f"Baixa registrada no estoque!\n"
+                        f"Produto: {escolhido['nome']}\n"
+                        f"Quantidade: {sess_escolha['_quantidade']:g} {sess_escolha['_unidade']}"
+                        f"{finalidade_txt}"
+                    )
+                except Exception as e:
+                    print(f"Erro ao registrar uso de insumo (escolha): {e}")
+                    await send_msg(numero, "Erro ao dar baixa no estoque. Tente novamente ou use o app.")
+                return
+
+            # ── Escolha numerada: ambiguidade de insumo na COMPRA/entrada ──
+            if sessoes.get(numero, {}).get("_tipo") == "aguardando_escolha_insumo_compra":
+                sess_escolha = sessoes[numero]
+                candidatos = sess_escolha["_candidatos_insumo"]
+                if texto_upper in ("0", "CANCELAR", "CANCELA", "NENHUM"):
+                    sessoes.pop(numero, None)
+                    await send_msg(numero, "Ok, o lancamento financeiro ja esta gravado. Faca a entrada no estoque manualmente pelo app quando puder.")
+                    return
+                if not texto.strip().isdigit() or not (1 <= int(texto.strip()) <= len(candidatos)):
+                    linhas = ["Nao entendi a escolha. Qual desses?\n"]
+                    for i, m in enumerate(candidatos, start=1):
+                        linhas.append(f"{i}. {m['nome']}")
+                    linhas.append("\n0. Nenhum desses / fazer entrada manual depois")
+                    await send_msg(numero, "\n".join(linhas))
+                    return
+                escolhido = candidatos[int(texto.strip()) - 1]
+                try:
+                    from app.db import get_db as get_db_psycopg2
+                    from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                    imovel_id_ins = _resolver_fazenda_id_por_numero(numero)
+                    conn_ins = get_db_psycopg2()
+                    cur_ins = conn_ins.cursor()
+                    custo_unitario = round(sess_escolha["_valor"] / sess_escolha["_ins_quantidade"], 4) if sess_escolha["_ins_quantidade"] else None
+                    aplicar_movimentacao_insumo(
+                        cur_ins, fazenda_id=imovel_id_ins, insumo_id=escolhido["id"],
+                        tipo="compra", quantidade=sess_escolha["_ins_quantidade"],
+                        custo_unitario=custo_unitario,
+                        origem_modulo="whatsapp_bot",
+                        origem_descricao=f"Lancamento #{sess_escolha['_lancamento_id']}",
+                        observacao="Compra registrada via WhatsApp",
+                    )
+                    conn_ins.commit()
+                    conn_ins.close()
+                    sessoes.pop(numero, None)
+                    await send_msg(
+                        numero,
+                        f"📦 Estoque atualizado: +{sess_escolha['_ins_quantidade']:g} {sess_escolha['_ins_unidade']} de {escolhido['nome']}"
+                    )
+                except Exception as e:
+                    print(f"Erro ao dar entrada no estoque (escolha compra): {e}")
+                    await send_msg(numero, "Erro ao atualizar o estoque. Tente novamente ou use o app.")
+                return
+
             # Deteccao ovino
             keywords_ovino = ["brinco", "ovino", "ovelha", "cordeiro", "carneiro",
                               "pesagem", "vacina", "vermifug", "parto", "monta", "famacha",
@@ -1385,13 +1473,19 @@ async def processar(payload: dict):
                                 return
                             if len(matches) > 1:
                                 conn_ins.close()
-                                lista = "\n".join(f"- {m['nome']} (estoque: {float(m['estoque_atual']):g})" for m in matches)
-                                await send_msg(
-                                    numero,
-                                    f"Encontrei mais de um insumo parecido com '{sess['produto']}':\n{lista}\n\n"
-                                    f"Manda de novo dizendo o nome mais especifico (ex: o nome completo de um deles)."
-                                )
-                                sessoes.pop(numero, None)
+                                linhas = [f"Encontrei mais de um insumo parecido com '{sess['produto']}':\n"]
+                                for i, m in enumerate(matches, start=1):
+                                    linhas.append(f"{i}. {m['nome']} (estoque: {float(m['estoque_atual']):g})")
+                                linhas.append("\n0. Nenhum desses / cancelar")
+                                linhas.append("\nDigite so o numero.")
+                                sessoes[numero] = {
+                                    "_tipo": "aguardando_escolha_insumo_uso",
+                                    "_candidatos_insumo": matches,
+                                    "_quantidade": sess["quantidade"],
+                                    "_unidade": sess["unidade"],
+                                    "_finalidade": sess.get("finalidade"),
+                                }
+                                await send_msg(numero, "\n".join(linhas))
                                 return
                             row_ins = matches[0]
                             aplicar_movimentacao_insumo(
@@ -1455,12 +1549,25 @@ async def processar(payload: dict):
                             matches_ins = cur_ins.fetchall()
                             if len(matches_ins) > 1:
                                 conn_ins.close()
-                                nomes = ", ".join(m["nome"] for m in matches_ins)
-                                insumo_txt_final = (
-                                    f"\n⚠️ Encontrei mais de um insumo parecido com '{ins['produto']}' "
-                                    f"({nomes}) - faca a entrada manualmente no app, especificando qual deles."
-                                )
-                                raise _AbortInsumo()
+                                linhas = [
+                                    f"Lancamento #{lancamento_id} gravado! Encontrei mais de um insumo "
+                                    f"parecido com '{ins['produto']}' pra dar entrada no estoque:\n"
+                                ]
+                                for i, m in enumerate(matches_ins, start=1):
+                                    linhas.append(f"{i}. {m['nome']}")
+                                linhas.append("\n0. Nenhum desses / fazer entrada manual depois")
+                                linhas.append("\nDigite so o numero.")
+                                sessoes[numero] = {
+                                    "_tipo": "aguardando_escolha_insumo_compra",
+                                    "_candidatos_insumo": matches_ins,
+                                    "_ins_produto": ins["produto"],
+                                    "_ins_quantidade": ins["quantidade"],
+                                    "_ins_unidade": ins["unidade"],
+                                    "_lancamento_id": lancamento_id,
+                                    "_valor": sess["valor"],
+                                }
+                                await send_msg(numero, "\n".join(linhas))
+                                return
                             row_ins = matches_ins[0] if matches_ins else None
                             if row_ins:
                                 insumo_id = row_ins["id"]
