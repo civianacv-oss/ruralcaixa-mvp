@@ -157,9 +157,9 @@ def classificar_uso_insumo(texto):
     """
     texto_norm = _converter_numeros_extenso(normalizar(texto))
     m = re.search(
-        r'(?:usei|utilizei|apliquei|gastei|peguei|retirei|tirei)\s+(\d+(?:[.,]\d+)?)\s*'
+        r'(?:usei|utilizei|apliquei|gastei|peguei|retirei|tirei|retirada|retirado|saida|baixa)\s+(?:de\s+)?(\d+(?:[.,]\d+)?)\s*'
         r'(sac[oa]s?|kg|quilos?|litros?|toneladas?|ton|unidades?|un|fardos?|'
-        r'caixas?|cx|pacotes?|rolos?)\s+de\s+'
+        r'caixas?|cx|pacotes?|rolos?)\s+(?:de\s+)?'
         r'([a-z]+(?:\s+(?!para\b|em\b|no\b|na\b|pra\b|do\b)[a-z]+)?)'
         r'(?:\s+(?:para|em|no|na|pra|do)\s+(.+))?',
         texto_norm
