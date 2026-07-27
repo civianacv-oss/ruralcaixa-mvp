@@ -327,6 +327,14 @@ def _registrar_venda_fifo(cur, imovel_id: int, produto_id: int, data_venda: date
     classificacao_venda = (
         classificacoes_presentes.pop() if len(classificacoes_presentes) == 1 else "MISTA"
     )
+    # cv_vendas.classificacao é ENUM classificacao_fiscal no banco, que só
+    # aceita 'RURAL' ou 'COMERCIAL' (bug achado em 27/07: gravar
+    # "NEGOCIACAO" ou "MISTA" direto quebra com "invalid input value for
+    # enum classificacao_fiscal"). Os nomes "NEGOCIACAO"/"MISTA" continuam
+    # válidos como detalhe de negócio — usados em cv_vendas_baixas.classificacao
+    # (não é enum) e no retorno da API/relatórios — só a gravação na coluna
+    # enum de cv_vendas precisa do valor que o banco aceita.
+    classificacao_venda_db = "RURAL" if classificacao_venda == "RURAL" else "COMERCIAL"
 
     # So a parte RURAL gera lancamento no Livro Caixa. A parte NEGOCIACAO
     # fica de fora e deve ser tratada separadamente na Declaracao Anual (DAA).
@@ -378,7 +386,7 @@ def _registrar_venda_fifo(cur, imovel_id: int, produto_id: int, data_venda: date
           quantidade, valor_unitario, valor_total,
           custo_total, lucro_bruto, margem_pct,
           comprador, nota_fiscal, observacoes,
-          classificacao_venda, round(valor_rural, 2), round(valor_negociacao, 2),
+          classificacao_venda_db, round(valor_rural, 2), round(valor_negociacao, 2),
           lancamento_id))
     vid = cur.fetchone()["id"]
 
