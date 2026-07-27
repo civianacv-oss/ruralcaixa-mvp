@@ -115,8 +115,32 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if _eh_comando_cadastro_colaborador(texto):
         return await _processar_cadastro_colaborador(texto, msg.numero, msg.canal)
 
+    # ── Assistente de Recibo (Fase 2 da unificação de bots) ─────────────
+    # Reaproveita o MESMO módulo usado pelo WhatsApp (recibo_handler.py),
+    # sem duplicar lógica. Precisa vir ANTES do bloco grande de sessão
+    # pendente abaixo, senão uma sessão de wizard ativa (_tipo ==
+    # "recibo_wizard"/"recibo_pendente", que é != "cadastro") cairia
+    # dentro daquele bloco e um "NAO" durante o wizard seria capturado
+    # por engano pelo cancelamento genérico de lançamento.
+    from app.services.recibo_handler import (
+        is_recibo_wizard_ativo, processar_etapa_recibo,
+    )
+    if is_recibo_wizard_ativo(sessoes, key):
+        resposta = processar_etapa_recibo(sessoes, key, texto)
+        return resposta or ""
+
+    if sessoes.get(key, {}).get("_tipo") == "recibo_pendente":
+        if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
+            sess_recibo = sessoes.pop(key)
+            return await _confirmar_recibo_pendente(sess_recibo, msg.numero, msg.canal)
+        elif texto_up in ("NAO", "N", "CANCELA"):
+            sessoes.pop(key, None)
+            return "❌ Recibo cancelado."
+        else:
+            return "Não entendi. Responda SIM para confirmar ou NAO para cancelar."
+
     # Confirmação de lançamento pendente na sessão
-    if key in sessoes and sessoes[key].get("_tipo") != "cadastro":
+    if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "recibo_wizard", "recibo_pendente"):
 
         # Sub-fluxo: escolha do lote de bovino (piloto de rastreabilidade
         # de custo por unidade de produção)
@@ -625,6 +649,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
     resultado = classificar(texto, termos_aprendidos=termos_aprendidos)
 
     if not resultado:
+        from app.services.recibo_handler import detectar_intencao_recibo, iniciar_recibo_wizard
+        if detectar_intencao_recibo(texto):
+            return iniciar_recibo_wizard(sessoes, key)
         sessoes[key] = {"_aguardando_tipo_novo_termo": True, "_texto_original": texto}
         return _texto_pergunta_tipo_lancamento(
             prefixo=f"Não reconheci esse tipo de lançamento (\"{texto[:60]}\"). "
@@ -647,6 +674,74 @@ async def processar_mensagem(msg: MsgIn) -> str:
         return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
 
     return _proximo_passo_apos_valor(resultado, msg.numero)
+
+
+async def _confirmar_recibo_pendente(sess: dict, numero: str, canal: str) -> str:
+    """Cria e envia o recibo (OTP sempre via WhatsApp pro destinatário —
+    isso não muda, é o canal de assinatura já validado ponta a ponta).
+    Origem da sessão tanto faz (wizard ou detecção direta via
+    classificar_recibo), o formato de sess é o mesmo nos dois casos.
+
+    Resolve o produtor via _autorizar_numero() em vez de
+    buscar_produtor_por_numero(), porque esta última só busca por
+    telefone — no Telegram "numero" é o chat_id, não telefone, e a busca
+    falharia silenciosamente."""
+    auth = _autorizar_numero(numero, canal)
+    produtor_id = auth.get("produtor_id")
+    if not produtor_id:
+        return "Não encontrei seu cadastro de produtor. Envie CADASTRAR para se registrar primeiro."
+
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    with engine.connect() as conn:
+        row = conn.execute(
+            sqlt("SELECT nome FROM produtores WHERE id = :pid"), {"pid": produtor_id}
+        ).fetchone()
+    produtor_nome = row[0] if row else "Produtor"
+
+    try:
+        from app.routers.recibos import (
+            get_db as recibos_get_db, gerar_otp, hash_otp,
+            _enviar_contexto_whatsapp, _enviar_otp_whatsapp,
+        )
+        from datetime import datetime as _dt, timedelta as _td
+
+        conn = recibos_get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO recibos (produtor_id, destinatario_nome, destinatario_documento,
+                destinatario_telefone, objeto, valor, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'aguardando_assinatura')
+            RETURNING id
+        """, (produtor_id, sess["destinatario_nome"], sess["destinatario_documento"],
+              sess["destinatario_telefone"], sess["objeto"], sess["valor"]))
+        recibo_id = cur.fetchone()["id"]
+
+        otp = gerar_otp()
+        otp_hash_val = hash_otp(otp)
+        expira = _dt.now() + _td(minutes=30)
+        cur.execute(
+            "UPDATE recibos SET otp_hash = %s, otp_expira_em = %s WHERE id = %s",
+            (otp_hash_val, expira, recibo_id)
+        )
+        conn.commit()
+        conn.close()
+
+        _enviar_contexto_whatsapp(
+            sess["destinatario_telefone"], sess["destinatario_nome"],
+            produtor_nome, sess["valor"], sess["objeto"]
+        )
+        enviado, _detalhe = _enviar_otp_whatsapp(sess["destinatario_telefone"], otp)
+
+        return (
+            f"✅ Recibo criado! Código de confirmação enviado para {sess['destinatario_nome']}.\n"
+            f"Valor: R$ {sess['valor']:,.2f}\n"
+            f"Objeto: {sess['objeto']}"
+            + ("" if enviado else "\n\n(Atenção: o envio do WhatsApp para o destinatário falhou)")
+        )
+    except Exception as e:
+        logger.error("Erro ao criar recibo via %s: %s", canal, e)
+        return "Erro ao criar o recibo. Tente novamente ou use o app."
 
 
 def _resolver_imovel_id(numero: str) -> int:
