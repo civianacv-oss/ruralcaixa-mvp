@@ -10,6 +10,7 @@ from typing import Optional, List
 from app.routers.piscicultura import router as piscicultura_router
 from backend.routers.telegram_router import router as telegram_router
 from app.routers.telegram_bot_router import router as telegram_bot_router
+from app.routers.whatsapp_bot_router import router as whatsapp_bot_router_v2
 from app.routers.agricultura import router as agricultura_router
 
 from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
@@ -373,6 +374,7 @@ app.include_router(agricultura_router)
 app.include_router(piscicultura_router)
 app.include_router(telegram_router)
 app.include_router(telegram_bot_router)   # ← ADICIONAR
+app.include_router(whatsapp_bot_router_v2)  # Fase 4: endpoint novo /wapp/inbound-v2, em paralelo ao antigo ate validar equivalencia
 
 # â”€â”€â”€ Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
