@@ -12,6 +12,16 @@ const SPECIES = [
   { key: "bovinos", label: "Bovinos", emoji: "🐄", color: "oklch(0.55 0.14 60)", chartColor: "#fb923c" },
 ] as const;
 
+// Cada espécie do card mapeia para uma ou mais atividades do catálogo
+// (Bovino tem Leiteiro + Corte separados na tabela `atividades`, as
+// outras espécies têm uma atividade só).
+const SPECIES_PARA_ATIVIDADES: Record<string, string[]> = {
+  bovinos: ["Bovino Leiteiro", "Bovino Corte"],
+  ovinos: ["Ovino"],
+  caprinos: ["Caprino"],
+  suinos: ["Suíno"],
+};
+
 function fmt(v: number | null | undefined) {
   if (v === null || v === undefined) return "—";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
@@ -59,8 +69,9 @@ function StatCard({ label, value, icon: Icon, color, sub, trend, action }: {
   );
 }
 
-function SpeciesCard({ species, count, loading, isTop }: {
+function SpeciesCard({ species, count, loading, isTop, resultado, resultadoLoading, selected, onClick }: {
   species: typeof SPECIES[number]; count: number; loading: boolean; isTop: boolean;
+  resultado: number | null; resultadoLoading: boolean; selected: boolean; onClick: () => void;
 }) {
   if (!loading && count === 0) {
     return (
@@ -74,7 +85,13 @@ function SpeciesCard({ species, count, loading, isTop }: {
     );
   }
   return (
-    <div className={`rounded-2xl p-5 bg-white shadow-sm border transition-shadow hover:shadow-md ${isTop ? "border-amber-200 ring-1 ring-amber-100" : "border-transparent"}`}>
+    <button
+      onClick={onClick}
+      className={`text-left w-full rounded-2xl p-5 bg-white shadow-sm border transition-shadow hover:shadow-md ${
+        selected ? "ring-2" : isTop ? "border-amber-200 ring-1 ring-amber-100" : "border-transparent"
+      }`}
+      style={selected ? { borderColor: species.color, ringColor: species.color } as React.CSSProperties : undefined}
+    >
       <div className="flex items-center gap-3 mb-3">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl" style={{ background: `${species.color}15` }}>
           {species.emoji}
@@ -89,7 +106,18 @@ function SpeciesCard({ species, count, loading, isTop }: {
       ) : (
         <p className="text-4xl font-bold" style={{ color: "oklch(0.22 0.06 145)" }}>{count}</p>
       )}
-    </div>
+      {/* Resultado financeiro da atividade (últimos 12 meses) — azul se
+          positivo, vermelho se negativo */}
+      {resultadoLoading ? (
+        <div className="h-4 w-20 rounded bg-muted animate-pulse mt-2" />
+      ) : resultado !== null ? (
+        <p className="text-sm font-semibold mt-2" style={{ color: resultado >= 0 ? "#2563eb" : "#dc2626" }}>
+          {fmt(resultado)}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground mt-2">Sem dado financeiro</p>
+      )}
+    </button>
   );
 }
 
@@ -135,6 +163,47 @@ export default function Dashboard() {
 
   // Espécies ordenadas por quantidade (maior primeiro) — real, sem simulação
   const sortedSpecies = useMemo(() => [...SPECIES].sort((a, b) => counts[b.key] - counts[a.key]), [counts]);
+
+  // Resultado financeiro (receita - despesa, últimos 12 meses) por espécie,
+  // somando as atividades mapeadas (Bovino = Leiteiro + Corte). null quando
+  // ainda não há nenhum lançamento classificado pra essa espécie.
+  const resultadoPorEspecie = useMemo(() => {
+    const mapa: Record<string, number | null> = {};
+    for (const s of SPECIES) {
+      const nomes = SPECIES_PARA_ATIVIDADES[s.key] ?? [];
+      const itens = (comparativo.data ?? []).filter((c) => nomes.includes(c.atividade_nome));
+      mapa[s.key] = itens.length > 0 ? itens.reduce((acc, c) => acc + c.resultado_total, 0) : null;
+    }
+    return mapa;
+  }, [comparativo.data]);
+
+  // Clique no card de espécie filtra a seção "Resultado por Atividade"
+  // abaixo pra mostrar só aquela espécie. Clicar de novo na mesma espécie
+  // selecionada volta pra "Todas".
+  const especieSelecionada = useMemo(() => {
+    for (const s of SPECIES) {
+      const nomes = SPECIES_PARA_ATIVIDADES[s.key] ?? [];
+      const idsEspecie = (atividades.data ?? [])
+        .filter((a) => nomes.includes(a.nome))
+        .map((a) => a.id)
+        .sort();
+      const atual = [...atividadesSelecionadas].sort();
+      if (idsEspecie.length > 0 && idsEspecie.length === atual.length && idsEspecie.every((id, i) => id === atual[i])) {
+        return s.key;
+      }
+    }
+    return null;
+  }, [atividadesSelecionadas, atividades.data]);
+
+  const toggleFiltroEspecie = (speciesKey: string) => {
+    const nomes = SPECIES_PARA_ATIVIDADES[speciesKey] ?? [];
+    const idsEspecie = (atividades.data ?? []).filter((a) => nomes.includes(a.nome)).map((a) => a.id);
+    if (especieSelecionada === speciesKey) {
+      setAtividadesSelecionadas([]);
+    } else {
+      setAtividadesSelecionadas(idsEspecie);
+    }
+  };
 
   // Tendência vs mês anterior — calculada a partir dos lançamentos reais,
   // não de nenhum valor simulado
@@ -252,7 +321,17 @@ export default function Dashboard() {
       {/* Species cards — ordenadas por quantidade, sem rebanho fica discreto */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {sortedSpecies.map((s, i) => (
-          <SpeciesCard key={s.key} species={s} count={counts[s.key]} loading={animaisLoading} isTop={i === 0 && counts[s.key] > 0} />
+          <SpeciesCard
+            key={s.key}
+            species={s}
+            count={counts[s.key]}
+            loading={animaisLoading}
+            isTop={i === 0 && counts[s.key] > 0}
+            resultado={resultadoPorEspecie[s.key]}
+            resultadoLoading={comparativo.isLoading}
+            selected={especieSelecionada === s.key}
+            onClick={() => toggleFiltroEspecie(s.key)}
+          />
         ))}
       </div>
 
