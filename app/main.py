@@ -1688,6 +1688,17 @@ async def processar(payload: dict):
                     await send_msg(numero, resposta)
                 return
 
+            # Comando "vincular administrador/procurador/contador CPF" —
+            # reaproveita a MESMA lógica do Telegram (mensagem_handler.py),
+            # sem duplicar código (mesmo princípio já usado no Recibo).
+            from app.services.mensagem_handler import (
+                _eh_comando_vinculo, _processar_comando_vinculo,
+            )
+            if _eh_comando_vinculo(texto):
+                resposta = await _processar_comando_vinculo(texto, numero, "whatsapp")
+                await send_msg(numero, resposta)
+                return
+
             if texto_upper in ("CADASTRAR", "CADASTRO", "ME CADASTRAR", "QUERO ME CADASTRAR",
                                "OI", "OLA", "INICIO"):
                 from app.db import buscar_produtor_por_numero

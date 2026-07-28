@@ -115,6 +115,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if _eh_comando_cadastro_colaborador(texto):
         return await _processar_cadastro_colaborador(texto, msg.numero, msg.canal)
 
+    if _eh_comando_vinculo(texto):
+        return await _processar_comando_vinculo(texto, msg.numero, msg.canal)
+
     # ── Assistente de Recibo (Fase 2 da unificação de bots) ─────────────
     # Reaproveita o MESMO módulo usado pelo WhatsApp (recibo_handler.py),
     # sem duplicar lógica. Precisa vir ANTES do bloco grande de sessão
@@ -1350,10 +1353,14 @@ def _autorizar_numero(numero: str, canal: str) -> dict:
             return {"produtor_id": produtor_id, "imovel_id": row_dono[0],
                     "papel": "proprietario", "autorizado": True}
 
+        # 'procurador' tem o mesmo nível de acesso que 'administrador'
+        # (decidido em 28/07). 'contador' fica DE FORA desta lista de
+        # propósito -- ver docstring de _processar_comando_vinculo pra
+        # entender por que (pendência de restrição de escrita real).
         row_admin = conn.execute(sqlt(
             "SELECT imovel_id, tipo_vinculo FROM participacoes_imovel "
             "WHERE produtor_id = :pid AND vigencia_fim IS NULL "
-            "AND tipo_vinculo IN ('administrador', 'proprietario') "
+            "AND tipo_vinculo IN ('administrador', 'proprietario', 'procurador') "
             "ORDER BY vigencia_inicio DESC LIMIT 1"
         ), {"pid": produtor_id}).fetchone()
         if row_admin:
@@ -1861,4 +1868,92 @@ async def _processar_cadastro_colaborador(texto: str, numero: str, canal: str) -
         f"Se algo que {nome.split()[0]} reportar não puder ser classificado com "
         f"segurança, você (ou outro administrador) vai receber a pergunta aqui "
         f"mesmo -- {nome.split()[0]} não precisa (nem vai conseguir) escolher a conta contábil."
+    )
+
+
+_TIPOS_VINCULO_VALIDOS = ("administrador", "procurador", "contador")
+_PADRAO_VINCULO = re.compile(
+    r"^vincular\s+(administrador|procurador|contador)\s+([\d.\-\s]{11,18})$"
+)
+
+
+def _eh_comando_vinculo(texto: str) -> bool:
+    return bool(_PADRAO_VINCULO.match(_normalizar_para_comando(texto)))
+
+
+async def _processar_comando_vinculo(texto: str, numero: str, canal: str) -> str:
+    """
+    Comando de texto: "vincular administrador 12345678900" (ou
+    procurador/contador). Só proprietário/administrador/procurador podem
+    rodar -- mesma regra de quem pode cadastrar colaborador, mas aqui é
+    ainda mais sensível (dá acesso financeiro, não só operacional).
+
+    A pessoa vinculada PRECISA JÁ TER cadastro de produtor (CPF) no
+    RuralCaixa -- decidido em 28/07 que o sistema não cria cadastro
+    mínimo automático pra administrador/procurador/contador (diferente
+    do colaborador, que é autocontido). Se o CPF não for encontrado,
+    orienta a pessoa a se cadastrar primeiro (opção "vinculado a
+    propriedade de outra pessoa" no wizard).
+
+    Administrador e Procurador têm o MESMO nível de acesso (ver extensão
+    de _autorizar_numero). Contador fica registrado no banco, mas AINDA
+    NÃO tem acesso via bot autorizado -- ver pendência na docstring do
+    módulo. Isso é intencional: mais seguro não dar acesso nenhum agora
+    do que fingir uma restrição de "só leitura" sem ela existir de fato.
+    """
+    autorizacao = _autorizar_numero(numero, canal)
+    if not autorizacao.get("autorizado"):
+        return ("Não consegui confirmar seu cadastro. Fale com quem configurou o "
+                "RuralCaixa pra essa propriedade antes de vincular alguém.")
+
+    papel = autorizacao.get("papel")
+    if papel not in ("proprietario", "administrador", "procurador"):
+        return ("Você não tem permissão pra vincular administrador/procurador/contador. "
+                "Só o proprietário, um administrador ou procurador podem fazer isso.")
+
+    imovel_id = autorizacao.get("imovel_id")
+    if not imovel_id:
+        return "Não consegui identificar a propriedade pra vincular esse cadastro."
+
+    match = _PADRAO_VINCULO.match(_normalizar_para_comando(texto))
+    tipo_vinculo = match.group(1)
+    cpf = re.sub(r"\D", "", match.group(2))
+    if len(cpf) != 11:
+        return "CPF inválido. Manda assim: \"vincular administrador 12345678900\""
+
+    from app.db import buscar_produtor_por_cpf, engine
+    from sqlalchemy import text as sqlt
+
+    pessoa = buscar_produtor_por_cpf(cpf)
+    if not pessoa:
+        return (
+            "Esse CPF ainda não tem cadastro no RuralCaixa. Peça pra pessoa mandar "
+            "CADASTRAR primeiro (escolhendo a opção \"vinculado(a) à propriedade de "
+            "outra pessoa\"), depois repete esse comando."
+        )
+
+    with engine.connect() as conn:
+        ja_vinculado = conn.execute(sqlt("""
+            SELECT id, tipo_vinculo FROM participacoes_imovel
+            WHERE produtor_id = :pid AND imovel_id = :iid AND vigencia_fim IS NULL
+        """), {"pid": pessoa["id"], "iid": imovel_id}).fetchone()
+        if ja_vinculado:
+            return f"{pessoa['nome']} já está vinculado(a) a essa propriedade como \"{ja_vinculado[1]}\"."
+
+        conn.execute(sqlt("""
+            INSERT INTO participacoes_imovel
+                (imovel_id, produtor_id, nome_participante, tipo_vinculo, vigencia_inicio)
+            VALUES (:iid, :pid, :nome, :tipo, CURRENT_DATE)
+        """), {"iid": imovel_id, "pid": pessoa["id"], "nome": pessoa["nome"], "tipo": tipo_vinculo})
+        conn.commit()
+
+    aviso_contador = (
+        "\n\n⚠️ Contador ainda não tem acesso restrito a leitura implementado nesta "
+        "versão -- por enquanto, NÃO consegue interagir com o bot (nem leitura nem "
+        "escrita), até uma revisão de segurança dedicada estar pronta."
+    ) if tipo_vinculo == "contador" else ""
+
+    return (
+        f"✅ {pessoa['nome']} vinculado(a) como {tipo_vinculo} dessa propriedade."
+        f"{aviso_contador}"
     )

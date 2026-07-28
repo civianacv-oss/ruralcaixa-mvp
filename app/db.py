@@ -130,6 +130,21 @@ def buscar_produtor_por_numero(telefone: str):
             return {"id": result[0], "nome": result[1]}
         return None
 
+
+def buscar_produtor_por_cpf(cpf: str):
+    """Usado pelo wizard de cadastro (cadastro_handler.py) pra checar
+    duplicidade assim que o CPF é digitado, antes de perguntar o resto —
+    evita recadastro duplicado (produtor + imóvel) quando a pessoa já
+    tem cadastro e confirma de novo, inclusive por outro canal."""
+    with engine.connect() as conn:
+        result = conn.execute(text(
+            "SELECT id, nome FROM produtores WHERE cpf = :cpf"
+        ), {"cpf": cpf}).fetchone()
+        if result:
+            return {"id": result[0], "nome": result[1]}
+        return None
+
+
 def cadastrar(produtor: dict, imovel: dict) -> int:
     with engine.connect() as conn:
         # Verifica se CPF jÃ¡ existe

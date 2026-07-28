@@ -1,10 +1,17 @@
 # app/services/cadastro_handler.py
 
-ETAPAS = ["nome", "cpf", "imovel_nome", "municipio", "uf", "area_ha", "confirmar"]
+# Duas sequências possíveis, escolhidas pela resposta à pergunta inicial
+# "_tipo_cadastro" (dono de imóvel vs vinculado à propriedade de outra
+# pessoa). Decidido em 28/07: quem vai ser só administrador/procurador/
+# contador de propriedade alheia não deve ser obrigado a cadastrar um
+# imóvel próprio.
+SEQ_DONO = ["cpf", "nome", "telefone", "imovel_nome", "municipio", "uf", "area_ha", "confirmar"]
+SEQ_VINCULADO = ["cpf", "nome", "telefone", "confirmar"]
 
 PERGUNTAS = {
-    "nome":        "👤 Qual seu *nome completo*?",
     "cpf":         "📋 Qual seu *CPF*? (somente números ou com pontuação)",
+    "nome":        "👤 Qual seu *nome completo*?",
+    "telefone":    "📱 Qual o seu *telefone (com DDD)*? (ex: 98991234567)",
     "imovel_nome": "🌾 Qual o *nome do seu imóvel rural*? (ex: Fazenda São João)",
     "municipio":   "📍 Qual o *município* do imóvel?",
     "uf":          "🗺️ Qual o *estado* (UF)? (ex: MT, GO, MS)",
@@ -12,13 +19,30 @@ PERGUNTAS = {
     "confirmar":   None,  # mensagem montada dinamicamente
 }
 
+TEXTO_PERGUNTA_TIPO = (
+    "Antes de começar: você é *dono(a) de um imóvel rural*, ou vai ser "
+    "*vinculado(a) à propriedade de outra pessoa* (como administrador, "
+    "procurador ou contador)?\n\n"
+    "1️⃣ Sou dono(a) de um imóvel\n"
+    "2️⃣ Vou ser vinculado(a) à propriedade de outra pessoa"
+)
+
+
 def iniciar_cadastro(sessoes: dict, numero: str) -> str:
-    sessoes[numero] = {"_etapa": "nome", "_tipo": "cadastro"}
+    sessoes[numero] = {"_etapa": "tipo_cadastro", "_tipo": "cadastro"}
     return (
         "👋 Bem-vindo ao *RuralCaixa*!\n\n"
         "Vou te cadastrar em algumas etapas. Pode cancelar a qualquer momento respondendo *CANCELAR*.\n\n"
-        + PERGUNTAS["nome"]
+        + TEXTO_PERGUNTA_TIPO
     )
+
+
+def _proxima_etapa(etapa_atual: str, seq: list, forcada: str = None):
+    if forcada:
+        return forcada
+    idx = seq.index(etapa_atual)
+    return seq[idx + 1] if idx + 1 < len(seq) else None
+
 
 def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
     sess = sessoes.get(numero, {})
@@ -33,6 +57,23 @@ def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
         sessoes.pop(numero, None)
         return "❌ Cadastro cancelado."
 
+    # Primeira pergunta: define qual sequência de etapas seguir.
+    if etapa == "tipo_cadastro":
+        resp = texto.strip().upper()
+        if resp in ("1", "DONO", "SOU DONO", "SOU DONO(A)"):
+            sess["_dono"] = True
+        elif resp in ("2", "VINCULADO", "VINCULADO(A)"):
+            sess["_dono"] = False
+        else:
+            return "⚠️ Não entendi. Responda *1* (dono de imóvel) ou *2* (vinculado a outra propriedade):"
+        sess["_etapa"] = "cpf"
+        sessoes[numero] = sess
+        return PERGUNTAS["cpf"]
+
+    seq = SEQ_DONO if sess.get("_dono", True) else SEQ_VINCULADO
+    proxima_forcada = None
+    prefixo_extra = ""
+
     # Validações
     if etapa == "cpf":
         cpf = texto.replace(".", "").replace("-", "").replace(" ", "")
@@ -40,25 +81,45 @@ def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
             return "⚠️ CPF inválido. Digite apenas os 11 números. Tente novamente:"
         sess["cpf"] = cpf
 
+        # Checa duplicidade assim que o CPF é digitado (achado em 28/07:
+        # recadastrar um CPF já existente sem essa checagem duplicava o
+        # imóvel do produtor). Se já existir, preenche o nome e pula essa
+        # pergunta — mas continua perguntando telefone (e imóvel, se dono).
+        from app.db import buscar_produtor_por_cpf
+        existente = buscar_produtor_por_cpf(cpf)
+        if existente:
+            sess["nome"] = existente["nome"]
+            sess["_produtor_existente_id"] = existente["id"]
+            proxima_forcada = "telefone"
+            prefixo_extra = f"✅ Encontrei seu cadastro, {existente['nome']}! Vamos confirmar mais alguns dados.\n\n"
+
+    elif etapa == "nome":
+        if len(texto) < 3:
+            return "⚠️ Nome muito curto. Digite seu nome completo:"
+        sess["nome"] = texto
+
+    elif etapa == "telefone":
+        tel = texto.replace("(", "").replace(")", "").replace("-", "").replace(" ", "")
+        if not tel.isdigit() or len(tel) not in (10, 11, 12, 13):
+            return "⚠️ Telefone inválido. Digite com DDD (ex: 98991234567):"
+        if len(tel) in (10, 11):
+            tel = "55" + tel
+        sess["telefone"] = tel
+
     elif etapa == "uf":
         uf = texto.upper().strip()
         UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
                "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
         if uf not in UFS:
-            return f"⚠️ UF inválida. Use a sigla do estado (ex: MT, GO, SP). Tente novamente:"
+            return "⚠️ UF inválida. Use a sigla do estado (ex: MT, GO, SP). Tente novamente:"
         sess["uf"] = uf
 
     elif etapa == "area_ha":
         try:
             area = float(texto.replace(",", "."))
             sess["area_ha"] = area if area > 0 else None
-        except:
+        except ValueError:
             sess["area_ha"] = None
-
-    elif etapa == "nome":
-        if len(texto) < 3:
-            return "⚠️ Nome muito curto. Digite seu nome completo:"
-        sess["nome"] = texto
 
     elif etapa == "imovel_nome":
         sess["imovel_nome"] = texto
@@ -66,31 +127,36 @@ def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
     elif etapa == "municipio":
         sess["municipio"] = texto
 
-    # Avança para próxima etapa
-    idx = ETAPAS.index(etapa)
-    proxima = ETAPAS[idx + 1] if idx + 1 < len(ETAPAS) else None
+    proxima = _proxima_etapa(etapa, seq, proxima_forcada)
     sess["_etapa"] = proxima
     sessoes[numero] = sess
 
     if proxima == "confirmar":
         return _montar_confirmacao(sess)
     elif proxima:
-        return PERGUNTAS[proxima]
+        return prefixo_extra + PERGUNTAS[proxima]
     return None
 
 
 def _montar_confirmacao(sess: dict) -> str:
-    area = sess.get("area_ha")
-    area_txt = f"{area} ha" if area else "Não informada"
-    return (
-        "✅ *Resumo do cadastro:*\n\n"
-        f"👤 Nome: {sess.get('nome')}\n"
-        f"📋 CPF: {sess.get('cpf')}\n"
-        f"🌾 Imóvel: {sess.get('imovel_nome')}\n"
-        f"📍 Município: {sess.get('municipio')} - {sess.get('uf')}\n"
-        f"📐 Área: {area_txt}\n\n"
-        "Responda *SIM* para confirmar ou *NAO* para cancelar."
-    )
+    linhas = [
+        "✅ *Resumo do cadastro:*\n",
+        f"👤 Nome: {sess.get('nome')}",
+        f"📋 CPF: {sess.get('cpf')}",
+        f"📱 Telefone: {sess.get('telefone')}",
+    ]
+    if sess.get("_dono", True):
+        area = sess.get("area_ha")
+        area_txt = f"{area} ha" if area else "Não informada"
+        linhas += [
+            f"🌾 Imóvel: {sess.get('imovel_nome')}",
+            f"📍 Município: {sess.get('municipio')} - {sess.get('uf')}",
+            f"📐 Área: {area_txt}",
+        ]
+    else:
+        linhas.append("ℹ️ Cadastro sem imóvel próprio (será vinculado por quem administra a propriedade).")
+    linhas.append("\nResponda *SIM* para confirmar ou *NAO* para cancelar.")
+    return "\n".join(linhas)
 
 
 def confirmar_cadastro(sessoes: dict, key: str, numero_real: str = None, canal: str = "whatsapp") -> dict | None:
@@ -98,15 +164,11 @@ def confirmar_cadastro(sessoes: dict, key: str, numero_real: str = None, canal: 
     `key` é a chave da sessão (pode ser um composto "canal:numero" no
     Telegram) — usada só pra recuperar/apagar a sessão em andamento.
 
-    `numero_real` e `canal` identificam de fato quem está se
-    cadastrando: se vierem vazios (chamada legada, sem os dois
-    parâmetros novos), assume-se WhatsApp e usa `key` como telefone,
-    mantendo compatibilidade com o webhook antigo (app/main.py).
-
-    Isso evita o bug de gravar o chat_id do Telegram (ou a chave
-    composta "telegram:123456789") na coluna `telefone` — o que fazia
-    o cadastro "terminar", mas o produtor nunca ser reconhecido de novo
-    porque `telegram_chat_id` ficava sempre NULL.
+    `numero_real` e `canal` identificam de fato quem está confirmando —
+    usados pra gravar telegram_chat_id no canal Telegram. O TELEFONE em
+    si vem sempre do que a pessoa digitou no wizard (sess["telefone"]),
+    inclusive no WhatsApp — permite corrigir se a pessoa estiver mandando
+    de um número diferente do cadastro.
     """
     sess = sessoes.pop(key, None)
     if not sess or sess.get("_etapa") != "confirmar":
@@ -117,23 +179,23 @@ def confirmar_cadastro(sessoes: dict, key: str, numero_real: str = None, canal: 
         "nome":     sess["nome"],
         "cpf":      sess["cpf"],
         "nirf":     None,
+        "telefone": sess.get("telefone"),
     }
     if canal == "telegram":
         produtor["telegram_chat_id"] = numero_real
-        produtor["telefone"] = None  # não confundir com telefone real — fica pra ser preenchido depois, se precisar
-    else:
-        produtor["telefone"] = numero_real
 
-    return {
-        "produtor": produtor,
-        "imovel": {
-            "nome":      sess["imovel_nome"],
-            "municipio": sess["municipio"],
-            "uf":        sess["uf"],
+    imovel = {}
+    if sess.get("_dono", True):
+        imovel = {
+            "nome":      sess.get("imovel_nome"),
+            "municipio": sess.get("municipio"),
+            "uf":        sess.get("uf"),
             "area_ha":   sess.get("area_ha"),
             "nirf":      None,
         }
-    }
+
+    return {"produtor": produtor, "imovel": imovel}
+
 
 def is_cadastro_ativo(sessoes: dict, numero: str) -> bool:
     return sessoes.get(numero, {}).get("_tipo") == "cadastro"
