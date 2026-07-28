@@ -141,6 +141,7 @@ export default function Dashboard() {
   const iofc = trpc.railway.iofcMensal.useQuery({ produtorId: produtorId ?? 0, meses: iofcMeses }, { enabled });
   const atividades = trpc.railway.atividades.useQuery(undefined, { enabled });
   const comparativo = trpc.railway.comparativoRentabilidade.useQuery({ produtorId: produtorId ?? 0, meses: 12 }, { enabled });
+  const resumoAtiv = trpc.railway.resumoPorAtividade.useQuery({ produtorId: produtorId ?? 0, meses: iofcMeses }, { enabled });
   const [atividadesSelecionadas, setAtividadesSelecionadas] = useState<string[]>([]);
 
   const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "ovinos" }, { enabled });
@@ -266,6 +267,38 @@ export default function Dashboard() {
     resultado: item.resultado_total,
     cor: item.cor,
   }));
+
+  // O IOFC é uma fórmula específica de leite (receita de leite - custo de
+  // ração) — só faz sentido mostrar quando a seleção é exatamente "Bovino
+  // Leiteiro" sozinho. Em qualquer outro caso (Todas, ou outra atividade
+  // selecionada), mostra um gráfico genérico de evolução mensal pra
+  // seleção atual, vindo de resumo-por-atividade.
+  const bovinoLeiteiroId = (atividades.data ?? []).find((a) => a.nome === "Bovino Leiteiro")?.id;
+  const mostrarIOFC = filtroAtivo && atividadesSelecionadas.length === 1 && atividadesSelecionadas[0] === bovinoLeiteiroId;
+
+  const nomeSelecaoAtual = !filtroAtivo
+    ? "Todas as Atividades"
+    : (atividades.data ?? [])
+        .filter((a) => atividadesSelecionadas.includes(a.id))
+        .map((a) => a.nome)
+        .join(" + ") || "Selecionada";
+
+  const evolucaoMensalSerie = useMemo(() => {
+    const porMes: Record<string, { receita: number; despesa: number; resultado: number }> = {};
+    for (const linha of resumoAtiv.data ?? []) {
+      if (filtroAtivo && !atividadesSelecionadas.includes(linha.atividade_id)) continue;
+      if (!porMes[linha.mes]) porMes[linha.mes] = { receita: 0, despesa: 0, resultado: 0 };
+      porMes[linha.mes].receita += linha.receita;
+      porMes[linha.mes].despesa += linha.despesa;
+      porMes[linha.mes].resultado += linha.resultado;
+    }
+    return Object.entries(porMes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, v]) => ({
+        mes: new Date(mes + "T00:00:00").toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+        ...v,
+      }));
+  }, [resumoAtiv.data, filtroAtivo, atividadesSelecionadas]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -509,8 +542,50 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Evolução Mensal — genérico, reage ao mesmo filtro da seção
+          "Resultado por Atividade" acima. Some quando a seleção é
+          exatamente Bovino Leiteiro sozinho, porque nesse caso o IOFC
+          (mais abaixo) já cobre com uma fórmula mais específica. */}
+      {!mostrarIOFC && (
+        <div className="rounded-2xl p-5 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "oklch(0.22 0.06 145)" }}>
+                Evolução Mensal — {nomeSelecaoAtual}
+              </p>
+              <p className="text-xs text-muted-foreground">Receita, despesa e resultado por mês</p>
+            </div>
+          </div>
+
+          {resumoAtiv.isLoading ? (
+            <div className="h-56 flex items-center justify-center">
+              <div className="text-sm text-muted-foreground">Carregando...</div>
+            </div>
+          ) : evolucaoMensalSerie.length < 2 ? (
+            <div className="h-40 flex flex-col items-center justify-center gap-1.5 text-center px-4">
+              <p className="text-sm font-medium text-muted-foreground">
+                Ainda não há meses suficientes pra mostrar uma tendência dessa atividade.
+              </p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={evolucaoMensalSerie} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0.01 145)" />
+                <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: number, name: string) => [fmt(v), name === "receita" ? "Receita" : name === "despesa" ? "Despesa" : "Resultado"]} />
+                <Legend formatter={(v) => (v === "receita" ? "Receita" : v === "despesa" ? "Despesa" : "Resultado")} iconType="circle" iconSize={8} />
+                <Line type="monotone" dataKey="receita" stroke="#60a5fa" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="despesa" stroke="#f472b6" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="resultado" stroke="oklch(0.42 0.14 145)" strokeWidth={2.5} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
+
       {/* IOFC — Margem Leiteira (Income Over Feed Cost) */}
-      {(iofc.isLoading || iofcSerie.length > 0) && (
+      {mostrarIOFC && (iofc.isLoading || iofcSerie.length > 0) && (
         <div className="rounded-2xl p-5 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
