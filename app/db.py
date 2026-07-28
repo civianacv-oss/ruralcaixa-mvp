@@ -201,21 +201,57 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
                 "part": imovel.get("participacao", 0),
             })
             conn.commit()
-        # Caso contrario, cria novo imovel
+        # Caso contrario, cria novo imovel — mas so depois de checar
+        # duplicidade em dois niveis (achados em 27-28/07):
         elif imovel.get("nome"):
-            conn.execute(text("""
-                INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf, participacao)
-                VALUES (:pid, :nome, :nirf, :area, :municipio, :uf, :part)
+            # 1) Mesma propriedade sob OUTRO produtor (ex: Fernando tentando
+            #    se cadastrar como "dono" do Condominio Rural Coqueiro, que
+            #    ja e do Cicero) -- BLOQUEIA, nao duplica a fazenda fisica
+            #    sob dois produtor_id diferentes.
+            imovel_de_outro = conn.execute(text("""
+                SELECT id, produtor_id FROM imoveis_rurais
+                WHERE produtor_id != :pid
+                  AND lower(unaccent(nome)) = lower(unaccent(:nome))
+                  AND lower(unaccent(COALESCE(municipio, ''))) = lower(unaccent(COALESCE(:municipio, '')))
+                  AND uf = :uf
+                LIMIT 1
             """), {
-                "pid":       produtor_id,
-                "nome":      imovel.get("nome"),
-                "nirf":      imovel.get("nirf"),
-                "area":      imovel.get("area_ha"),
-                "municipio": imovel.get("municipio"),
-                "uf":        imovel.get("uf"),
-                "part":      imovel.get("participacao", 100),
-            })
-            conn.commit()
+                "pid": produtor_id, "nome": imovel.get("nome"),
+                "municipio": imovel.get("municipio"), "uf": imovel.get("uf"),
+            }).fetchone()
+            if imovel_de_outro:
+                raise ValueError(
+                    f"A propriedade \"{imovel.get('nome')}\" já está cadastrada no "
+                    f"RuralCaixa por outra pessoa. Peça pro proprietário rodar o comando "
+                    f"\"vincular administrador {cpf_limpo}\" (ou procurador/contador, "
+                    f"conforme seu papel) pra te vincular a essa propriedade, em vez de "
+                    f"criar um cadastro novo."
+                )
+
+            # 2) MESMO produtor recadastrando com nome equivalente (bug do
+            #    teste "joao de deus"/Cicero em 27/07) -- reaproveita o
+            #    imovel existente em vez de duplicar.
+            imovel_similar = conn.execute(text("""
+                SELECT id FROM imoveis_rurais
+                WHERE produtor_id = :pid
+                  AND lower(unaccent(nome)) = lower(unaccent(:nome))
+                LIMIT 1
+            """), {"pid": produtor_id, "nome": imovel.get("nome")}).fetchone()
+
+            if not imovel_similar:
+                conn.execute(text("""
+                    INSERT INTO imoveis_rurais (produtor_id, nome, nirf, area_ha, municipio, uf, participacao)
+                    VALUES (:pid, :nome, :nirf, :area, :municipio, :uf, :part)
+                """), {
+                    "pid":       produtor_id,
+                    "nome":      imovel.get("nome"),
+                    "nirf":      imovel.get("nirf"),
+                    "area":      imovel.get("area_ha"),
+                    "municipio": imovel.get("municipio"),
+                    "uf":        imovel.get("uf"),
+                    "part":      imovel.get("participacao", 100),
+                })
+                conn.commit()
 
         return produtor_id
 

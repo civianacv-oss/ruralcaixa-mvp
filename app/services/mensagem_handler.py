@@ -563,6 +563,10 @@ async def processar_mensagem(msg: MsgIn) -> str:
                         f"Ex: 'vendi 10 sacas de soja por 3000 reais'\n\n"
                         f"Digite /ajuda para ver todos os comandos."
                     )
+                except ValueError as e:
+                    # Mensagem de negocio (ex: propriedade ja cadastrada por
+                    # outra pessoa) -- mostra direto pro usuario, nao e um bug.
+                    return str(e)
                 except Exception as e:
                     return "Erro ao cadastrar. Tente novamente."
         else:

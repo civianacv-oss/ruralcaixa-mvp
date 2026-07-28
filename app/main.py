@@ -1631,6 +1631,10 @@ async def processar(payload: dict):
                                 f"Agora voce pode enviar lancamentos por texto ou audio.\n"
                                 f"Ex: 'vendi 10 sacas de soja por 3000 reais'"
                             )
+                        except ValueError as e:
+                            # Mensagem de negocio (ex: propriedade ja cadastrada por
+                            # outra pessoa) -- mostra direto pro usuario, nao e um bug.
+                            await send_msg(numero, str(e))
                         except Exception as e:
                             print(f"Erro cadastro: {e}")
                             await send_msg(numero, "Erro ao cadastrar. Tente novamente.")
