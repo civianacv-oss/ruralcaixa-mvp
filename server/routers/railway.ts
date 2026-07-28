@@ -2590,6 +2590,64 @@ reabrirMesLivroCaixa: publicProcedure
       claims.produtorId,
     );
   }),
+atividades: publicProcedure
+  .query(async ({ ctx }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch<{
+      id: string;
+      nome: string;
+      tipo: string;
+      categoria: string | null;
+      icone: string;
+      cor: string;
+      ordem_exibicao: number;
+      ativo: boolean;
+    }[]>(
+      `/relatorios/atividades?produtor_id=${claims.produtorId}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
+resumoPorAtividade: publicProcedure
+  .input(z.object({ produtorId: z.number(), meses: z.number().optional().default(12) }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch<{
+      atividade_id: string;
+      atividade_nome: string;
+      cor: string;
+      icone: string;
+      mes: string;
+      receita: number;
+      despesa: number;
+      resultado: number;
+      total_lancamentos: number;
+    }[]>(
+      `/relatorios/resumo-por-atividade?produtor_id=${input.produtorId}&meses=${input.meses}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
+comparativoRentabilidade: publicProcedure
+  .input(z.object({ produtorId: z.number(), meses: z.number().optional().default(12) }))
+  .query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch<{
+      atividade_id: string;
+      atividade_nome: string;
+      cor: string;
+      icone: string;
+      receita_total: number;
+      despesa_total: number;
+      resultado_total: number;
+      margem_percentual: number;
+      total_lancamentos: number;
+    }[]>(
+      `/relatorios/comparativo-atividades?produtor_id=${input.produtorId}&meses=${input.meses}`,
+      undefined,
+      claims.produtorId,
+    );
+  }),
 relatorioRebanho: publicProcedure
   .input(z.object({
     imovelId: z.number(),
