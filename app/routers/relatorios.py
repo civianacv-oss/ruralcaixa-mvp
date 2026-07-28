@@ -288,3 +288,110 @@ def relatorio_eficiencia_alimentar(imovel_id: int, produtor_id: int):
         }
     finally:
         conn.close()
+
+
+@router.get("/atividades")
+def listar_atividades(produtor_id: Optional[int] = Query(None)):
+    """Catalogo de atividades pro filtro do Dashboard. Retorna as
+    atividades padrao do sistema (produtor_id NULL) mais as especificas
+    do produtor, se houver."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, nome, tipo, categoria, icone, cor, ordem_exibicao, ativo
+            FROM atividades
+            WHERE ativo = true
+              AND (produtor_id IS NULL OR produtor_id = %s)
+            ORDER BY ordem_exibicao
+        """, (produtor_id,))
+        return list(cur.fetchall())
+    finally:
+        conn.close()
+
+
+@router.get("/resumo-por-atividade")
+def resumo_por_atividade(
+    produtor_id: int,
+    meses: int = Query(12, ge=1, le=36),
+):
+    """Receita/despesa/resultado por mes, agrupado por atividade.
+    Alimenta o grafico comparativo do Dashboard. Lancamentos sem
+    atividade_id (historico anterior ao backfill, ou casos ambiguos)
+    caem no grupo "Nao classificado" em vez de sumir da soma."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COALESCE(a.id::text, 'sem_atividade')   AS atividade_id,
+                COALESCE(a.nome, 'Não classificado')     AS atividade_nome,
+                COALESCE(a.cor, '#9ca3af')                AS cor,
+                COALESCE(a.icone, '❓')                    AS icone,
+                date_trunc('month', l.data)::date         AS mes,
+                SUM(CASE WHEN s.tipo = 'RECEITA' THEN l.valor ELSE 0 END) AS receita,
+                SUM(CASE WHEN s.tipo != 'RECEITA' THEN l.valor ELSE 0 END) AS despesa,
+                COUNT(*) AS total_lancamentos
+            FROM lancamentos l
+            LEFT JOIN subcontas s ON s.id = l.subconta_id
+            LEFT JOIN atividades a ON a.id = l.atividade_id
+            WHERE l.produtor_id = %(produtor_id)s
+              AND l.data >= CURRENT_DATE - (%(meses)s * 30)
+            GROUP BY a.id, a.nome, a.cor, a.icone, date_trunc('month', l.data)
+            ORDER BY mes DESC
+        """, {"produtor_id": produtor_id, "meses": meses})
+        linhas = list(cur.fetchall())
+
+        for l in linhas:
+            l["receita"] = float(l["receita"] or 0)
+            l["despesa"] = float(l["despesa"] or 0)
+            l["resultado"] = round(l["receita"] - l["despesa"], 2)
+            l["mes"] = l["mes"].isoformat()
+
+        return linhas
+    finally:
+        conn.close()
+
+
+@router.get("/comparativo-atividades")
+def comparativo_atividades(
+    produtor_id: int,
+    meses: int = Query(12, ge=1, le=36),
+):
+    """Mesma base do resumo-por-atividade, mas ja consolidado no total
+    do periodo (nao por mes) -- usado na tabela de rentabilidade
+    comparada do Dashboard."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                COALESCE(a.id::text, 'sem_atividade')   AS atividade_id,
+                COALESCE(a.nome, 'Não classificado')     AS atividade_nome,
+                COALESCE(a.cor, '#9ca3af')                AS cor,
+                COALESCE(a.icone, '❓')                    AS icone,
+                SUM(CASE WHEN s.tipo = 'RECEITA' THEN l.valor ELSE 0 END) AS receita_total,
+                SUM(CASE WHEN s.tipo != 'RECEITA' THEN l.valor ELSE 0 END) AS despesa_total,
+                COUNT(*) AS total_lancamentos
+            FROM lancamentos l
+            LEFT JOIN subcontas s ON s.id = l.subconta_id
+            LEFT JOIN atividades a ON a.id = l.atividade_id
+            WHERE l.produtor_id = %(produtor_id)s
+              AND l.data >= CURRENT_DATE - (%(meses)s * 30)
+            GROUP BY a.id, a.nome, a.cor, a.icone
+            ORDER BY (SUM(CASE WHEN s.tipo = 'RECEITA' THEN l.valor ELSE 0 END)
+                      - SUM(CASE WHEN s.tipo != 'RECEITA' THEN l.valor ELSE 0 END)) DESC
+        """, {"produtor_id": produtor_id, "meses": meses})
+        linhas = list(cur.fetchall())
+
+        for l in linhas:
+            receita = float(l["receita_total"] or 0)
+            despesa = float(l["despesa_total"] or 0)
+            l["receita_total"] = receita
+            l["despesa_total"] = despesa
+            l["resultado_total"] = round(receita - despesa, 2)
+            l["margem_percentual"] = round((receita - despesa) / receita * 100, 1) if receita else 0.0
+
+        return linhas
+    finally:
+        conn.close()
