@@ -52,10 +52,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     Retorna string de resposta (já formatada para texto simples).
     """
     from app.services.classifier import classificar
-    from app.db import (
-        buscar_produtor_por_numero,
-        gravar_lancamento,
-    )
+    from app.db import gravar_lancamento
 
     sessoes = _sessoes
     key = msg.key
@@ -104,10 +101,10 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
     # Comandos de consulta
     if texto_up in ("/SALDO", "/RESUMO", "SALDO", "RESUMO"):
-        return await _cmd_resumo(msg.numero)
+        return await _cmd_resumo(msg.numero, msg.canal)
 
     if texto_up in ("/DRE", "DRE"):
-        return await _cmd_dre(msg.numero)
+        return await _cmd_dre(msg.numero, msg.canal)
 
     if texto_up in ("/AJUDA", "/HELP", "AJUDA", "HELP", "?"):
         return _cmd_ajuda()
@@ -577,7 +574,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
     # Saudação / cadastro inicial
     if texto_up in ("CADASTRAR", "CADASTRO", "OI", "OLA", "INICIO", "/START"):
-        prod = buscar_produtor_por_numero(msg.numero)
+        from app.db import buscar_produtor_cadastrado_por_canal
+        prod = buscar_produtor_cadastrado_por_canal(msg.numero, msg.canal)
         if prod:
             return (
                 f"Olá, {prod['nome']}! 👋\n\n"
@@ -1031,10 +1029,10 @@ def _resolver_escolha_conta(texto: str):
 
 # ── Comandos de consulta ──────────────────────────────────────────────
 
-async def _cmd_resumo(numero: str) -> str:
+async def _cmd_resumo(numero: str, canal: str) -> str:
     try:
-        from app.db import buscar_produtor_por_numero, buscar_resumo_mes
-        prod = buscar_produtor_por_numero(numero)
+        from app.db import buscar_produtor_cadastrado_por_canal, buscar_resumo_mes
+        prod = buscar_produtor_cadastrado_por_canal(numero, canal)
         if not prod:
             return "Produtor não encontrado. Digite CADASTRAR para se cadastrar."
         r = buscar_resumo_mes(prod["id"])
@@ -1051,11 +1049,11 @@ async def _cmd_resumo(numero: str) -> str:
         return "Erro ao buscar resumo."
 
 
-async def _cmd_dre(numero: str) -> str:
+async def _cmd_dre(numero: str, canal: str) -> str:
     try:
-        from app.db import buscar_produtor_por_numero, engine
+        from app.db import buscar_produtor_cadastrado_por_canal, engine
         from app.services.dre_service import gerar_dre
-        prod = buscar_produtor_por_numero(numero)
+        prod = buscar_produtor_cadastrado_por_canal(numero, canal)
         if not prod:
             return "Produtor não encontrado."
         dre = gerar_dre(engine=engine, produtor_id=prod["id"], view_type="managerial")

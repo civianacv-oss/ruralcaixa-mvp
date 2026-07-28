@@ -203,6 +203,26 @@ def buscar_produtor_por_numero(telefone: str):
         return None
 
 
+def buscar_produtor_cadastrado_por_canal(numero: str, canal: str):
+    """Igual buscar_produtor_por_numero, mas ciente do canal -- no
+    Telegram "numero" é o chat_id (produtores.telegram_chat_id), não
+    telefone. Sem essa distinção, quem já se cadastrou pelo Telegram e
+    manda "oi" de novo nunca é reconhecido e cai no wizard de cadastro
+    do zero (a duplicidade só seria pega depois, no passo do CPF)."""
+    with engine.connect() as conn:
+        if canal == "telegram":
+            result = conn.execute(text(
+                "SELECT id, nome FROM produtores WHERE telegram_chat_id = :num"
+            ), {"num": numero}).fetchone()
+        else:
+            result = conn.execute(text(
+                "SELECT id, nome FROM produtores WHERE telefone = :num"
+            ), {"num": numero}).fetchone()
+        if result:
+            return {"id": result[0], "nome": result[1]}
+        return None
+
+
 def buscar_produtor_por_cpf(cpf: str):
     """Usado pelo wizard de cadastro (cadastro_handler.py) pra checar
     duplicidade assim que o CPF é digitado, antes de perguntar o resto —
