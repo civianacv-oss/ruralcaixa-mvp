@@ -27,6 +27,66 @@ def buscar_descricao_conta(codigo: str) -> str:
         return result[0] if result else ""
 
 
+# Mapa direto origem_modulo -> nome da atividade (tabela `atividades`).
+# So cobre valores que JA sao nome de modulo de verdade -- "whatsapp_bot"
+# e "mensageria" sao rotulos de CANAL, nao de atividade, entao ficam de
+# fora de proposito e caem na heuristica por palavra-chave abaixo.
+_ORIGEM_MODULO_PARA_ATIVIDADE = {
+    'bovino': 'Bovino Leiteiro',
+    'piscicultura': 'Piscicultura',
+    'acai': 'Açaí',
+}
+
+# Mesma heuristica do backfill_atividade_v3.py, resumida pros termos mais
+# usados no dia a dia do bot. Se marcar errado, o lancamento ainda pode
+# ser corrigido manualmente depois (atividade_id nao e imutavel).
+_PALAVRAS_CHAVE_ATIVIDADE = [
+    ("Bovino Leiteiro", [
+        "leite", "lacta", "ordenh", "vaca", "sucedaneo", "sucedâneo",
+        "teteira", "free stal", "freestall", "cmt", "mastite", "mastifin",
+        "ocitocina", "milk bar", "milkbar", "bezerra", "resfriamento",
+        "lactocina", "peletizada", "pelitizada", "lacmaster",
+    ]),
+    ("Agricultura", [
+        "soja", "milho", "fuba", "adubo", "semente", "colheita", "plantio",
+        "agrotoxico", "agrotóxico", "defensivo", "safra", "lavoura",
+        "fertilizante", "herbicida", "capim", "silagem", "irrigacao", "irrigação",
+    ]),
+    ("Ovino", ["ovino", "ovelha", "carneiro", "cordeiro", "borrego"]),
+    ("Caprino", ["caprino", "cabra", "bode"]),
+    ("Suíno", ["suino", "suíno", "porco", "leitao", "leitão"]),
+    ("Piscicultura", ["tilapia", "tilápia", "tanque-rede", "alevino", "piscicultura"]),
+    ("Bovino Corte", ["boi", "novilho", "garrote", "touro", "arroba"]),
+]
+
+
+def _resolver_atividade_id(conn, dados: dict, nome_sub: str):
+    """Resolve o id de `atividades` pra um novo lancamento. Nunca lanca
+    excecao -- se algo der errado, cai em Geral (ou None se Geral nao
+    existir, o que so aconteceria antes da migration_026 rodar)."""
+    try:
+        origem_modulo = (dados.get('_origem_modulo') or '').lower()
+        nome_atividade = _ORIGEM_MODULO_PARA_ATIVIDADE.get(origem_modulo)
+
+        if not nome_atividade:
+            texto_busca = (nome_sub or '').lower()
+            for atividade, termos in _PALAVRAS_CHAVE_ATIVIDADE:
+                if any(termo in texto_busca for termo in termos):
+                    nome_atividade = atividade
+                    break
+
+        if not nome_atividade:
+            nome_atividade = 'Geral'
+
+        row = conn.execute(
+            text('SELECT id FROM atividades WHERE nome = :nome LIMIT 1'),
+            {'nome': nome_atividade},
+        ).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 def gravar_lancamento(dados: dict):
     with engine.connect() as conn:
         prod = conn.execute(text('SELECT id FROM produtores WHERE telefone = :tel'), {'tel': dados.get('numero', '')}).fetchone()
@@ -49,6 +109,7 @@ def gravar_lancamento(dados: dict):
                 {'id': sub_id, 'nome': nome_sub[:100], 'tipo': tipo_raw, 'atv': atividade, 'conta': dados.get('conta')})
         else:
             sub_id = sub[0]
+        atividade_id = _resolver_atividade_id(conn, dados, nome_sub)
         import uuid as _uuid2
         lanc_id = str(_uuid2.uuid4())
         # origem_modulo/tipo/id/descricao: rastreabilidade de custo por lote,
@@ -57,9 +118,9 @@ def gravar_lancamento(dados: dict):
         conn.execute(text(
             "INSERT INTO lancamentos "
             "(id, produtor_id, subconta_id, valor, data, documento_url, "
-            " origem_modulo, origem_tipo, origem_id, origem_descricao) "
+            " origem_modulo, origem_tipo, origem_id, origem_descricao, atividade_id) "
             "VALUES (:id, :pid, :sub, :valor, :data, NULL, "
-            "        :origem_modulo, :origem_tipo, :origem_id, :origem_descricao)"
+            "        :origem_modulo, :origem_tipo, :origem_id, :origem_descricao, :atividade_id)"
         ), {
             'id': lanc_id, 'pid': produtor_id, 'sub': sub_id,
             'valor': abs(float(dados.get('valor', 0))), 'data': dados.get('data'),
@@ -67,6 +128,7 @@ def gravar_lancamento(dados: dict):
             'origem_tipo': dados.get('_origem_tipo'),
             'origem_id': dados.get('_origem_id'),
             'origem_descricao': dados.get('_origem_descricao'),
+            'atividade_id': atividade_id,
         })
         conn.commit()
         import json as _json
