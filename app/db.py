@@ -208,7 +208,13 @@ def buscar_produtor_cadastrado_por_canal(numero: str, canal: str):
     Telegram "numero" é o chat_id (produtores.telegram_chat_id), não
     telefone. Sem essa distinção, quem já se cadastrou pelo Telegram e
     manda "oi" de novo nunca é reconhecido e cai no wizard de cadastro
-    do zero (a duplicidade só seria pega depois, no passo do CPF)."""
+    do zero (a duplicidade só seria pega depois, no passo do CPF).
+
+    Pra telefone (WhatsApp), usa os ULTIMOS 8 DIGITOS (LIKE), nao
+    igualdade exata -- mesmo padrao ja usado em _autorizar_numero
+    (mensagem_handler.py), porque a API da Meta as vezes manda o
+    numero BR sem o 9o digito do celular. Comparacao exata falha
+    silenciosamente nesse caso (achado em producao em 28/07)."""
     with engine.connect() as conn:
         if canal == "telegram":
             result = conn.execute(text(
@@ -216,8 +222,8 @@ def buscar_produtor_cadastrado_por_canal(numero: str, canal: str):
             ), {"num": numero}).fetchone()
         else:
             result = conn.execute(text(
-                "SELECT id, nome FROM produtores WHERE telefone = :num"
-            ), {"num": numero}).fetchone()
+                "SELECT id, nome FROM produtores WHERE telefone LIKE :tel"
+            ), {"tel": f"%{numero[-8:]}"}).fetchone()
         if result:
             return {"id": result[0], "nome": result[1]}
         return None
