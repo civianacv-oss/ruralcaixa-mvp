@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useRuralAuth } from "@/hooks/useRuralAuth";
 import { trpc } from "@/lib/trpc";
 import { TrendingUp, TrendingDown, DollarSign, AlertTriangle, Baby, Scissors, Milk, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SPECIES = [
@@ -111,6 +111,9 @@ export default function Dashboard() {
   const resumo = trpc.railway.produtorResumo.useQuery(produtorInput, { enabled });
   const lancamentos = trpc.railway.lancamentos.useQuery(produtorInput, { enabled });
   const iofc = trpc.railway.iofcMensal.useQuery({ produtorId: produtorId ?? 0, meses: iofcMeses }, { enabled });
+  const atividades = trpc.railway.atividades.useQuery(undefined, { enabled });
+  const comparativo = trpc.railway.comparativoRentabilidade.useQuery({ produtorId: produtorId ?? 0, meses: 12 }, { enabled });
+  const [atividadesSelecionadas, setAtividadesSelecionadas] = useState<string[]>([]);
 
   const ovinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "ovinos" }, { enabled });
   const caprinosQ = trpc.railway.animais.useQuery({ imovelId: imovelId ?? 0, especie: "caprinos" }, { enabled });
@@ -179,6 +182,21 @@ export default function Dashboard() {
   // na linha do IOFC), mas não viram o número em destaque.
   const iofcMesAtual = [...iofcSerie].reverse().find((m) => m.iofc !== null);
   const iofcPontosValidos = iofcSerie.filter((m) => m.iofc !== null).length;
+
+  const toggleAtividade = (id: string) => {
+    setAtividadesSelecionadas((prev) =>
+      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
+    );
+  };
+  const filtroAtivo = atividadesSelecionadas.length > 0;
+  const comparativoFiltrado = (comparativo.data ?? []).filter(
+    (item) => !filtroAtivo || atividadesSelecionadas.includes(item.atividade_id)
+  );
+  const comparativoChartData = comparativoFiltrado.map((item) => ({
+    nome: item.atividade_nome,
+    resultado: item.resultado_total,
+    cor: item.cor,
+  }));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -318,6 +336,99 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Resultado por Atividade — filtro + comparativo entre todas as
+          atividades (nao so bovino leiteiro, que e o unico coberto pelo
+          IOFC abaixo) */}
+      {!!(comparativo.data && comparativo.data.length > 0) && (
+        <div className="rounded-2xl p-5 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <p className="text-sm font-semibold" style={{ color: "oklch(0.22 0.06 145)" }}>
+              Resultado por Atividade
+            </p>
+            <span className="text-xs text-muted-foreground">Últimos 12 meses</span>
+          </div>
+
+          {/* Filtro por chips */}
+          <div className="flex flex-wrap gap-2 mb-5">
+            <button
+              onClick={() => setAtividadesSelecionadas([])}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
+              style={
+                !filtroAtivo
+                  ? { background: "oklch(0.22 0.06 145)", color: "white", borderColor: "oklch(0.22 0.06 145)" }
+                  : { background: "white", color: "oklch(0.4 0.02 145)", borderColor: "oklch(0.88 0.01 145)" }
+              }
+            >
+              Todas
+            </button>
+            {(atividades.data ?? []).map((a) => {
+              const ativa = atividadesSelecionadas.includes(a.id);
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => toggleAtividade(a.id)}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors flex items-center gap-1.5"
+                  style={
+                    ativa
+                      ? { background: a.cor, color: "white", borderColor: a.cor }
+                      : { background: "white", color: "oklch(0.4 0.02 145)", borderColor: "oklch(0.88 0.01 145)" }
+                  }
+                >
+                  <span>{a.icone}</span>
+                  {a.nome}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Gráfico de barras */}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={comparativoChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.9 0.01 145)" />
+              <XAxis dataKey="nome" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={(v: number) => [fmt(v), "Resultado"]} />
+              <Bar dataKey="resultado" radius={[6, 6, 0, 0]}>
+                {comparativoChartData.map((entry, i) => (
+                  <Cell key={i} fill={entry.resultado >= 0 ? entry.cor : "oklch(0.50 0.20 25)"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+
+          {/* Tabela detalhada */}
+          <div className="overflow-x-auto mt-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "oklch(0.92 0.01 145)" }}>
+                  <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Atividade</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Receita</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Despesa</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resultado</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Margem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparativoFiltrado.map((item) => (
+                  <tr key={item.atividade_id} className="border-b" style={{ borderColor: "oklch(0.96 0.005 145)" }}>
+                    <td className="py-2 px-3">
+                      <span className="mr-1.5">{item.icone}</span>
+                      <span className="font-medium">{item.atividade_nome}</span>
+                    </td>
+                    <td className="text-right py-2 px-3" style={{ color: "oklch(0.42 0.14 145)" }}>{fmt(item.receita_total)}</td>
+                    <td className="text-right py-2 px-3" style={{ color: "oklch(0.50 0.20 25)" }}>{fmt(item.despesa_total)}</td>
+                    <td className="text-right py-2 px-3 font-semibold" style={{ color: item.resultado_total >= 0 ? "oklch(0.42 0.14 145)" : "oklch(0.50 0.20 25)" }}>
+                      {fmt(item.resultado_total)}
+                    </td>
+                    <td className="text-right py-2 px-3 text-muted-foreground">{item.margem_percentual.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* IOFC — Margem Leiteira (Income Over Feed Cost) */}
       {(iofc.isLoading || iofcSerie.length > 0) && (
