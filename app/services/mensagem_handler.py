@@ -1947,7 +1947,7 @@ async def _processar_comando_vinculo(texto: str, numero: str, canal: str) -> str
         conn.execute(sqlt("""
             INSERT INTO participacoes_imovel
                 (imovel_id, produtor_id, nome_participante, tipo_vinculo, vigencia_inicio, percentual)
-            VALUES (:iid, :pid, :nome, :tipo, CURRENT_DATE, 0)
+            VALUES (:iid, :pid, :nome, :tipo, CURRENT_DATE, 0.01)
         """), {"iid": imovel_id, "pid": pessoa["id"], "nome": pessoa["nome"], "tipo": tipo_vinculo})
         conn.commit()
 
