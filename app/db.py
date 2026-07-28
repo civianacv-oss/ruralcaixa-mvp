@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv()
 
@@ -60,6 +61,15 @@ _PALAVRAS_CHAVE_ATIVIDADE = [
 ]
 
 
+def _termo_bate(termo: str, texto: str) -> bool:
+    """Casa por palavra inteira (word-boundary no inicio), nao por
+    substring solta -- sem isso, 'ovino' casava dentro de 'Bovino', 'boi'
+    dentro de 'Reboice' etc. Permite sufixo (plural: 'ovino' bate em
+    'ovinos')."""
+    padrao = r'\b' + re.escape(termo) + r'\w*'
+    return re.search(padrao, texto) is not None
+
+
 def _resolver_atividade_id(conn, dados: dict, nome_sub: str):
     """Resolve o id de `atividades` pra um novo lancamento. Nunca lanca
     excecao -- se algo der errado, cai em Geral (ou None se Geral nao
@@ -71,7 +81,7 @@ def _resolver_atividade_id(conn, dados: dict, nome_sub: str):
         if not nome_atividade:
             texto_busca = (nome_sub or '').lower()
             for atividade, termos in _PALAVRAS_CHAVE_ATIVIDADE:
-                if any(termo in texto_busca for termo in termos):
+                if any(_termo_bate(termo, texto_busca) for termo in termos):
                     nome_atividade = atividade
                     break
 
