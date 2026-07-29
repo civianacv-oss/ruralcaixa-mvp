@@ -42,6 +42,12 @@ async def baixar_midia_whatsapp(media_id: str, wapp_token: str) -> tuple:
 
 def upload_para_drive(conteudo: bytes, nome_arquivo: str, mime_type: str, subfolder_name: str = None) -> str:
     """Faz upload de arquivo para o Google Drive. Retorna a URL do arquivo."""
+    if not GDRIVE_FOLDER_ID:
+        raise RuntimeError(
+            "GDRIVE_FOLDER_ID não configurado (variável de ambiente ausente/vazia) -- "
+            "sem isso, a busca de subpasta monta uma query com 'None' literal e falha "
+            "com 404 sem deixar claro o motivo real (achado em produção 29/07)."
+        )
     service = get_drive_service()
 
     folder_id = GDRIVE_FOLDER_ID

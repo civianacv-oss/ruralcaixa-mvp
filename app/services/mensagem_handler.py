@@ -599,6 +599,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
             lancamento_id = gravar_lancamento(sess)
 
             # Upload de documento se houver mídia na sessão
+            comprovante_vinculado = False
             if "_midia" in sess:
                 try:
                     from app.services.drive_handler import (
@@ -614,6 +615,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                         subfolder_name=msg.numero,
                     )
                     vincular_documento(lancamento_id, url)
+                    comprovante_vinculado = True
                 except Exception as e:
                     logger.error("Erro upload drive: %s", e)
 
@@ -649,11 +651,16 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     detalhe = getattr(e, "detail", str(e))
                     entrada_insumo_msg = f"\n⚠️ Lançamento gravado, mas não consegui dar entrada no estoque: {detalhe}"
 
-            texto_comprovante = (
-                "Envie a foto ou PDF do comprovante para vincular."
-                if "_midia" not in sess
-                else "📎 Comprovante já vinculado (o documento que você enviou)."
-            )
+            if "_midia" not in sess:
+                texto_comprovante = "Envie a foto ou PDF do comprovante para vincular."
+            elif comprovante_vinculado:
+                texto_comprovante = "📎 Comprovante já vinculado (o documento que você enviou)."
+            else:
+                texto_comprovante = (
+                    "⚠️ Não consegui vincular o comprovante automaticamente "
+                    "(problema técnico no upload). O lançamento foi gravado "
+                    "normalmente — envie a foto ou PDF de novo se quiser tentar vincular."
+                )
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"Tipo: {sess.get('tipo','').upper()}\n"
