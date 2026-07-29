@@ -231,6 +231,46 @@ async def processar_mensagem(msg: MsgIn) -> str:
             sess.pop("_aguardando_valor", None)
             return _proximo_passo_apos_valor(sess, msg.numero)
 
+        # Sub-fluxo: NAO numa sessão de OCR — o tipo_operacao já foi
+        # determinado (compra ou venda, pelo CPF do documento ou pelo
+        # palpite da Claude), então "não" só pode significar que o TIPO
+        # DE CONTA está errado (ex: é investimento, não despesa
+        # operacional), nunca que a direção do dinheiro mudou. Restringe
+        # as opções em vez de reabrir Receita/Despesa/Investimento do
+        # zero (achado 29/07: usuário respondeu NAO pra uma despesa que
+        # na verdade era investimento, e o bot ofereceu até "Receita"
+        # como opção, que não fazia sentido nenhum pra uma compra).
+        if sessoes[key].get("_ocr") and texto_up in ("NAO", "NÃO", "N", "0", "CANCELAR", "CANCELA"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            dados_ocr_rejeitado = sessoes[key]["_ocr"]
+            operacao = dados_ocr_rejeitado.get("tipo_operacao")
+            descricao_ocr = None
+            itens_ocr = dados_ocr_rejeitado.get("itens") or []
+            if itens_ocr:
+                descricao_ocr = itens_ocr[0].get("descricao")
+            descricao_ocr = descricao_ocr or dados_ocr_rejeitado.get("emitente") or "Documento fiscal"
+            sessoes[key] = {
+                "_aguardando_tipo_ocr_ambiguo": True,
+                "_ocr_valor": dados_ocr_rejeitado.get("valor_total") or 0,
+                "_ocr_data": dados_ocr_rejeitado.get("data") or date.today().isoformat(),
+                "_historico_ocr": descricao_ocr,
+                "_midia": sessoes[key].get("_midia"),
+                "_mime": sessoes[key].get("_mime"),
+            }
+            if operacao in ("compra", "pagamento"):
+                return _texto_pergunta_tipo_lancamento_restrito(
+                    excluir={"receita"},
+                    prefixo="Certo, não é despesa. Então é: ",
+                )
+            if operacao == "venda":
+                return _texto_pergunta_tipo_lancamento_restrito(
+                    excluir={"despesa"},
+                    prefixo="Certo, não é receita. Então é: ",
+                )
+            return _texto_pergunta_tipo_lancamento(prefixo="Certo. Esse lançamento é: ")
+
         # Sub-fluxo OCR ambíguo: nem emitente nem destinatário do documento
         # batem com o CPF do produtor (_corrigir_tipo_operacao_por_cpf não
         # conseguiu decidir) — em vez de arriscar um palpite com SIM/NAO,
@@ -1482,6 +1522,28 @@ def _texto_pergunta_tipo_lancamento(prefixo: str = "") -> str:
         f"0. Cancelar\n\n"
         f"Responda com o número."
     )
+
+
+def _texto_pergunta_tipo_lancamento_restrito(excluir: set, prefixo: str = "") -> str:
+    """Igual _texto_pergunta_tipo_lancamento, mas OCULTA (não renumera)
+    a opção já descartada -- ex: se o documento já é uma compra
+    (dinheiro saiu), não faz sentido oferecer "Receita" como
+    alternativa ao corrigir só o TIPO DE CONTA (despesa vs
+    investimento). Mantém a numeração fixa 1/2/3 pra não quebrar o
+    parser que já espera esses números (_aguardando_tipo_ocr_ambiguo)."""
+    opcoes = [
+        ("1", "receita", "💰 Receita (entrou dinheiro)"),
+        ("2", "despesa", "💸 Despesa (saiu dinheiro)"),
+        ("3", "investimento", "📊 Investimento (máquina, animal, obra)"),
+    ]
+    linhas = [f"{prefixo}\n"]
+    for numero, nome, label in opcoes:
+        if nome in excluir:
+            continue
+        linhas.append(f"{numero}. {label}")
+    linhas.append("\n0. Cancelar")
+    linhas.append("\nResponda com o número.")
+    return "\n".join(linhas)
 
 
 def _normalizar_entrada_conta(texto: str) -> str:
