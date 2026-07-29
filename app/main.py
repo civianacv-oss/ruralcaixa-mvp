@@ -977,9 +977,10 @@ async def verify_webhook(
 
 @app.post("/wapp/inbound")
 async def wapp_inbound(request: Request, background: BackgroundTasks):
+    from app.routers.whatsapp_bot_router import _processar_payload
     body = await request.body()
     payload = json.loads(body)
-    background.add_task(processar, payload)
+    background.add_task(_processar_payload, payload)
     return {"status": "ok"}
 
 @app.post("/ovino/processar-alertas")
