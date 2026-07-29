@@ -17,7 +17,7 @@ Formato:
   "emitente_documento": "CPF ou CNPJ do emitente, so digitos, ou null",
   "destinatario": "nome da empresa/pessoa que recebeu (comprador/destinatario)",
   "destinatario_documento": "CPF ou CNPJ do destinatario, so digitos, ou null",
-  "data": "YYYY-MM-DD ou null",
+  "data": "YYYY-MM-DD ou null (ATENÇÃO: documentos brasileiros escrevem a data como DD/MM/AAAA -- ex: '03/06/2026' é 3 de JUNHO, não 6 de março -- converta corretamente pro formato YYYY-MM-DD)",
   "valor_total": 0.00,
   "itens": [
     {"descricao": "...", "quantidade": 1, "valor_unitario": 0.00, "valor_total": 0.00}
