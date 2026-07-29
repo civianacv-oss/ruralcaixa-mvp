@@ -1,5 +1,5 @@
 # app/services/ocr_handler.py — VERSÃO ROBUSTA COM FALLBACK
-import httpx, os, json, base64, logging
+import httpx, os, json, base64, logging, re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,36 @@ Formato:
   "observacao": "qualquer informação relevante ou null"
 }
 """
+
+
+def _parsear_json_claude(texto: str) -> dict:
+    """Claude as vezes envolve a resposta em cercas de markdown (```json
+    ... ```) mesmo quando instruido a responder so com JSON. Tenta na
+    ordem: texto puro -> remover cercas de markdown -> extrair o
+    primeiro {...} do texto. Loga o texto bruto (truncado) se tudo
+    falhar, pra facilitar diagnostico -- antes esse texto se perdia."""
+    texto_limpo = texto.strip()
+
+    try:
+        return json.loads(texto_limpo)
+    except json.JSONDecodeError:
+        pass
+
+    sem_cercas = re.sub(r'^```(?:json)?\s*|\s*```$', '', texto_limpo, flags=re.MULTILINE).strip()
+    try:
+        return json.loads(sem_cercas)
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r'\{.*\}', texto_limpo, flags=re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    logger.error(f"[OCR] Resposta da Claude nao e JSON valido (nem com fallback). Texto bruto: {texto_limpo[:500]!r}")
+    raise json.JSONDecodeError("Nenhuma das estrategias de parse funcionou", texto_limpo, 0)
 
 
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
@@ -102,7 +132,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
             )
             r.raise_for_status()
             texto = r.json()["content"][0]["text"]
-            dados = json.loads(texto)
+            dados = _parsear_json_claude(texto)
             logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
             return dados
     
