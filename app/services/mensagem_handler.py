@@ -649,13 +649,18 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     detalhe = getattr(e, "detail", str(e))
                     entrada_insumo_msg = f"\n⚠️ Lançamento gravado, mas não consegui dar entrada no estoque: {detalhe}"
 
+            texto_comprovante = (
+                "Envie a foto ou PDF do comprovante para vincular."
+                if "_midia" not in sess
+                else "📎 Comprovante já vinculado (o documento que você enviou)."
+            )
             return (
                 f"✅ Lançamento #{lancamento_id} gravado!\n"
                 f"Tipo: {sess.get('tipo','').upper()}\n"
                 f"Conta: {sess.get('conta','')}\n"
                 f"Valor: R$ {sess.get('valor', 0):,.2f}\n"
                 f"Data: {sess.get('data','')}\n\n"
-                f"Envie a foto ou PDF do comprovante para vincular."
+                f"{texto_comprovante}"
                 f"{entrada_insumo_msg}"
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
