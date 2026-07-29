@@ -73,8 +73,13 @@ def _corrigir_tipo_operacao_por_cpf(dados: dict, produtor_cpf: str = None) -> No
 
     Se o CPF do produtor bate com o emitente -> ele vendeu (venda).
     Se bate com o destinatario -> ele comprou (compra).
-    Se nao tiver CPF do produtor ou nao bater com nenhum dos dois,
-    mantem o palpite original da Claude (nao piora o que ja tinha)."""
+    Se nao tiver CPF do produtor ou nao bater com nenhum dos dois, marca
+    dados["_ambiguo_cpf"] = True -- o chamador (mensagem_handler.py) usa
+    esse sinal pra pular o SIM/NAO com palpite e pedir classificacao
+    manual em vez de arriscar (achado em producao 28/07: nota de compra
+    do proprio produtor saiu classificada como venda)."""
+    dados["_ambiguo_cpf"] = True
+
     if not produtor_cpf:
         return
 
@@ -89,10 +94,12 @@ def _corrigir_tipo_operacao_por_cpf(dados: dict, produtor_cpf: str = None) -> No
         if dados.get("tipo_operacao") != "venda":
             logger.info("[OCR] CPF do produtor bate com emitente -- corrigindo tipo_operacao para 'venda'")
         dados["tipo_operacao"] = "venda"
+        dados["_ambiguo_cpf"] = False
     elif doc_destinatario and doc_destinatario == cpf_produtor:
         if dados.get("tipo_operacao") not in ("compra", "pagamento"):
             logger.info("[OCR] CPF do produtor bate com destinatario -- corrigindo tipo_operacao para 'compra'")
         dados["tipo_operacao"] = "compra"
+        dados["_ambiguo_cpf"] = False
 
 
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg", produtor_cpf: str = None) -> dict:

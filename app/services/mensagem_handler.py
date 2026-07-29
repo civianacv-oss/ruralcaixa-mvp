@@ -86,6 +86,33 @@ async def processar_mensagem(msg: MsgIn) -> str:
             produtor = buscar_produtor_cadastrado_por_canal(msg.numero, msg.canal)
             produtor_cpf = produtor.get("cpf") if produtor else None
             dados_ocr = await extrair_dados_documento(msg.midia_bytes, msg.mime_type, produtor_cpf)
+
+            # CPF do produtor não bateu nem com emitente nem com
+            # destinatário do documento -- não dá pra saber se ele
+            # comprou ou vendeu. Em vez de arriscar um palpite com
+            # SIM/NAO, pede histórico e deixa classificar manualmente
+            # (achado em produção 28/07: nota de compra saiu como venda).
+            if dados_ocr.get("_ambiguo_cpf"):
+                emitente = dados_ocr.get("emitente") or "não identificado"
+                destinatario = dados_ocr.get("destinatario") or "não identificado"
+                valor = dados_ocr.get("valor_total") or 0
+                sessoes[key] = {
+                    "_aguardando_historico_ocr_ambiguo": True,
+                    "_ocr_valor": valor,
+                    "_ocr_data": dados_ocr.get("data") or date.today().isoformat(),
+                    "_midia": msg.midia_bytes,
+                    "_mime": msg.mime_type,
+                }
+                return (
+                    f"📄 Documento identificado, mas não consegui saber se você é quem "
+                    f"vendeu ou quem comprou nele:\n"
+                    f"Emitente: {emitente}\n"
+                    f"Destinatário: {destinatario}\n"
+                    f"Valor: R$ {valor:.2f}\n\n"
+                    f"Antes de lançar, me conta rapidinho: qual é o histórico/motivo "
+                    f"desse lançamento? (ou digite CANCELAR)"
+                )
+
             lancamento = ocr_para_lancamento(dados_ocr)
             sessoes[key] = {
                 **lancamento,
@@ -203,6 +230,64 @@ async def processar_mensagem(msg: MsgIn) -> str:
             sess["valor"] = valor_digitado
             sess.pop("_aguardando_valor", None)
             return _proximo_passo_apos_valor(sess, msg.numero)
+
+        # Sub-fluxo OCR ambíguo: nem emitente nem destinatário do documento
+        # batem com o CPF do produtor (_corrigir_tipo_operacao_por_cpf não
+        # conseguiu decidir) — em vez de arriscar um palpite com SIM/NAO,
+        # pede histórico e deixa o produtor classificar manualmente.
+        # Reaproveita as mesmas telas de tipo/conta do fluxo de termo
+        # desconhecido, só que com o valor/data já vindo do OCR (não
+        # precisa extrair_valor de texto livre).
+        if sessoes[key].get("_aguardando_historico_ocr_ambiguo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            sess = sessoes[key]
+            sess["_historico_ocr"] = texto
+            sess.pop("_aguardando_historico_ocr_ambiguo", None)
+            sess["_aguardando_tipo_ocr_ambiguo"] = True
+            return _texto_pergunta_tipo_lancamento(prefixo="Anotado! Agora me diz: ")
+
+        if sessoes[key].get("_aguardando_tipo_ocr_ambiguo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            tipo_escolhido = {
+                "1": "receita", "RECEITA": "receita",
+                "2": "despesa", "DESPESA": "despesa",
+                "3": "investimento", "INVESTIMENTO": "investimento",
+            }.get(texto_up)
+            if not tipo_escolhido:
+                return _texto_pergunta_tipo_lancamento(prefixo="Não entendi. ")
+            sessoes[key]["_tipo_escolhido_ocr"] = tipo_escolhido
+            sessoes[key].pop("_aguardando_tipo_ocr_ambiguo", None)
+            sessoes[key]["_aguardando_conta_ocr_ambiguo"] = True
+            return _texto_lista_contas_por_tipo(tipo_escolhido)
+
+        if sessoes[key].get("_aguardando_conta_ocr_ambiguo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+            sess = sessoes[key]
+            tipo_filtro = sess.get("_tipo_escolhido_ocr")
+            escolha = _resolver_escolha_conta_por_tipo(texto, tipo_filtro)
+            if not escolha:
+                return _texto_lista_contas_por_tipo(tipo_filtro, prefixo="Não entendi a escolha. ")
+            conta, _label = escolha
+            novo_sess = {
+                "conta": conta,
+                "tipo": tipo_filtro,
+                "valor": sess.get("_ocr_valor") or 0,
+                "data": sess.get("_ocr_data") or date.today().isoformat(),
+                "confianca": 70,
+                "produto": sess.get("_historico_ocr"),
+                "atividade": "rural",
+            }
+            if "_midia" in sess:
+                novo_sess["_midia"] = sess["_midia"]
+                novo_sess["_mime"] = sess["_mime"]
+            sessoes[key] = novo_sess
+            return _texto_confirmacao(novo_sess)
 
         # Sub-fluxo NOVO: pergunta o tipo (receita/despesa/investimento)
         # antes de mostrar a lista de contas — reduz a lista de ~13 opções
@@ -1000,15 +1085,24 @@ def _aprender_termos(numero: str, texto_original: str, conta: str, tipo: str):
 
 def _tipo_da_conta(codigo: str) -> str:
     """Deriva receita/despesa/investimento a partir do prefixo do código da
-    conta (1.x = receita, 3.x = despesa, 5.x = investimento) — usado quando
+    conta (1.x = receita, 2.x = despesa, 3.x = investimento) — usado quando
     o produtor escolhe uma conta diferente da sugerida, pra não deixar o
     tipo desatualizado (ex: mudar pra uma conta de receita mas continuar
-    mostrando 'DESPESA')."""
+    mostrando 'DESPESA').
+
+    CORRIGIDO 28/07: antes tratava "3." como despesa e qualquer outra
+    coisa (inclusive "2." de verdade) como investimento -- invertido em
+    relação ao catálogo real (CONTAS_DISPONIVEIS: 2.x = despesa,
+    3.x = investimento). Ficou assim desde sempre nesse fluxo de
+    reclassificação manual, então lançamentos antigos que passaram por
+    aqui podem ter saído com o tipo trocado."""
     if codigo.startswith("1."):
         return "receita"
-    if codigo.startswith("3."):
+    if codigo.startswith("2."):
         return "despesa"
-    return "investimento"
+    if codigo.startswith("3."):
+        return "investimento"
+    return "despesa"
 
 
 def _resolver_escolha_conta(texto: str):
