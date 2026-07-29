@@ -82,7 +82,10 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 montar_mensagem_ocr,
                 ocr_para_lancamento,
             )
-            dados_ocr = await extrair_dados_documento(msg.midia_bytes, msg.mime_type)
+            from app.db import buscar_produtor_cadastrado_por_canal
+            produtor = buscar_produtor_cadastrado_por_canal(msg.numero, msg.canal)
+            produtor_cpf = produtor.get("cpf") if produtor else None
+            dados_ocr = await extrair_dados_documento(msg.midia_bytes, msg.mime_type, produtor_cpf)
             lancamento = ocr_para_lancamento(dados_ocr)
             sessoes[key] = {
                 **lancamento,

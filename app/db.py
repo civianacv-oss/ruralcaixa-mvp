@@ -214,18 +214,23 @@ def buscar_produtor_cadastrado_por_canal(numero: str, canal: str):
     igualdade exata -- mesmo padrao ja usado em _autorizar_numero
     (mensagem_handler.py), porque a API da Meta as vezes manda o
     numero BR sem o 9o digito do celular. Comparacao exata falha
-    silenciosamente nesse caso (achado em producao em 28/07)."""
+    silenciosamente nesse caso (achado em producao em 28/07).
+
+    Retorna tambem o CPF -- usado pelo OCR de documento pra decidir
+    compra vs venda comparando com emitente/destinatario da nota,
+    em vez de confiar so no palpite da Claude (achado em 28/07: nota
+    de compra do proprio produtor saiu classificada como venda)."""
     with engine.connect() as conn:
         if canal == "telegram":
             result = conn.execute(text(
-                "SELECT id, nome FROM produtores WHERE telegram_chat_id = :num"
+                "SELECT id, nome, cpf FROM produtores WHERE telegram_chat_id = :num"
             ), {"num": numero}).fetchone()
         else:
             result = conn.execute(text(
-                "SELECT id, nome FROM produtores WHERE telefone LIKE :tel"
+                "SELECT id, nome, cpf FROM produtores WHERE telefone LIKE :tel"
             ), {"tel": f"%{numero[-8:]}"}).fetchone()
         if result:
-            return {"id": result[0], "nome": result[1]}
+            return {"id": result[0], "nome": result[1], "cpf": result[2]}
         return None
 
 

@@ -13,7 +13,10 @@ Responda APENAS com JSON, sem explicações.
 Formato:
 {
   "tipo_documento": "nfe | cupom_fiscal | boleto | recibo | outros",
-  "emitente": "nome da empresa/pessoa que emitiu",
+  "emitente": "nome da empresa/pessoa que emitiu (vendedor)",
+  "emitente_documento": "CPF ou CNPJ do emitente, so digitos, ou null",
+  "destinatario": "nome da empresa/pessoa que recebeu (comprador/destinatario)",
+  "destinatario_documento": "CPF ou CNPJ do destinatario, so digitos, ou null",
   "data": "YYYY-MM-DD ou null",
   "valor_total": 0.00,
   "itens": [
@@ -58,16 +61,59 @@ def _parsear_json_claude(texto: str) -> dict:
     raise json.JSONDecodeError("Nenhuma das estrategias de parse funcionou", texto_limpo, 0)
 
 
-async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
+def _so_digitos(valor) -> str:
+    return re.sub(r"\D", "", valor or "")
+
+
+def _corrigir_tipo_operacao_por_cpf(dados: dict, produtor_cpf: str = None) -> None:
+    """Corrige dados["tipo_operacao"] IN-PLACE comparando o CPF/CNPJ do
+    produtor com emitente_documento/destinatario_documento extraidos do
+    documento. Isso e deterministico -- nao depende da Claude "entender"
+    que o destinatario da nota e quem esta mandando a mensagem.
+
+    Se o CPF do produtor bate com o emitente -> ele vendeu (venda).
+    Se bate com o destinatario -> ele comprou (compra).
+    Se nao tiver CPF do produtor ou nao bater com nenhum dos dois,
+    mantem o palpite original da Claude (nao piora o que ja tinha)."""
+    if not produtor_cpf:
+        return
+
+    cpf_produtor = _so_digitos(produtor_cpf)
+    doc_emitente = _so_digitos(dados.get("emitente_documento"))
+    doc_destinatario = _so_digitos(dados.get("destinatario_documento"))
+
+    if not cpf_produtor:
+        return
+
+    if doc_emitente and doc_emitente == cpf_produtor:
+        if dados.get("tipo_operacao") != "venda":
+            logger.info("[OCR] CPF do produtor bate com emitente -- corrigindo tipo_operacao para 'venda'")
+        dados["tipo_operacao"] = "venda"
+    elif doc_destinatario and doc_destinatario == cpf_produtor:
+        if dados.get("tipo_operacao") not in ("compra", "pagamento"):
+            logger.info("[OCR] CPF do produtor bate com destinatario -- corrigindo tipo_operacao para 'compra'")
+        dados["tipo_operacao"] = "compra"
+
+
+async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg", produtor_cpf: str = None) -> dict:
     """
     Extrai dados de documento fiscal usando Claude Vision.
     
     NOVO: Suporta PDF e imagens. PDFs são convertidos para JPEG antes do envio.
     Versão robusta com fallback se pdf2image não estiver disponível.
     
+    NOVO (28/07): produtor_cpf, se informado, é comparado com
+    emitente_documento/destinatario_documento extraídos do documento pra
+    decidir compra vs venda de forma DETERMINÍSTICA -- antes o
+    tipo_operacao vinha só do palpite da Claude, que já classificou uma
+    nota de compra do próprio produtor como venda (achado em produção).
+
     Args:
         imagem_bytes: Bytes do arquivo (PDF ou imagem)
         mime_type: MIME type do arquivo (application/pdf, image/jpeg, etc.)
+        produtor_cpf: CPF do produtor que está enviando o documento (só
+            dígitos), usado pra corrigir tipo_operacao quando o campo
+            bater com destinatario_documento ou emitente_documento
     
     Returns:
         dict: Dados extraídos do documento em formato JSON
@@ -133,6 +179,7 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
             r.raise_for_status()
             texto = r.json()["content"][0]["text"]
             dados = _parsear_json_claude(texto)
+            _corrigir_tipo_operacao_por_cpf(dados, produtor_cpf)
             logger.info(f"[OCR] Sucesso! Confiança: {dados.get('confianca')}")
             return dados
     
