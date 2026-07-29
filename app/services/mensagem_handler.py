@@ -598,26 +598,28 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
             lancamento_id = gravar_lancamento(sess)
 
-            # Upload de documento se houver mídia na sessão
+            # Upload de documento se houver mídia na sessão. Usa R2
+            # (Cloudflare) em vez de Google Drive -- contas de serviço do
+            # Google Drive não têm cota de armazenamento própria fora de
+            # Shared Drives (recurso pago do Workspace), então upload
+            # sempre falhava com 403 storageQuotaExceeded numa pasta de
+            # Drive pessoal comum (achado em produção 29/07). R2 já está
+            # configurado e testado (usado no endpoint manual de upload
+            # do painel, /lancamentos/{id}/documento).
             comprovante_vinculado = False
             if "_midia" in sess:
                 try:
-                    from app.services.drive_handler import (
-                        upload_para_drive, extensao_por_mime,
-                    )
-                    from app.db import vincular_documento
-                    from datetime import datetime
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    ext = extensao_por_mime(sess["_mime"])
-                    nome = f"{msg.numero}_{ts}{ext}"
-                    url = upload_para_drive(
-                        sess["_midia"], nome, sess["_mime"],
-                        subfolder_name=msg.numero,
+                    from app.services.r2_service import upload_documento as r2_upload
+                    from app.db import vincular_documento, buscar_produtor_cadastrado_por_canal
+                    produtor = buscar_produtor_cadastrado_por_canal(msg.numero, msg.canal)
+                    produtor_id = produtor["id"] if produtor else 0
+                    url = r2_upload(
+                        sess["_midia"], sess["_mime"], produtor_id, lancamento_id,
                     )
                     vincular_documento(lancamento_id, url)
                     comprovante_vinculado = True
                 except Exception as e:
-                    logger.error("Erro upload drive: %s", e)
+                    logger.error("Erro upload R2: %s", e)
 
             entrada_insumo_msg = ""
             if sess.get("_compra_insumo_id"):
