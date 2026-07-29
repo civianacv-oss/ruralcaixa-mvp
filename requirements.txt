@@ -15,6 +15,8 @@ boto3
 python-multipart
 anthropic>=0.30.0
 pdf2image>=1.16.3
+PyMuPDF>=1.24.0
+pypdf>=4.0.0
 Pillow>=10.0.0
 # Force rebuild v3
 
