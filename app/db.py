@@ -263,18 +263,27 @@ def listar_imoveis_acessiveis(produtor_id: int):
     direto -- isso fica pra depois, é uma mudança grande demais pra
     fazer de uma vez em todas as rotas do painel.
 
-    Retorna lista de dicts: {"imovel_id", "nome", "papel"}, onde papel é
-    "proprietario" (dono) ou o tipo_vinculo de participacoes_imovel
+    Retorna lista de dicts: {"imovel_id", "nome", "papel", "municipio", "uf",
+    "area_ha", "nirf", "total_produtores"} -- os 4 últimos campos foram
+    adicionados (29/07) pra alimentar diretamente o endpoint autenticado
+    /produtores/me/imoveis, consumido pelo Node (server/otp.ts e
+    server/routers/railway.ts) no lugar do endpoint quebrado
+    /imoveis/buscar?cpf=... (que ignorava o cpf e retornava os 10 primeiros
+    imóveis do sistema em ordem alfabética -- ver handoff 29-30/07).
+
+    "papel" é "proprietario" (dono) ou o tipo_vinculo de participacoes_imovel
     (administrador, procurador, contador, cotitular)."""
     with engine.connect() as conn:
         proprios = conn.execute(text("""
-            SELECT id AS imovel_id, nome, 'proprietario' AS papel
+            SELECT id AS imovel_id, nome, 'proprietario' AS papel,
+                   municipio, uf, area_ha, nirf
             FROM imoveis_rurais
             WHERE produtor_id = :pid
         """), {"pid": produtor_id}).fetchall()
 
         vinculados = conn.execute(text("""
-            SELECT ir.id AS imovel_id, ir.nome, pi.tipo_vinculo AS papel
+            SELECT ir.id AS imovel_id, ir.nome, pi.tipo_vinculo AS papel,
+                   ir.municipio, ir.uf, ir.area_ha, ir.nirf
             FROM participacoes_imovel pi
             JOIN imoveis_rurais ir ON ir.id = pi.imovel_id
             WHERE pi.produtor_id = :pid
@@ -288,7 +297,32 @@ def listar_imoveis_acessiveis(produtor_id: int):
             if row[0] in vistos:
                 continue
             vistos.add(row[0])
-            resultado.append({"imovel_id": row[0], "nome": row[1], "papel": row[2]})
+            resultado.append({
+                "imovel_id": row[0],
+                "nome": row[1],
+                "papel": row[2],
+                "municipio": row[3],
+                "uf": row[4],
+                "area_ha": float(row[5]) if row[5] is not None else None,
+                "nirf": row[6],
+            })
+
+        if resultado:
+            ids = [r["imovel_id"] for r in resultado]
+            contagem = conn.execute(text("""
+                SELECT imovel_id, COUNT(*) AS total
+                FROM (
+                    SELECT id AS imovel_id FROM imoveis_rurais WHERE id = ANY(:ids)
+                    UNION ALL
+                    SELECT imovel_id FROM participacoes_imovel
+                    WHERE imovel_id = ANY(:ids) AND vigencia_fim IS NULL
+                ) t
+                GROUP BY imovel_id
+            """), {"ids": ids}).fetchall()
+            totais = {row[0]: row[1] for row in contagem}
+            for r in resultado:
+                r["total_produtores"] = totais.get(r["imovel_id"], 1)
+
         return resultado
 
 

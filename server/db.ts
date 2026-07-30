@@ -639,21 +639,33 @@ export async function getVinculosPorContador(contadorCpf: string): Promise<Conta
 }
 
 /**
- * Popula automaticamente o ACL de imóveis para um produtor no primeiro login.
- * Chamado quando getImoveisForProdutor retorna null (sem linhas de ACL).
- * Usa os imóveis retornados pelo Railway para o CPF do produtor como base.
- * Isso garante que o produtor veja apenas os imóveis do seu CPF.
+ * Sincroniza o ACL local de imóveis (produtor_imovel) com a fonte de
+ * verdade no Postgres (participacoes_imovel, via /produtores/me/imoveis).
+ *
+ * 29/07: substituiu seedImoveisAcl, que só gravava na PRIMEIRA vez
+ * (no-op se já existisse qualquer linha) -- esse era o motivo real de
+ * "administrador/procurador vinculado depois do primeiro login não ganha
+ * acesso ao painel": a lista nunca era atualizada de novo. Agora
+ * roda a cada login (ver verifyOtp em server/otp.ts) e substitui as
+ * linhas antigas pelas atuais, preservando o railwayToken já salvo
+ * (não é reemitido aqui).
  */
-export async function seedImoveisAcl(produtorId: number, imovelIds: number[]): Promise<void> {
+export async function syncImoveisAcl(produtorId: number, imovelIds: number[]): Promise<void> {
   const db = await getDb();
-  if (!db || imovelIds.length === 0) return;
-  // Check again to avoid race conditions
-  const existing = await db
-    .select({ imovelId: produtorImovel.imovelId })
+  if (!db) return;
+
+  // Preserva o railwayToken existente (se houver) antes de apagar as linhas
+  const existente = await db
+    .select({ railwayToken: produtorImovel.railwayToken })
     .from(produtorImovel)
-    .where(eq(produtorImovel.produtorId, produtorId));
-  if (existing.length > 0) return; // Already seeded
+    .where(and(eq(produtorImovel.produtorId, produtorId), sql`railwayToken IS NOT NULL`))
+    .limit(1);
+  const tokenPreservado = existente[0]?.railwayToken ?? null;
+
+  await db.delete(produtorImovel).where(eq(produtorImovel.produtorId, produtorId));
+
+  if (imovelIds.length === 0) return;
   await db.insert(produtorImovel).values(
-    imovelIds.map((imovelId) => ({ produtorId, imovelId }))
+    imovelIds.map((imovelId) => ({ produtorId, imovelId, railwayToken: tokenPreservado }))
   );
 }

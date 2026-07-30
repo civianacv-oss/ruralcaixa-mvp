@@ -800,6 +800,25 @@ async def receber_feedback(body: FeedbackRequest, request: Request):
 
     return {"ok": True, "msg": "Feedback recebido. Obrigado!"}
 
+def _resolver_produtor_id_por_token(request: Request) -> int:
+    """Resolve o produtor_id a partir do Bearer token, ou lança 401.
+    Extraído em 29/07 pra ser compartilhado entre /auth/me e
+    /produtores/me/imoveis (evita duplicar a checagem de token)."""
+    from app.db import get_db
+    from fastapi import HTTPException
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token não fornecido.")
+    token = auth.split(" ", 1)[1].strip()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM produtores WHERE api_token = %s LIMIT 1", (token,))
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=401, detail="Token inválido.")
+    return row["id"]
+
+
 @app.get("/auth/me")
 async def auth_me(request: Request):
     """Retorna dados do produtor autenticado via Bearer token."""
@@ -831,6 +850,23 @@ async def auth_me(request: Request):
     except Exception:
         dados["imoveis_acessiveis"] = []
     return dados
+
+
+@app.get("/produtores/me/imoveis")
+async def meus_imoveis(request: Request):
+    """Fonte única de verdade pros imóveis que o produtor autenticado pode
+    acessar (próprios + vinculados via participacoes_imovel). Criado em
+    29/07 pra substituir, no login do painel (server/otp.ts) e no seletor
+    de propriedade (server/routers/railway.ts), a chamada quebrada pro
+    endpoint /imoveis/buscar?cpf=... (que ignora o parâmetro cpf e retorna
+    os 10 primeiros imóveis do sistema em ordem alfabética -- bug de
+    segurança encontrado nessa sessão, ver handoff 29-30/07)."""
+    from app.db import listar_imoveis_acessiveis
+    produtor_id = _resolver_produtor_id_por_token(request)
+    try:
+        return listar_imoveis_acessiveis(produtor_id)
+    except Exception:
+        return []
 
 @app.get("/")
 def root():

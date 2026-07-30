@@ -20,7 +20,7 @@ import {
 } from "../railwayProxy";
 import * as XLSX from "xlsx";
 import { TRPCError } from "@trpc/server";
-import { getImoveisForProdutor, seedImoveisAcl, upsertInsumosCatalogo, searchInsumosCatalogo, listInsumosCatalogo } from "../db";
+import { getImoveisForProdutor, syncImoveisAcl, getRailwayToken, upsertInsumosCatalogo, searchInsumosCatalogo, listInsumosCatalogo } from "../db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -278,22 +278,38 @@ export const railwayRouter = router({
   // ── Imóveis ────────────────────────────────────────────────────────────────
   imoveis: publicProcedure.query(async ({ ctx }) => {
     const claims = await requireClaims(ctx.req);
-    // Fetch all imóveis from Railway for this CPF
-    const allImoveis = await railwayFetch<Imovel[]>(`/imoveis/buscar?cpf=${claims.cpf}`);
-    // Admin (contador) sees ALL properties; user (produtor) is filtered by local ACL
+    // Admin (contador) sees ALL properties -- comportamento pré-existente,
+    // fora do escopo da correção de 29/07 (contador não tem token Railway
+    // próprio pra usar o endpoint autenticado abaixo).
     if (claims.role === "admin") {
+      const allImoveis = await railwayFetch<Imovel[]>(`/imoveis/buscar?cpf=${claims.cpf}`);
       return allImoveis;
     }
-    // Filter by local ACL table (produtor_imovel) so each produtor sees only their property
-    let allowedIds = await getImoveisForProdutor(claims.produtorId);
-    if (!allowedIds) {
-      // No ACL rows yet — seed from Railway data on first login (auto-registration)
-      // This ensures the produtor only sees imóveis linked to their own CPF
-      const railwayIds = allImoveis.map((im) => im.id);
-      await seedImoveisAcl(claims.produtorId, railwayIds);
-      allowedIds = railwayIds;
-    }
-    return allImoveis.filter((im) => (allowedIds as number[]).includes(im.id));
+    // Produtor: usa o endpoint autenticado (fonte única de verdade, própria +
+    // vinculados via participacoes_imovel). 29/07: substituiu a chamada pra
+    // /imoveis/buscar?cpf=..., que ignorava o cpf e retornava os 10 primeiros
+    // imóveis do sistema em ordem alfabética -- podia semear produtor_imovel
+    // com propriedades erradas no primeiro acesso.
+    const token = await getRailwayToken(claims.produtorId).catch(() => null);
+    const meusImoveis = token
+      ? await railwayFetch<{ imovel_id: number; nome: string; municipio?: string; uf?: string; area_ha?: number; total_produtores?: number }[]>(
+          `/produtores/me/imoveis`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+      : [];
+    const allowedIds = meusImoveis.map((im) => im.imovel_id);
+    // Sincroniza o ACL local a cada chamada (não só na primeira vez) —
+    // garante que administrador/procurador vinculado depois do primeiro
+    // login também apareça, sem esperar um novo login completo.
+    await syncImoveisAcl(claims.produtorId, allowedIds).catch(() => {});
+    return meusImoveis.map((im) => ({
+      id: im.imovel_id,
+      nome: im.nome,
+      municipio: im.municipio,
+      uf: im.uf,
+      area_ha: im.area_ha,
+      total_produtores: im.total_produtores,
+    }));
   }),
 
   // ── Raças por espécie ──────────────────────────────────────────────────────
@@ -323,7 +339,11 @@ export const railwayRouter = router({
       const novo = await railwayMutate<{ id: number; nome: string }>(
         `/propriedades-rural/`, "POST", body, claims.produtorId
       );
-      await seedImoveisAcl(claims.produtorId, [novo.id]);
+      // syncImoveisAcl substitui a lista inteira, então inclui o que já
+      // existia + o imóvel recém-criado (evita perder acesso a outras
+      // propriedades já vinculadas ao sincronizar).
+      const jaAcessiveis = (await getImoveisForProdutor(claims.produtorId)) ?? [];
+      await syncImoveisAcl(claims.produtorId, Array.from(new Set(jaAcessiveis.concat(novo.id))));
       return novo;
     }),
 
@@ -2812,32 +2832,13 @@ adicionarAdministrador: publicProcedure
       claims.produtorId,
     );
 
-    // Dá acesso de login (ACL Node) pra essa pessoa nessa propriedade,
-    // reaproveitando o token dela de qualquer outro imóvel que já tenha
-    const { getDb } = await import("../db");
-    const { produtorImovel } = await import("../../drizzle/schema");
-    const { eq, and } = await import("drizzle-orm");
-    const db = await getDb();
-    if (db) {
-      const jaTemAcesso = await db
-        .select()
-        .from(produtorImovel)
-        .where(and(eq(produtorImovel.produtorId, encontrado.id), eq(produtorImovel.imovelId, input.imovelId)))
-        .limit(1);
-      if (jaTemAcesso.length === 0) {
-        const outraLinha = await db
-          .select()
-          .from(produtorImovel)
-          .where(eq(produtorImovel.produtorId, encontrado.id))
-          .limit(1);
-        const tokenExistente = outraLinha[0]?.railwayToken ?? null;
-        await db.insert(produtorImovel).values({
-          produtorId: encontrado.id,
-          imovelId: input.imovelId,
-          railwayToken: tokenExistente,
-        });
-      }
-    }
+    // 29/07: removida a escrita direta em produtor_imovel (ACL Node) daqui —
+    // participacoes_imovel (Postgres, gravado pela chamada acima) já é a
+    // fonte única de verdade. O acesso da pessoa é sincronizado
+    // automaticamente na próxima vez que ela chamar a query `imoveis` ou
+    // fizer login (ambas agora rodam syncImoveisAcl a partir de
+    // /produtores/me/imoveis). Duas escritas independentes pro mesmo dado
+    // era exatamente o risco de divergência que motivou essa mudança.
 
     return resultado;
   }),
@@ -2855,17 +2856,11 @@ removerAdministrador: publicProcedure
       claims.produtorId,
     );
 
-    // Remove só o acesso a ESSE imóvel — se a pessoa for administradora de
-    // outra propriedade também, aquele acesso continua intacto
-    const { getDb } = await import("../db");
-    const { produtorImovel } = await import("../../drizzle/schema");
-    const { eq, and } = await import("drizzle-orm");
-    const db = await getDb();
-    if (db) {
-      await db
-        .delete(produtorImovel)
-        .where(and(eq(produtorImovel.produtorId, input.produtorId), eq(produtorImovel.imovelId, input.imovelId)));
-    }
+    // 29/07: removida a escrita direta em produtor_imovel daqui pela mesma
+    // razão do adicionarAdministrador -- participacoes_imovel (Postgres, já
+    // atualizado pela chamada acima via vigencia_fim) é a fonte única.
+    // A pessoa perde o acesso na próxima sincronização (query `imoveis` ou
+    // login), sem precisar de uma segunda escrita aqui.
 
     return resultado;
   }),

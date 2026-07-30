@@ -19,7 +19,7 @@
  *   3. WhatsApp (ultimo fallback, pendente aprovacao Meta)
  */
 
-import { getUserByCpf, getImoveisForProdutor, getVinculosPorContador } from "./db";
+import { getUserByCpf, getVinculosPorContador, syncImoveisAcl } from "./db";
 
 const RAILWAY_API = "https://ruralcaixa-mvp-production.up.railway.app";
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -90,9 +90,47 @@ export async function fetchProdutor(cpf: string): Promise<ProdutorRaw | null> {
   return list.find((p) => cleanCpf(p.cpf) === cleanCpf(cpf)) ?? null;
 }
 
+// BUG CORRIGIDO 29/07: esta função chamava /imoveis/buscar?cpf=..., mas esse
+// endpoint no FastAPI (app/main.py) não recebe parâmetro `cpf` -- ele é uma
+// busca genérica por nome/NIRF via `q`. Como `q` ficava vazio, o resultado
+// era sempre os 10 primeiros imóveis do sistema em ordem alfabética, não os
+// imóveis do CPF pedido. Trocado para /produtor/imoveis?cpf=..., que já
+// existe e filtra corretamente por CPF (só imóveis próprios, sem vínculos
+// via participacoes_imovel -- suficiente pro uso aqui, que é agregar os
+// imóveis de vários produtores vinculados a um contador por CPF).
 async function fetchImoveis(cpf: string): Promise<ImovelRaw[]> {
   try {
-    const res = await fetch(`${RAILWAY_API}/imoveis/buscar?cpf=${cleanCpf(cpf)}`);
+    const res = await fetch(`${RAILWAY_API}/produtor/imoveis?cpf=${cleanCpf(cpf)}`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+interface ImovelAcessivel {
+  imovel_id: number;
+  nome: string;
+  papel: string;
+  municipio?: string | null;
+  uf?: string | null;
+  area_ha?: number | null;
+  nirf?: string | null;
+  total_produtores?: number;
+}
+
+/**
+ * Usa o token Railway (api_token) do produtor pra buscar TODOS os imóveis
+ * que ele acessa -- próprios + vinculados via participacoes_imovel
+ * (administrador, procurador, contador, cotitular). Fonte única de verdade
+ * pra sincronizar o ACL local (produtor_imovel) a cada login -- ver
+ * syncImoveisAcl em server/db.ts.
+ */
+async function fetchImoveisAutenticado(token: string): Promise<ImovelAcessivel[]> {
+  try {
+    const res = await fetch(`${RAILWAY_API}/produtores/me/imoveis`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!res.ok) return [];
     return await res.json();
   } catch {
@@ -300,17 +338,23 @@ export async function verifyOtp(cpf: string, code: string): Promise<VerifyOtpRes
 
   const data: { status: string; token: string; produtor_id: number; nome: string } = await res.json();
 
-  // Recalcula imoveis/role no momento da verificacao (reflete o estado atual)
-  const imovelList = await fetchImoveis(cpfClean);
+  // Recalcula imoveis/role no momento da verificacao (reflete o estado atual).
+  // 29/07: trocado de fetchImoveis(cpf) (endpoint quebrado, ignorava o cpf)
+  // para fetchImoveisAutenticado(token) -- retorna próprios + vinculados via
+  // participacoes_imovel (administrador/procurador/contador/cotitular), e é
+  // usado pra sincronizar produtor_imovel a cada login (não só na primeira
+  // vez), resolvendo a pendência de administrador vinculado depois do
+  // primeiro login não ganhar acesso.
+  const imoveisAcessiveis = await fetchImoveisAutenticado(data.token);
   const localUser = await getUserByCpf(cpfClean).catch(() => null);
   const role: "user" | "admin" = localUser?.role ?? "user";
 
-  let allowedImoveis = imovelList;
+  let allowedImoveis: { id: number; nome: string }[] = imoveisAcessiveis.map((im) => ({
+    id: im.imovel_id,
+    nome: im.nome,
+  }));
   if (role === "user") {
-    const allowedIds = await getImoveisForProdutor(data.produtor_id).catch(() => null);
-    if (allowedIds) {
-      allowedImoveis = imovelList.filter((im) => allowedIds.includes(im.id));
-    }
+    await syncImoveisAcl(data.produtor_id, imoveisAcessiveis.map((im) => im.imovel_id)).catch(() => {});
   }
 
   const imovelId = allowedImoveis?.[0]?.id;
