@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { setToken } from "@/lib/api";
+import { apiFetch, setToken } from "@/lib/api";
 
 const API = "https://ruralcaixa-mvp-production.up.railway.app";
 

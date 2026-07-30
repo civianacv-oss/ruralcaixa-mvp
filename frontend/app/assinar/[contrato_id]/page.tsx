@@ -1,12 +1,10 @@
-import { apiFetch } from "@/lib/api";
-
 "use client";
 // v2-condominio
-"use client"
 // página pública — usa fetch sem token
 
 import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
+import { apiFetch } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app"
 

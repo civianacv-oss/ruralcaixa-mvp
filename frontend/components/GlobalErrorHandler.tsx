@@ -6,25 +6,25 @@ export default function GlobalErrorHandler() {
   useEffect(() => {
     // Monkey-patch Array.prototype.filter to add safety
     const originalFilter = Array.prototype.filter;
-    Array.prototype.filter = function(callback: any, thisArg?: any) {
+    Array.prototype.filter = function(this: any, callback: any, thisArg?: any) {
       // If this is not an array, return empty array
       if (!Array.isArray(this)) {
         console.warn('⚠️ filter() called on non-array:', this);
         return [];
       }
       return originalFilter.call(this, callback, thisArg);
-    };
+    } as any;
 
     // Monkey-patch Array.prototype.map to add safety
     const originalMap = Array.prototype.map;
-    Array.prototype.map = function(callback: any, thisArg?: any) {
+    Array.prototype.map = function(this: any, callback: any, thisArg?: any) {
       // If this is not an array, return empty array
       if (!Array.isArray(this)) {
         console.warn('⚠️ map() called on non-array:', this);
         return [];
       }
       return originalMap.call(this, callback, thisArg);
-    };
+    } as any;
 
     // Handle uncaught errors
     const handleError = (event: ErrorEvent) => {

@@ -447,8 +447,7 @@ export default function OvinoDashboard() {
               <strong style={{ display: "block", marginBottom: 6, color: "#15803d" }}>
                 {resultadoReclass.dry_run ? "Seria movido:" : "Movido:"}
               </strong>
-              {(Array.isArray(resultadoReclass?.detalhes) ? resultadoReclass.detalhes : []).filter...
-                ((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
+              {(Array.isArray(resultadoReclass?.detalhes) ? resultadoReclass.detalhes : []).filter((d:any) => d.acao !== "sem_alteracao").map((d:any, i:number) => (
                 <div key={i} style={{ marginBottom: 2 }}>
                   <span style={{ fontWeight: 600, color: "#15803d" }}>{d.brinco}</span>
                   {" → "}<span style={{ fontWeight: 600 }}>{d.fase}</span>
