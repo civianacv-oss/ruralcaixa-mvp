@@ -803,7 +803,7 @@ async def receber_feedback(body: FeedbackRequest, request: Request):
 @app.get("/auth/me")
 async def auth_me(request: Request):
     """Retorna dados do produtor autenticado via Bearer token."""
-    from app.db import get_db
+    from app.db import get_db, listar_imoveis_acessiveis
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         from fastapi import HTTPException
@@ -820,7 +820,17 @@ async def auth_me(request: Request):
     if not row:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Token inválido.")
-    return dict(row)
+    dados = dict(row)
+    # Inclui imóveis próprios + vinculados (administrador/procurador/
+    # contador/cotitular) -- ver listar_imoveis_acessiveis em app/db.py
+    # pra contexto. O frontend ainda precisa ser adaptado pra usar essa
+    # lista num seletor de propriedade; por enquanto o campo so fica
+    # disponivel na resposta.
+    try:
+        dados["imoveis_acessiveis"] = listar_imoveis_acessiveis(dados["id"])
+    except Exception:
+        dados["imoveis_acessiveis"] = []
+    return dados
 
 @app.get("/")
 def root():

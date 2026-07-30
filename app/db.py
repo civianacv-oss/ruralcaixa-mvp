@@ -248,6 +248,50 @@ def buscar_produtor_por_cpf(cpf: str):
         return None
 
 
+def listar_imoveis_acessiveis(produtor_id: int):
+    """Resolve TODOS os imóveis que um produtor pode acessar: os que ele
+    é dono (imoveis_rurais.produtor_id) + os que tem vínculo ativo em
+    participacoes_imovel (administrador, procurador, contador, cotitular
+    com percentual > 0.01 real).
+
+    Criada pra resolver a pendência "administrador/procurador vinculado
+    não dá acesso ao painel web" -- hoje /auth/me e as rotas do painel só
+    enxergam imoveis_rurais.produtor_id, sem consultar participacoes_
+    imovel. Essa função é o primeiro passo (o "habilitador"); os
+    endpoints que retornam dados por imovel_id ainda precisam ser
+    atualizados, um a um, pra usar essa lista em vez de só produtor_id
+    direto -- isso fica pra depois, é uma mudança grande demais pra
+    fazer de uma vez em todas as rotas do painel.
+
+    Retorna lista de dicts: {"imovel_id", "nome", "papel"}, onde papel é
+    "proprietario" (dono) ou o tipo_vinculo de participacoes_imovel
+    (administrador, procurador, contador, cotitular)."""
+    with engine.connect() as conn:
+        proprios = conn.execute(text("""
+            SELECT id AS imovel_id, nome, 'proprietario' AS papel
+            FROM imoveis_rurais
+            WHERE produtor_id = :pid
+        """), {"pid": produtor_id}).fetchall()
+
+        vinculados = conn.execute(text("""
+            SELECT ir.id AS imovel_id, ir.nome, pi.tipo_vinculo AS papel
+            FROM participacoes_imovel pi
+            JOIN imoveis_rurais ir ON ir.id = pi.imovel_id
+            WHERE pi.produtor_id = :pid
+              AND pi.vigencia_fim IS NULL
+              AND pi.produtor_id != ir.produtor_id
+        """), {"pid": produtor_id}).fetchall()
+
+        vistos = set()
+        resultado = []
+        for row in list(proprios) + list(vinculados):
+            if row[0] in vistos:
+                continue
+            vistos.add(row[0])
+            resultado.append({"imovel_id": row[0], "nome": row[1], "papel": row[2]})
+        return resultado
+
+
 def cadastrar(produtor: dict, imovel: dict) -> int:
     with engine.connect() as conn:
         # Verifica se CPF jÃ¡ existe
