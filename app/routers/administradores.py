@@ -66,7 +66,7 @@ def adicionar_administrador(imovel_id: int, data: AdicionarAdministrador):
             INSERT INTO participacoes_imovel
                 (imovel_id, produtor_id, percentual, nome_participante,
                  vigencia_inicio, tipo_vinculo)
-            VALUES (%s, %s, 0, %s, %s, 'administrador')
+            VALUES (%s, %s, 0.01, %s, %s, 'administrador')
             RETURNING id
         """, (imovel_id, data.produtor_id, produtor["nome"], date.today()))
         novo_id = cur.fetchone()["id"]
