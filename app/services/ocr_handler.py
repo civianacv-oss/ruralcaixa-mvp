@@ -285,6 +285,20 @@ _MAPA_CATEGORIA_INSUMO_PARA_CONTA = {
 }
 
 
+def _peso_kg_por_unidade(descricao: str):
+    """Extrai o peso por saca/unidade a partir do texto da nota (ex:
+    'CAROCO DE ALGODAO - SC 25KG' -> 25.0). Retorna None se não achar um
+    padrão reconhecível -- não adivinha um peso genérico."""
+    import re
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*kg', (descricao or "").lower())
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
 def inferir_operacao_por_itens(itens: list, imovel_id: int):
     """
     Cruza a descrição de cada item da nota com o catálogo de insumos já
@@ -295,6 +309,12 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
     nota real de ração caiu em "CPF ambíguo" e precisou de wizard manual
     completo, quando os próprios itens já indicavam claramente ser compra
     de insumo de ração).
+
+    Também resolve insumo_id e quantidade em kg de cada item (convertendo
+    sacas -> kg quando a nota traz o peso por saca no texto, ex: "SC
+    25KG"), pra dar entrada automática no estoque -- sem isso, o
+    lançamento financeiro gravava certo mas o estoque nunca era
+    atualizado (achado em 30/07, mesma nota real).
 
     Retorna None se não bater com nada conhecido, ou se os itens baterem
     em mais de uma categoria (não dá pra sugerir uma única conta) -- nesse
@@ -309,7 +329,7 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
 
     with engine.connect() as conn:
         rows = conn.execute(sqlt("""
-            SELECT nome, categoria FROM insumos
+            SELECT id, nome, categoria, unidade FROM insumos
             WHERE fazenda_id = :fid AND ativo = TRUE
         """), {"fid": imovel_id}).fetchall()
 
@@ -320,7 +340,8 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
         t2 = unicodedata.normalize("NFD", (t or "").lower())
         return "".join(c for c in t2 if unicodedata.category(c) != "Mn")
 
-    catalogo = [(_normalizar(r[0]), r[1]) for r in rows]
+    # (nome_normalizado, categoria, insumo_id, nome_original, unidade)
+    catalogo = [(_normalizar(r[1]), r[2], r[0], r[1], r[3]) for r in rows]
 
     itens_batidos = []
     categorias_encontradas = set()
@@ -329,22 +350,49 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
         if not desc_norm:
             return None  # item sem descrição -- não arrisca
 
-        achou = None
-        for nome_cat, categoria in catalogo:
+        achou_categoria = None
+        achou_insumo_id = None
+        achou_nome = None
+        achou_unidade = None
+        for nome_cat, categoria, insumo_id, nome_original, unidade in catalogo:
             palavras_nome = [p for p in nome_cat.split() if len(p) > 3]
             if palavras_nome and any(p in desc_norm for p in palavras_nome):
-                achou = categoria
+                achou_categoria = categoria
+                achou_insumo_id = insumo_id
+                achou_nome = nome_original
+                achou_unidade = unidade
                 break
 
-        if not achou:
+        if not achou_categoria:
             return None  # pelo menos 1 item não bateu -- mantém fluxo manual
+
+        # Quantidade pro estoque: converte sacas -> kg usando o peso
+        # extraído do próprio texto do item, quando o insumo é rastreado
+        # em kg. Se não conseguir converter com segurança, deixa None --
+        # o chamador decide não dar entrada automática nesse item
+        # específico em vez de arriscar um número errado.
+        quantidade_estoque = None
+        if item.get("quantidade"):
+            try:
+                qtd_nota = float(item["quantidade"])
+                if achou_unidade == "kg":
+                    peso_unitario = _peso_kg_por_unidade(item.get("descricao"))
+                    if peso_unitario:
+                        quantidade_estoque = qtd_nota * peso_unitario
+                else:
+                    quantidade_estoque = qtd_nota
+            except (TypeError, ValueError):
+                quantidade_estoque = None
 
         itens_batidos.append({
             "descricao": item.get("descricao"),
-            "categoria": achou,
+            "categoria": achou_categoria,
             "valor_total": item.get("valor_total", 0),
+            "insumo_id": achou_insumo_id,
+            "insumo_nome": achou_nome,
+            "quantidade_estoque": quantidade_estoque,
         })
-        categorias_encontradas.add(achou)
+        categorias_encontradas.add(achou_categoria)
 
     if len(categorias_encontradas) != 1:
         return None  # itens de categorias diferentes -- não dá pra sugerir 1 conta só

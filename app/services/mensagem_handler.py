@@ -128,6 +128,11 @@ async def processar_mensagem(msg: MsgIn) -> str:
                                 "_ocr": dados_ocr,
                                 "_midia": msg.midia_bytes,
                                 "_mime": msg.mime_type,
+                                "_imovel_id": imovel_id_ocr,
+                                "_compras_insumo_multiplos": [
+                                    i for i in inferencia["itens_batidos"]
+                                    if i.get("insumo_id") and i.get("quantidade_estoque")
+                                ],
                             }
                             return (
                                 f"📄 Não consegui confirmar pelo CPF se você comprou ou vendeu, "
@@ -739,6 +744,41 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     logger.error("Erro ao dar entrada no insumo: %s", e)
                     detalhe = getattr(e, "detail", str(e))
                     entrada_insumo_msg = f"\n⚠️ Lançamento gravado, mas não consegui dar entrada no estoque: {detalhe}"
+
+            if sess.get("_compras_insumo_multiplos"):
+                from app.db import get_db
+                from app.services.estoque_insumos import aplicar_movimentacao_insumo
+                linhas_entrada = []
+                for item_ins in sess["_compras_insumo_multiplos"]:
+                    try:
+                        conn_estoque = get_db()
+                        try:
+                            cur_estoque = conn_estoque.cursor()
+                            qtd = item_ins["quantidade_estoque"]
+                            custo_unit = round(item_ins["valor_total"] / qtd, 4) if qtd else None
+                            resultado_mov = aplicar_movimentacao_insumo(
+                                cur_estoque,
+                                fazenda_id=sess.get("_imovel_id") or 1,
+                                insumo_id=item_ins["insumo_id"],
+                                tipo="compra",
+                                quantidade=qtd,
+                                custo_unitario=custo_unit,
+                                origem_modulo="mensageria",
+                                origem_tipo="compra_ocr",
+                                origem_descricao=f"Compra via OCR — lançamento #{lancamento_id}",
+                            )
+                            conn_estoque.commit()
+                            linhas_entrada.append(
+                                f"  • {item_ins['insumo_nome']}: +{qtd:g}kg "
+                                f"(novo estoque {resultado_mov['novo_estoque']:g})"
+                            )
+                        finally:
+                            conn_estoque.close()
+                    except Exception as e:
+                        logger.error("Erro ao dar entrada no insumo (OCR multiplo): %s", e)
+                        linhas_entrada.append(f"  ⚠️ {item_ins['insumo_nome']}: erro ao atualizar estoque")
+                if linhas_entrada:
+                    entrada_insumo_msg = "\n📦 Estoque atualizado:\n" + "\n".join(linhas_entrada)
 
             if "_midia" not in sess:
                 texto_comprovante = "Envie a foto ou PDF do comprovante para vincular."
