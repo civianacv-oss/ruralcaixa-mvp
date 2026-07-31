@@ -99,8 +99,27 @@ def _resolver_atividade_id(conn, dados: dict, nome_sub: str):
 
 def gravar_lancamento(dados: dict):
     with engine.connect() as conn:
-        prod = conn.execute(text('SELECT id FROM produtores WHERE telefone = :tel'), {'tel': dados.get('numero', '')}).fetchone()
-        produtor_id = prod[0] if prod else 1
+        numero = (dados.get('numero') or '').strip()
+        # Busca tolerante por ultimos 8 digitos - mesmo padrao ja usado
+        # em _autorizar_numero (mensagem_handler.py). Igualdade exata
+        # falhava com qualquer diferenca de formatacao (+55, espacos, DDD).
+        if len(numero) >= 8:
+            prod = conn.execute(
+                text('SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1'),
+                {'tel': f'%{numero[-8:]}'}
+            ).fetchone()
+        else:
+            prod = None
+        if not prod:
+            # NUNCA mais cair silenciosamente em produtor_id=1 (bug
+            # achado em 31/07 - lancamento real do Bira foi parar no
+            # Cicero por causa desse fallback). Falhar visivelmente
+            # aqui e seguro; o chamador deve tratar este erro.
+            raise ValueError(
+                f"Nao foi possivel identificar o produtor para o numero "
+                f"'{numero}'. Lancamento NAO foi gravado."
+            )
+        produtor_id = prod[0]
         # Busca subconta pelo nome/tipo
         tipo_raw = dados.get('tipo', 'despesa').upper()
         nome_sub = dados.get('produto') or dados.get('subconta') or dados.get('descricao', 'Outros')

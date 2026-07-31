@@ -836,7 +836,11 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 finally:
                     conn_estoque.close()
 
-            lancamento_id = gravar_lancamento(sess)
+            try:
+                lancamento_id = gravar_lancamento(sess)
+            except ValueError as e:
+                logger.error("Erro ao gravar lancamento (produtor nao identificado): %s", e)
+                return f"⚠️ Não consegui gravar o lançamento: {e}"
 
             # Upload de documento se houver mídia na sessão. Usa R2
             # (Cloudflare) em vez de Google Drive -- contas de serviço do
