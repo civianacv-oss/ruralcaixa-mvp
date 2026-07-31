@@ -213,6 +213,18 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if _eh_comando_vinculo(texto):
         return await _processar_comando_vinculo(texto, msg.numero, msg.canal)
 
+    # ── Transformação/mistura de insumo (mensagem completa, "de um tiro só") ──
+    # Mesma prioridade de produção agrícola/vínculo acima - a mistura já vem
+    # pronta numa única mensagem (ex: "misturei 30kg de milho..."), sem wizard.
+    from app.services.handler_transformacao_insumo_v1 import tentar_iniciar_transformacao
+    auth_transf = _autorizar_numero(msg.numero, msg.canal)
+    if auth_transf.get("autorizado") and auth_transf.get("imovel_id"):
+        resposta_transformacao = tentar_iniciar_transformacao(
+            sessoes, key, texto, auth_transf["imovel_id"], auth_transf["produtor_id"],
+        )
+        if resposta_transformacao is not None:
+            return resposta_transformacao
+
     # ── Assistente de Recibo (Fase 2 da unificação de bots) ─────────────
     # Reaproveita o MESMO módulo usado pelo WhatsApp (recibo_handler.py),
     # sem duplicar lógica. Precisa vir ANTES do bloco grande de sessão
@@ -237,8 +249,22 @@ async def processar_mensagem(msg: MsgIn) -> str:
         else:
             return "Não entendi. Responda SIM para confirmar ou NAO para cancelar."
 
+    # ── Transformação/mistura de insumo (confirmação pendente) ──────────
+    # Mesmo padrão de "recibo_pendente" acima: mensagem única com tudo,
+    # só precisa de SIM/NAO (não é wizard multi-etapa). Precisa vir ANTES
+    # do bloco genérico abaixo, senão um SIM/NAO durante a confirmação da
+    # mistura seria capturado por engano.
+    from app.services.handler_transformacao_insumo_v1 import (
+        is_transformacao_pendente_ativo, processar_confirmacao_transformacao_pendente,
+    )
+    if is_transformacao_pendente_ativo(sessoes, key):
+        auth_transf_conf = _autorizar_numero(msg.numero, msg.canal)
+        return processar_confirmacao_transformacao_pendente(
+            sessoes, key, texto, auth_transf_conf["imovel_id"], auth_transf_conf["produtor_id"],
+        )
+
     # Confirmação de lançamento pendente na sessão
-    if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "recibo_wizard", "recibo_pendente"):
+    if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "recibo_wizard", "recibo_pendente", "transformacao_pendente"):
 
         # Sub-fluxo: escolha do lote de bovino (piloto de rastreabilidade
         # de custo por unidade de produção)
