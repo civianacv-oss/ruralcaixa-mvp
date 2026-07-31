@@ -1,22 +1,31 @@
 """
-transformacao_insumo_v1.py (v2 - adaptado ao padrao real do projeto:
-SQLAlchemy engine.connect() + text(), nao psycopg2 cru)
+transformacao_insumo_v1.py (v3 - reaproveita a engine central de estoque)
 
 Modulo de TRANSFORMACAO de insumo (mistura de materias-primas em produto
 acabado, ex: milho + soja + nucleo -> Racao X).
 
-Terceiro tipo de movimento de estoque, distinto de:
-  - compra          -> entrada (movimentacoes_insumo)
-  - producao_propria -> entrada (movimentacoes_insumo)
-  - transformacao    -> saida das MPs + entrada do resultado, com
-                        rastreabilidade completa via transformacoes_insumo
-                        e transformacao_ingredientes.
+CORRECAO CRITICA (31/07): as tabelas `insumos` e `movimentacoes_insumo`
+sao PRE-EXISTENTES e ja usadas por todo o sistema via
+app/services/estoque_insumos.py:aplicar_movimentacao_insumo(). Esse
+modulo NUNCA deve gravar direto em `insumos`/`movimentacoes_insumo` -
+sempre delega pra la, como qualquer outro modulo de producao
+(piscicultura, acai, bovino, ovino) ja faz. Isso tambem resolve de graca:
+  - nome real da coluna e fazenda_id (nao imovel_id)
+  - saldo/custo medio sao campos CACHEADOS em insumos.estoque_atual/
+    custo_medio (nao agregados via SUM sobre o historico)
+  - PMP, lock de linha (FOR UPDATE) e checagem de estoque negativo ja
+    vem prontos, testados, em producao
 
-Padrao de acesso a banco (confirmado em app/db.py:gravar_lancamento,
-31/07): SQLAlchemy `engine.connect()` como context manager, `text()` com
-parametros nomeados (:nome), commit explicito. Este modulo abre sua
-PROPRIA conexao internamente (nao recebe conn de fora) - mesmo estilo de
-gravar_lancamento.
+"uso" (saida) e "producao_propria" (entrada) ja sao tipos validos em
+TIPOS_VALIDOS de estoque_insumos.py - nao precisou de nenhum tipo novo
+nem migracao de schema para o campo `tipo`.
+
+As tabelas transformacoes_insumo/transformacao_ingredientes (criadas por
+mim em 31/07, via scripts/criar_tabelas_transformacao_v1.py) continuam
+como estao - sao NOVAS, sem dependentes, usam imovel_id corretamente
+(referenciando imoveis_rurais). Servem so para a RASTREABILIDADE extra
+(qual MP foi para qual mistura) que aplicar_movimentacao_insumo sozinho
+nao fornece nesse nivel de detalhe agregado.
 """
 
 from __future__ import annotations
@@ -27,16 +36,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 import logging
 
-from sqlalchemy import text
+from fastapi import HTTPException
 
-from app.db import engine
+from app.db import get_db
+from app.services.estoque_insumos import aplicar_movimentacao_insumo
 
 logger = logging.getLogger("ruralcaixa.transformacao_insumo")
 
-
-# ---------------------------------------------------------------------------
-# Excecoes especificas do modulo
-# ---------------------------------------------------------------------------
 
 class TransformacaoError(Exception):
     """Erro generico de negocio no fluxo de transformacao."""
@@ -45,20 +51,14 @@ class TransformacaoError(Exception):
 class InsumoNaoEncontradoError(TransformacaoError):
     def __init__(self, nome_insumo: str):
         super().__init__(
-            f"Insumo '{nome_insumo}' nao encontrado no catalogo deste imovel."
+            f"Insumo '{nome_insumo}' nao encontrado no catalogo desta fazenda."
         )
         self.nome_insumo = nome_insumo
 
 
 class EstoqueInsuficienteError(TransformacaoError):
-    def __init__(self, nome_insumo: str, solicitado: Decimal, disponivel: Decimal):
-        super().__init__(
-            f"Estoque insuficiente de '{nome_insumo}': "
-            f"solicitado {solicitado} kg, disponivel {disponivel} kg."
-        )
-        self.nome_insumo = nome_insumo
-        self.solicitado = solicitado
-        self.disponivel = disponivel
+    def __init__(self, mensagem: str):
+        super().__init__(mensagem)
 
 
 @dataclass
@@ -74,123 +74,42 @@ class TransformacaoResultado:
     ingredientes_processados: list
 
 
-# ---------------------------------------------------------------------------
-# Helpers de acesso a dados (recebem `conn` = conexao SQLAlchemy ja aberta,
-# dentro da MESMA transacao - nunca abrem conexao propria, para manter
-# tudo dentro de uma unica transacao atomica controlada por
-# processar_transformacao)
-# ---------------------------------------------------------------------------
-
-def _buscar_insumo_por_nome(conn, imovel_id: int, nome_insumo: str) -> Optional[dict]:
-    row = conn.execute(
-        text(
-            """
-            SELECT id, nome, categoria
-            FROM insumos
-            WHERE imovel_id = :imovel_id
-              AND LOWER(nome) = LOWER(:nome)
-              AND ativo = TRUE
-            LIMIT 1
-            """
-        ),
-        {"imovel_id": imovel_id, "nome": nome_insumo},
-    ).fetchone()
-    if row is None:
-        return None
-    return {"id": row[0], "nome": row[1], "categoria": row[2]}
+def _buscar_insumo_por_nome_exato(cur, fazenda_id: int, nome_insumo: str) -> Optional[dict]:
+    cur.execute(
+        """
+        SELECT id, nome FROM insumos
+        WHERE fazenda_id = %s AND ativo = TRUE AND LOWER(nome) = LOWER(%s)
+        LIMIT 1
+        """,
+        (fazenda_id, nome_insumo),
+    )
+    return cur.fetchone()
 
 
-def _buscar_saldo_e_custo_atual(conn, imovel_id: int, insumo_id: int) -> dict:
-    row = conn.execute(
-        text(
-            """
-            SELECT
-                COALESCE(SUM(
-                    CASE WHEN direcao = 'entrada' THEN quantidade ELSE -quantidade END
-                ), 0) AS saldo,
-                COALESCE(
-                    SUM(CASE WHEN direcao = 'entrada' THEN quantidade * custo_unitario ELSE 0 END)
-                    / NULLIF(SUM(CASE WHEN direcao = 'entrada' THEN quantidade ELSE 0 END), 0),
-                    0
-                ) AS custo_medio
-            FROM movimentacoes_insumo
-            WHERE imovel_id = :imovel_id AND insumo_id = :insumo_id
-            """
-        ),
-        {"imovel_id": imovel_id, "insumo_id": insumo_id},
-    ).fetchone()
-    return {"saldo": Decimal(row[0]), "custo_medio": Decimal(row[1])}
+def _criar_insumo_resultado(cur, fazenda_id: int, nome_resultado: str) -> int:
+    cur.execute(
+        """
+        INSERT INTO insumos (fazenda_id, nome, categoria, unidade, origem, ativo, criado_em, atualizado_em)
+        VALUES (%s, %s, 'racao', 'kg', 'producao_propria', TRUE, NOW(), NOW())
+        RETURNING id
+        """,
+        (fazenda_id, nome_resultado),
+    )
+    return cur.fetchone()["id"]
 
 
-def _gerar_lote_resultado(conn, imovel_id: int, data_movimentacao: date) -> str:
+def _gerar_lote_resultado(cur, imovel_id: int, data_movimentacao: date) -> str:
     prefixo = f"MIST-{imovel_id}-{data_movimentacao.strftime('%Y%m%d')}"
-    row = conn.execute(
-        text(
-            """
-            SELECT COUNT(*) FROM transformacoes_insumo
-            WHERE imovel_id = :imovel_id AND data_movimentacao = :data
-            """
-        ),
-        {"imovel_id": imovel_id, "data": data_movimentacao},
-    ).fetchone()
-    seq = row[0] + 1
+    cur.execute(
+        """
+        SELECT COUNT(*) AS qtd FROM transformacoes_insumo
+        WHERE imovel_id = %s AND data_movimentacao = %s
+        """,
+        (imovel_id, data_movimentacao),
+    )
+    seq = cur.fetchone()["qtd"] + 1
     return f"{prefixo}-{seq:03d}"
 
-
-def _criar_insumo_resultado(conn, imovel_id: int, nome_resultado: str) -> int:
-    row = conn.execute(
-        text(
-            """
-            INSERT INTO insumos (imovel_id, nome, categoria, ativo, criado_em)
-            VALUES (:imovel_id, :nome, 'racao_processada', TRUE, NOW())
-            RETURNING id
-            """
-        ),
-        {"imovel_id": imovel_id, "nome": nome_resultado},
-    ).fetchone()
-    return row[0]
-
-
-def _inserir_movimentacao(
-    conn,
-    imovel_id: int,
-    produtor_id: int,
-    insumo_id: int,
-    direcao: str,
-    quantidade: Decimal,
-    custo_unitario: Decimal,
-    data_movimentacao: date,
-    observacao: str,
-) -> int:
-    row = conn.execute(
-        text(
-            """
-            INSERT INTO movimentacoes_insumo (
-                imovel_id, produtor_id, insumo_id, tipo, direcao,
-                quantidade, custo_unitario, data_movimentacao, observacao, criado_em
-            )
-            VALUES (:imovel_id, :produtor_id, :insumo_id, 'transformacao', :direcao,
-                    :quantidade, :custo_unitario, :data, :observacao, NOW())
-            RETURNING id
-            """
-        ),
-        {
-            "imovel_id": imovel_id,
-            "produtor_id": produtor_id,
-            "insumo_id": insumo_id,
-            "direcao": direcao,
-            "quantidade": quantidade,
-            "custo_unitario": custo_unitario,
-            "data": data_movimentacao,
-            "observacao": observacao,
-        },
-    ).fetchone()
-    return row[0]
-
-
-# ---------------------------------------------------------------------------
-# Funcao principal
-# ---------------------------------------------------------------------------
 
 def processar_transformacao(
     imovel_id: int,
@@ -201,12 +120,9 @@ def processar_transformacao(
     peso_real_resultado: Optional[Decimal] = None,
 ) -> TransformacaoResultado:
     """
-    Processa uma transformacao (mistura) completa em UMA UNICA transacao
-    SQLAlchemy (mesmo padrao de gravar_lancamento em app/db.py, mas com
-    commit unico ao final e rollback completo em caso de qualquer erro -
-    diferente de gravar_lancamento, que faz commits intermediarios, pois
-    aqui a atomicidade entre baixa de MP e entrada do resultado e
-    obrigatoria: nao pode sobrar mistura "pela metade").
+    imovel_id aqui e usado como fazenda_id ao chamar aplicar_movimentacao_insumo
+    e ao consultar/criar linhas em `insumos` - mesmo espaco de valores
+    (imoveis_rurais.id), so que a tabela legada usa esse nome de coluna.
 
     ingredientes: lista de dicts {"nome_insumo": str, "quantidade": number}
     """
@@ -214,236 +130,199 @@ def processar_transformacao(
         raise TransformacaoError("Nenhum ingrediente informado para a transformacao.")
 
     data_movimentacao = data_movimentacao or date.today()
+    fazenda_id = imovel_id
 
     ingredientes_parsed = [
         (str(i["nome_insumo"]).strip(), Decimal(str(i["quantidade"])))
         for i in ingredientes
     ]
 
-    with engine.connect() as conn:
-        try:
-            # ---------------------------------------------------------
-            # Passo 1: validar TODOS os ingredientes antes de mexer no estoque
-            # ---------------------------------------------------------
-            materias_primas = []
-            for nome_insumo, quantidade in ingredientes_parsed:
-                insumo_mp = _buscar_insumo_por_nome(conn, imovel_id, nome_insumo)
-                if insumo_mp is None:
-                    raise InsumoNaoEncontradoError(nome_insumo)
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        # -----------------------------------------------------------
+        # Passo 1: resolver TODOS os insumos das materias-primas antes
+        # de mexer em qualquer estoque (aplicar_movimentacao_insumo
+        # checa saldo suficiente sozinho e levanta HTTPException se
+        # faltar - mas so queremos comecar a baixar depois de saber
+        # que todo mundo existe no catalogo).
+        # -----------------------------------------------------------
+        materias_primas = []
+        for nome_insumo, quantidade in ingredientes_parsed:
+            insumo = _buscar_insumo_por_nome_exato(cur, fazenda_id, nome_insumo)
+            if insumo is None:
+                raise InsumoNaoEncontradoError(nome_insumo)
+            materias_primas.append(
+                {"insumo_id": insumo["id"], "nome": insumo["nome"], "quantidade": quantidade}
+            )
 
-                saldo_info = _buscar_saldo_e_custo_atual(conn, imovel_id, insumo_mp["id"])
-                if saldo_info["saldo"] < quantidade:
-                    raise EstoqueInsuficienteError(
-                        nome_insumo, quantidade, saldo_info["saldo"]
-                    )
+        # -----------------------------------------------------------
+        # Passo 2: baixar cada materia-prima via aplicar_movimentacao_insumo
+        # (tipo="uso" - saida - ja existente, PMP/saldo tratados la)
+        # -----------------------------------------------------------
+        quantidade_total_mp = Decimal("0")
+        custo_total_resultado = Decimal("0")
+        ingredientes_processados = []
 
-                materias_primas.append(
-                    {
-                        "insumo_id": insumo_mp["id"],
-                        "nome": insumo_mp["nome"],
-                        "quantidade_usada": quantidade,
-                        "custo_unitario_na_data": saldo_info["custo_medio"],
-                    }
-                )
-
-            # ---------------------------------------------------------
-            # Passo 2: baixar cada materia-prima (saida) e acumular custo/qtd
-            # ---------------------------------------------------------
-            quantidade_total_mp = Decimal("0")
-            custo_total_resultado = Decimal("0")
-            ingredientes_processados = []
-
-            for mp in materias_primas:
-                mov_saida_id = _inserir_movimentacao(
-                    conn,
-                    imovel_id=imovel_id,
-                    produtor_id=produtor_id,
+        for mp in materias_primas:
+            try:
+                resultado_mov = aplicar_movimentacao_insumo(
+                    cur,
+                    fazenda_id=fazenda_id,
                     insumo_id=mp["insumo_id"],
-                    direcao="saida",
-                    quantidade=mp["quantidade_usada"],
-                    custo_unitario=mp["custo_unitario_na_data"],
-                    data_movimentacao=data_movimentacao,
+                    tipo="uso",
+                    quantidade=float(mp["quantidade"]),
+                    origem_modulo="transformacao_insumo",
+                    origem_tipo="ingrediente",
+                    origem_descricao=f"Mistura para produzir '{nome_resultado}'",
                     observacao=f"Baixa para transformacao em '{nome_resultado}'",
+                    data_movim=data_movimentacao,
                 )
+            except HTTPException as exc:
+                # aplicar_movimentacao_insumo levanta 400 pra estoque
+                # insuficiente - traduz pro nosso tipo de erro de negocio
+                raise EstoqueInsuficienteError(str(exc.detail)) from exc
 
-                custo_total_mp = (
-                    mp["quantidade_usada"] * mp["custo_unitario_na_data"]
-                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-                quantidade_total_mp += mp["quantidade_usada"]
-                custo_total_resultado += custo_total_mp
-
-                mp["movimentacao_saida_id"] = mov_saida_id
-                mp["custo_total"] = custo_total_mp
-                ingredientes_processados.append(mp)
-
-            # ---------------------------------------------------------
-            # Passo 3: resolver o insumo resultado (criar ou reaproveitar)
-            # ---------------------------------------------------------
-            insumo_resultado = _buscar_insumo_por_nome(conn, imovel_id, nome_resultado)
-            if insumo_resultado is None:
-                insumo_resultado_id = _criar_insumo_resultado(conn, imovel_id, nome_resultado)
-            else:
-                insumo_resultado_id = insumo_resultado["id"]
-
-            # ---------------------------------------------------------
-            # Passo 3b: definir quantidade final e perda processual
-            # ---------------------------------------------------------
-            if peso_real_resultado is not None:
-                quantidade_resultado = Decimal(str(peso_real_resultado))
-                perda_processual = quantidade_total_mp - quantidade_resultado
-                if perda_processual < 0:
-                    logger.warning(
-                        "Transformacao '%s' no imovel %s: peso real informado "
-                        "(%s) maior que soma das MPs (%s). Perda ajustada para 0.",
-                        nome_resultado, imovel_id, quantidade_resultado, quantidade_total_mp,
-                    )
-                    perda_processual = Decimal("0")
-            else:
-                quantidade_resultado = quantidade_total_mp
-                perda_processual = Decimal("0")
-
-            custo_unitario_resultado = (
-                custo_total_resultado / quantidade_resultado
-            ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-
-            # ---------------------------------------------------------
-            # Passo 4: entrada do resultado no ledger (PMP recalcula normal)
-            # ---------------------------------------------------------
-            mov_entrada_id = _inserir_movimentacao(
-                conn,
-                imovel_id=imovel_id,
-                produtor_id=produtor_id,
-                insumo_id=insumo_resultado_id,
-                direcao="entrada",
-                quantidade=quantidade_resultado,
-                custo_unitario=custo_unitario_resultado,
-                data_movimentacao=data_movimentacao,
-                observacao=f"Entrada por transformacao ({len(materias_primas)} materias-primas)",
+            custo_total_mp = Decimal(str(resultado_mov["custo_total"])).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
             )
+            quantidade_total_mp += mp["quantidade"]
+            custo_total_resultado += custo_total_mp
 
-            # ---------------------------------------------------------
-            # Passo 5: cabecalho da transformacao (com rastreabilidade)
-            # ---------------------------------------------------------
-            lote_resultado = _gerar_lote_resultado(conn, imovel_id, data_movimentacao)
-
-            row = conn.execute(
-                text(
-                    """
-                    INSERT INTO transformacoes_insumo (
-                        imovel_id, produtor_id, insumo_resultado_id,
-                        quantidade_resultado, custo_total_resultado,
-                        movimentacao_entrada_id, perda_processual,
-                        data_movimentacao, data_registro, lote_resultado
-                    )
-                    VALUES (:imovel_id, :produtor_id, :insumo_resultado_id,
-                            :quantidade_resultado, :custo_total_resultado,
-                            :movimentacao_entrada_id, :perda_processual,
-                            :data_movimentacao, NOW(), :lote_resultado)
-                    RETURNING id
-                    """
-                ),
+            ingredientes_processados.append(
                 {
-                    "imovel_id": imovel_id,
-                    "produtor_id": produtor_id,
-                    "insumo_resultado_id": insumo_resultado_id,
-                    "quantidade_resultado": quantidade_resultado,
-                    "custo_total_resultado": custo_total_resultado,
-                    "movimentacao_entrada_id": mov_entrada_id,
-                    "perda_processual": perda_processual,
-                    "data_movimentacao": data_movimentacao,
-                    "lote_resultado": lote_resultado,
-                },
-            ).fetchone()
-            transformacao_id = row[0]
+                    "insumo_id": mp["insumo_id"],
+                    "nome": mp["nome"],
+                    "quantidade_usada": mp["quantidade"],
+                    "custo_unitario_na_data": Decimal(str(resultado_mov["custo_unitario_aplicado"])),
+                    "custo_total": custo_total_mp,
+                    "movimentacao_saida_id": resultado_mov["movimentacao_id"],
+                }
+            )
 
-            # ---------------------------------------------------------
-            # Passo 6: ingredientes (rastreabilidade linha a linha)
-            # ---------------------------------------------------------
-            for mp in ingredientes_processados:
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO transformacao_ingredientes (
-                            transformacao_id, insumo_mp_id, movimentacao_saida_id,
-                            quantidade_usada, custo_unitario_na_data, custo_total
-                        )
-                        VALUES (:transformacao_id, :insumo_mp_id, :movimentacao_saida_id,
-                                :quantidade_usada, :custo_unitario_na_data, :custo_total)
-                        """
-                    ),
-                    {
-                        "transformacao_id": transformacao_id,
-                        "insumo_mp_id": mp["insumo_id"],
-                        "movimentacao_saida_id": mp["movimentacao_saida_id"],
-                        "quantidade_usada": mp["quantidade_usada"],
-                        "custo_unitario_na_data": mp["custo_unitario_na_data"],
-                        "custo_total": mp["custo_total"],
-                    },
+        # -----------------------------------------------------------
+        # Passo 3: resolver o insumo resultado (criar ou reaproveitar)
+        # -----------------------------------------------------------
+        insumo_resultado = _buscar_insumo_por_nome_exato(cur, fazenda_id, nome_resultado)
+        if insumo_resultado is None:
+            insumo_resultado_id = _criar_insumo_resultado(cur, fazenda_id, nome_resultado)
+        else:
+            insumo_resultado_id = insumo_resultado["id"]
+
+        # -----------------------------------------------------------
+        # Passo 3b: quantidade final e perda processual
+        # -----------------------------------------------------------
+        if peso_real_resultado is not None:
+            quantidade_resultado = Decimal(str(peso_real_resultado))
+            perda_processual = quantidade_total_mp - quantidade_resultado
+            if perda_processual < 0:
+                logger.warning(
+                    "Transformacao '%s' na fazenda %s: peso real (%s) maior "
+                    "que soma das MPs (%s). Perda ajustada para 0.",
+                    nome_resultado, fazenda_id, quantidade_resultado, quantidade_total_mp,
                 )
+                perda_processual = Decimal("0")
+        else:
+            quantidade_resultado = quantidade_total_mp
+            perda_processual = Decimal("0")
 
-            conn.commit()
+        custo_unitario_resultado = (
+            custo_total_resultado / quantidade_resultado
+        ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
-            logger.info(
-                "Transformacao %s concluida no imovel %s: %s -> %s kg de '%s' "
-                "(custo unit. R$ %s, perda %s kg)",
-                transformacao_id, imovel_id, quantidade_total_mp,
-                quantidade_resultado, nome_resultado, custo_unitario_resultado,
-                perda_processual,
+        # -----------------------------------------------------------
+        # Passo 4: entrada do resultado (tipo="producao_propria" - ja
+        # existente - recalcula PMP automaticamente, mesclando com
+        # saldo/custo anterior se o insumo ja existia)
+        # -----------------------------------------------------------
+        resultado_entrada = aplicar_movimentacao_insumo(
+            cur,
+            fazenda_id=fazenda_id,
+            insumo_id=insumo_resultado_id,
+            tipo="producao_propria",
+            quantidade=float(quantidade_resultado),
+            custo_unitario=float(custo_unitario_resultado),
+            origem_modulo="transformacao_insumo",
+            origem_tipo="mistura",
+            origem_descricao=f"Mistura de {len(materias_primas)} materias-primas",
+            observacao=f"Entrada por transformacao em '{nome_resultado}'",
+            data_movim=data_movimentacao,
+        )
+        movimentacao_entrada_id = resultado_entrada["movimentacao_id"]
+
+        # -----------------------------------------------------------
+        # Passo 5: cabecalho da transformacao (tabela propria, com
+        # rastreabilidade - imovel_id aqui esta correto, e minha tabela)
+        # -----------------------------------------------------------
+        lote_resultado = _gerar_lote_resultado(cur, imovel_id, data_movimentacao)
+
+        cur.execute(
+            """
+            INSERT INTO transformacoes_insumo (
+                imovel_id, produtor_id, insumo_resultado_id,
+                quantidade_resultado, custo_total_resultado,
+                movimentacao_entrada_id, perda_processual,
+                data_movimentacao, data_registro, lote_resultado
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+            RETURNING id
+            """,
+            (
+                imovel_id, produtor_id, insumo_resultado_id,
+                quantidade_resultado, custo_total_resultado,
+                movimentacao_entrada_id, perda_processual,
+                data_movimentacao, lote_resultado,
+            ),
+        )
+        transformacao_id = cur.fetchone()["id"]
+
+        # -----------------------------------------------------------
+        # Passo 6: ingredientes (rastreabilidade linha a linha)
+        # -----------------------------------------------------------
+        for mp in ingredientes_processados:
+            cur.execute(
+                """
+                INSERT INTO transformacao_ingredientes (
+                    transformacao_id, insumo_mp_id, movimentacao_saida_id,
+                    quantidade_usada, custo_unitario_na_data, custo_total
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    transformacao_id, mp["insumo_id"], mp["movimentacao_saida_id"],
+                    mp["quantidade_usada"], mp["custo_unitario_na_data"], mp["custo_total"],
+                ),
             )
 
-            return TransformacaoResultado(
-                transformacao_id=transformacao_id,
-                insumo_resultado_id=insumo_resultado_id,
-                movimentacao_entrada_id=mov_entrada_id,
-                lote_resultado=lote_resultado,
-                quantidade_resultado=quantidade_resultado,
-                custo_total_resultado=custo_total_resultado,
-                custo_unitario_resultado=custo_unitario_resultado,
-                perda_processual=perda_processual,
-                ingredientes_processados=ingredientes_processados,
-            )
+        conn.commit()
 
-        except Exception:
-            conn.rollback()
-            logger.exception(
-                "Transformacao revertida (ROLLBACK) no imovel %s para resultado '%s'",
-                imovel_id, nome_resultado,
-            )
-            raise
+        logger.info(
+            "Transformacao %s concluida na fazenda %s: %s -> %s kg de '%s' "
+            "(custo unit. R$ %s, perda %s kg)",
+            transformacao_id, fazenda_id, quantidade_total_mp,
+            quantidade_resultado, nome_resultado, custo_unitario_resultado,
+            perda_processual,
+        )
 
+        return TransformacaoResultado(
+            transformacao_id=transformacao_id,
+            insumo_resultado_id=insumo_resultado_id,
+            movimentacao_entrada_id=movimentacao_entrada_id,
+            lote_resultado=lote_resultado,
+            quantidade_resultado=quantidade_resultado,
+            custo_total_resultado=custo_total_resultado,
+            custo_unitario_resultado=custo_unitario_resultado,
+            perda_processual=perda_processual,
+            ingredientes_processados=ingredientes_processados,
+        )
 
-# ---------------------------------------------------------------------------
-# DDL de referencia (ja aplicado em producao via
-# scripts/criar_tabelas_transformacao_v1.py em 31/07 - mantido aqui so
-# como documentacao do schema)
-# ---------------------------------------------------------------------------
-
-DDL_REFERENCIA = """
-CREATE TABLE IF NOT EXISTS transformacoes_insumo (
-    id SERIAL PRIMARY KEY,
-    imovel_id INTEGER NOT NULL REFERENCES imoveis_rurais(id),
-    produtor_id INTEGER NOT NULL REFERENCES produtores(id),
-    insumo_resultado_id INTEGER NOT NULL REFERENCES insumos(id),
-    quantidade_resultado DECIMAL(12,3) NOT NULL,
-    custo_total_resultado DECIMAL(12,2) NOT NULL,
-    movimentacao_entrada_id INTEGER NOT NULL REFERENCES movimentacoes_insumo(id),
-    perda_processual DECIMAL(12,3) NOT NULL DEFAULT 0,
-    formula_id INTEGER NULL,
-    data_movimentacao DATE NOT NULL,
-    data_registro TIMESTAMP DEFAULT NOW(),
-    observacao TEXT,
-    lote_resultado VARCHAR(50)
-);
-
-CREATE TABLE IF NOT EXISTS transformacao_ingredientes (
-    id SERIAL PRIMARY KEY,
-    transformacao_id INTEGER NOT NULL REFERENCES transformacoes_insumo(id) ON DELETE CASCADE,
-    insumo_mp_id INTEGER NOT NULL REFERENCES insumos(id),
-    movimentacao_saida_id INTEGER NOT NULL REFERENCES movimentacoes_insumo(id),
-    quantidade_usada DECIMAL(12,3) NOT NULL,
-    custo_unitario_na_data DECIMAL(12,4) NOT NULL,
-    custo_total DECIMAL(12,2) NOT NULL,
-    lote_mp VARCHAR(50) NULL
-);
-"""
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Transformacao revertida (ROLLBACK) na fazenda %s para resultado '%s'",
+            fazenda_id, nome_resultado,
+        )
+        raise
+    finally:
+        cur.close()
+        conn.close()
