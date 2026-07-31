@@ -22,6 +22,7 @@ Formato:
   "itens": [
     {"descricao": "...", "quantidade": 1, "valor_unitario": 0.00, "valor_total": 0.00}
   ],
+  (ATENÇÃO no campo "quantidade" de cada item: a coluna QUANT. de notas fiscais brasileiras (NF-e) usa VÍRGULA como separador DECIMAL, geralmente com 3 casas -- ex: "30,000" significa TRINTA (30), NÃO trinta mil; "20,000" significa VINTE (20), NÃO vinte mil. NUNCA interprete essa vírgula como separador de milhar. Retorne sempre o valor decimal correto: "quantidade": 30, nunca "quantidade": 30000 para uma coluna QUANT. mostrando "30,000".)
   "numero_documento": "número da nota/boleto ou null",
   "chave_nfe": "chave de 44 dígitos ou null",
   "tipo_operacao": "compra | venda | pagamento | outros",
