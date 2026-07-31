@@ -100,16 +100,28 @@ def _resolver_atividade_id(conn, dados: dict, nome_sub: str):
 def gravar_lancamento(dados: dict):
     with engine.connect() as conn:
         numero = (dados.get('numero') or '').strip()
-        # Busca tolerante por ultimos 8 digitos - mesmo padrao ja usado
-        # em _autorizar_numero (mensagem_handler.py). Igualdade exata
-        # falhava com qualquer diferenca de formatacao (+55, espacos, DDD).
-        if len(numero) >= 8:
-            prod = conn.execute(
-                text('SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1'),
-                {'tel': f'%{numero[-8:]}'}
-            ).fetchone()
+        canal = (dados.get('canal') or '').strip()
+        # IMPORTANTE: "numero" nao e telefone em todo canal - no Telegram
+        # e o chat_id (numerico, sem relacao com o telefone real da
+        # pessoa). Mesmo padrao ja usado em _autorizar_numero
+        # (mensagem_handler.py): canal=='telegram' -> telegram_chat_id
+        # (match exato); qualquer outro canal -> telefone (ultimos 8
+        # digitos, tolerante a formatacao). Bug achado em producao 31/07:
+        # a versao anterior so buscava por telefone, entao NUNCA
+        # encontrava ninguem vindo do Telegram.
+        prod = None
+        if canal == 'telegram':
+            if numero:
+                prod = conn.execute(
+                    text('SELECT id FROM produtores WHERE telegram_chat_id = :num LIMIT 1'),
+                    {'num': numero}
+                ).fetchone()
         else:
-            prod = None
+            if len(numero) >= 8:
+                prod = conn.execute(
+                    text('SELECT id FROM produtores WHERE telefone LIKE :tel LIMIT 1'),
+                    {'tel': f'%{numero[-8:]}'}
+                ).fetchone()
         if not prod:
             # NUNCA mais cair silenciosamente em produtor_id=1 (bug
             # achado em 31/07 - lancamento real do Bira foi parar no
@@ -117,7 +129,7 @@ def gravar_lancamento(dados: dict):
             # aqui e seguro; o chamador deve tratar este erro.
             raise ValueError(
                 f"Nao foi possivel identificar o produtor para o numero "
-                f"'{numero}'. Lancamento NAO foi gravado."
+                f"'{numero}' (canal={canal or 'desconhecido'}). Lancamento NAO foi gravado."
             )
         produtor_id = prod[0]
         # Busca subconta pelo nome/tipo

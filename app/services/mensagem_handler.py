@@ -760,6 +760,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
         if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
             sess = sessoes.pop(key)
             sess["numero"] = msg.numero
+            sess["canal"] = msg.canal
 
             # Consumo de insumo já em estoque — NÃO cria despesa nova (o
             # gasto já foi registrado na aquisição). Só dá baixa e aloca o
