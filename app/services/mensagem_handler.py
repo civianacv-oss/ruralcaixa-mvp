@@ -96,6 +96,45 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 emitente = dados_ocr.get("emitente") or "não identificado"
                 destinatario = dados_ocr.get("destinatario") or "não identificado"
                 valor = dados_ocr.get("valor_total") or 0
+                itens_ocr = dados_ocr.get("itens", [])
+
+                # Antes de pedir o wizard completo, tenta um sinal
+                # independente do CPF: os itens da nota batem com insumos
+                # já cadastrados? (achado 30/07: nota real de ração caiu
+                # em CPF ambíguo por causa de leitura errada da imagem,
+                # mesmo os itens claramente sendo compra de insumo)
+                if itens_ocr:
+                    auth_ocr = _autorizar_numero(msg.numero, msg.canal)
+                    imovel_id_ocr = auth_ocr.get("imovel_id")
+                    if imovel_id_ocr:
+                        from app.services.ocr_handler import inferir_operacao_por_itens
+                        inferencia = inferir_operacao_por_itens(itens_ocr, imovel_id_ocr)
+                        if inferencia:
+                            itens_txt = "; ".join(i["descricao"] for i in inferencia["itens_batidos"])
+                            from app.db import buscar_descricao_conta
+                            desc_conta = buscar_descricao_conta(inferencia["conta"])
+                            conta_txt = f"{inferencia['conta']} - {desc_conta}" if desc_conta else inferencia["conta"]
+                            sessoes[key] = {
+                                "conta": inferencia["conta"],
+                                "tipo": "despesa",
+                                "valor": valor,
+                                "data": dados_ocr.get("data") or date.today().isoformat(),
+                                "confianca": 70,
+                                "produto": itens_txt,
+                                "atividade": "rural",
+                                "_ocr": dados_ocr,
+                                "_midia": msg.midia_bytes,
+                                "_mime": msg.mime_type,
+                            }
+                            return (
+                                f"📄 Não consegui confirmar pelo CPF se você comprou ou vendeu, "
+                                f"mas os itens da nota ({itens_txt}) batem com insumos que você "
+                                f"já usa.\n\n"
+                                f"Parece ser compra de insumo, conta {conta_txt}.\n"
+                                f"Valor: R$ {valor:.2f}\n\n"
+                                f"Responda SIM para confirmar como despesa, ou NAO se não for isso."
+                            )
+
                 sessoes[key] = {
                     "_aguardando_historico_ocr_ambiguo": True,
                     "_ocr_valor": valor,

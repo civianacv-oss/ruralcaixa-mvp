@@ -10,6 +10,24 @@ SISTEMA_OCR = """Você é um especialista em documentos fiscais brasileiros.
 Analise a imagem e extraia as informações do documento fiscal.
 Responda APENAS com JSON, sem explicações.
 
+ATENÇÃO especial pro DANFE (Documento Auxiliar da Nota Fiscal Eletrônica):
+- É comum a foto vir com o documento rotacionado (paisagem fotografado na
+  vertical, ou vice-versa) -- gire mentalmente a imagem se precisar pra
+  ler o texto corretamente antes de extrair os campos.
+- O bloco do DESTINATÁRIO/REMETENTE (nome, endereço, CNPJ/CPF, inscrição
+  estadual) fica todo dentro da mesma caixa/moldura no layout do DANFE,
+  mesmo que o campo "CNPJ/CPF" apareça numa linha visualmente distante do
+  nome (comum quando a tabela é fotografada rotacionada) -- confirme que
+  o CNPJ/CPF pertence ao mesmo bloco/moldura do nome do destinatário antes
+  de atribuir; não pegue o primeiro número parecido que aparecer na imagem.
+- O CNPJ/CPF do EMITENTE fica no cabeçalho, perto do nome da empresa
+  emissora -- não confundir com números de outros campos (valor do ICMS,
+  frete, inscrição estadual, protocolo de autorização, chave de acesso).
+- Se não tiver certeza absoluta de qual número pertence a qual campo,
+  prefira retornar null em vez de arriscar um número errado.
+- Se a nota tiver múltiplos itens na tabela de produtos, extraia TODOS
+  eles em "itens", não só o primeiro.
+
 Formato:
 {
   "tipo_documento": "nfe | cupom_fiscal | boleto | recibo | outros",
@@ -274,3 +292,80 @@ def ocr_para_lancamento(dados: dict) -> dict:
         "numero_documento": dados.get("numero_documento"),
         "chave_nfe": dados.get("chave_nfe"),
     }
+
+
+_MAPA_CATEGORIA_INSUMO_PARA_CONTA = {
+    "racao": "2.2",
+    "medicamento": "2.2",
+    "agricola": "2.1",
+    "combustivel": "2.3",
+    "reproducao": "2.2.3",
+}
+
+
+def inferir_operacao_por_itens(itens: list, imovel_id: int):
+    """
+    Cruza a descrição de cada item da nota com o catálogo de insumos já
+    cadastrado nesse imóvel. Se TODOS os itens baterem (por palavra-chave)
+    com insumos de uma única categoria conhecida, retorna a conta de
+    despesa correspondente -- sinal independente do CPF, usado quando o
+    OCR não consegue decidir compra vs venda sozinho (achado em 30/07:
+    nota real de ração caiu em "CPF ambíguo" e precisou de wizard manual
+    completo, quando os próprios itens já indicavam claramente ser compra
+    de insumo de ração).
+
+    Retorna None se não bater com nada conhecido, ou se os itens baterem
+    em mais de uma categoria (não dá pra sugerir uma única conta) -- nesse
+    caso o chamador mantém o fluxo manual de histórico -> tipo -> conta.
+    """
+    if not itens:
+        return None
+
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+    import unicodedata
+
+    with engine.connect() as conn:
+        rows = conn.execute(sqlt("""
+            SELECT nome, categoria FROM insumos
+            WHERE fazenda_id = :fid AND ativo = TRUE
+        """), {"fid": imovel_id}).fetchall()
+
+    if not rows:
+        return None
+
+    def _normalizar(t):
+        t2 = unicodedata.normalize("NFD", (t or "").lower())
+        return "".join(c for c in t2 if unicodedata.category(c) != "Mn")
+
+    catalogo = [(_normalizar(r[0]), r[1]) for r in rows]
+
+    itens_batidos = []
+    categorias_encontradas = set()
+    for item in itens:
+        desc_norm = _normalizar(item.get("descricao", ""))
+        if not desc_norm:
+            return None  # item sem descrição -- não arrisca
+
+        achou = None
+        for nome_cat, categoria in catalogo:
+            palavras_nome = [p for p in nome_cat.split() if len(p) > 3]
+            if palavras_nome and any(p in desc_norm for p in palavras_nome):
+                achou = categoria
+                break
+
+        if not achou:
+            return None  # pelo menos 1 item não bateu -- mantém fluxo manual
+
+        itens_batidos.append({"descricao": item.get("descricao"), "categoria": achou})
+        categorias_encontradas.add(achou)
+
+    if len(categorias_encontradas) != 1:
+        return None  # itens de categorias diferentes -- não dá pra sugerir 1 conta só
+
+    categoria_unica = categorias_encontradas.pop()
+    conta = _MAPA_CATEGORIA_INSUMO_PARA_CONTA.get(categoria_unica)
+    if not conta:
+        return None
+
+    return {"conta": conta, "categoria": categoria_unica, "itens_batidos": itens_batidos}
