@@ -10,24 +10,6 @@ SISTEMA_OCR = """Você é um especialista em documentos fiscais brasileiros.
 Analise a imagem e extraia as informações do documento fiscal.
 Responda APENAS com JSON, sem explicações.
 
-ATENÇÃO especial pro DANFE (Documento Auxiliar da Nota Fiscal Eletrônica):
-- É comum a foto vir com o documento rotacionado (paisagem fotografado na
-  vertical, ou vice-versa) -- gire mentalmente a imagem se precisar pra
-  ler o texto corretamente antes de extrair os campos.
-- O bloco do DESTINATÁRIO/REMETENTE (nome, endereço, CNPJ/CPF, inscrição
-  estadual) fica todo dentro da mesma caixa/moldura no layout do DANFE,
-  mesmo que o campo "CNPJ/CPF" apareça numa linha visualmente distante do
-  nome (comum quando a tabela é fotografada rotacionada) -- confirme que
-  o CNPJ/CPF pertence ao mesmo bloco/moldura do nome do destinatário antes
-  de atribuir; não pegue o primeiro número parecido que aparecer na imagem.
-- O CNPJ/CPF do EMITENTE fica no cabeçalho, perto do nome da empresa
-  emissora -- não confundir com números de outros campos (valor do ICMS,
-  frete, inscrição estadual, protocolo de autorização, chave de acesso).
-- Se não tiver certeza absoluta de qual número pertence a qual campo,
-  prefira retornar null em vez de arriscar um número errado.
-- Se a nota tiver múltiplos itens na tabela de produtos, extraia TODOS
-  eles em "itens", não só o primeiro.
-
 Formato:
 {
   "tipo_documento": "nfe | cupom_fiscal | boleto | recibo | outros",
