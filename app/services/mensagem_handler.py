@@ -109,7 +109,25 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     if imovel_id_ocr:
                         from app.services.ocr_handler import inferir_operacao_por_itens
                         inferencia = inferir_operacao_por_itens(itens_ocr, imovel_id_ocr)
-                        if inferencia:
+
+                        if inferencia and inferencia.get("status") == "sem_match":
+                            item_faltante = inferencia["item_faltante"]
+                            sessoes[key] = {
+                                "_tipo": "aguardando_criar_insumo_ocr",
+                                "_item_faltante": item_faltante,
+                                "_itens_ocr_originais": itens_ocr,
+                                "_imovel_id": imovel_id_ocr,
+                                "_ocr_valor": valor,
+                                "_ocr_data": dados_ocr.get("data") or date.today().isoformat(),
+                                "_midia": msg.midia_bytes,
+                                "_mime": msg.mime_type,
+                            }
+                            return (
+                                f"📄 Não encontrei \"{item_faltante['descricao']}\" no seu estoque "
+                                f"de insumos.\nQuer cadastrar esse insumo agora? Responda SIM ou NAO."
+                            )
+
+                        if inferencia and inferencia.get("status") == "ok":
                             itens_txt = "; ".join(
                                 f"{i['descricao']} (R$ {i.get('valor_total', 0):.2f})"
                                 for i in inferencia["itens_batidos"]
@@ -370,6 +388,106 @@ async def processar_mensagem(msg: MsgIn) -> str:
         # Reaproveita as mesmas telas de tipo/conta do fluxo de termo
         # desconhecido, só que com o valor/data já vindo do OCR (não
         # precisa extrair_valor de texto livre).
+        # Sub-fluxo: perguntar se quer cadastrar insumo que a nota (OCR)
+        # menciona mas que ainda não existe no estoque
+        if sessoes[key].get("_tipo") == "aguardando_criar_insumo_ocr":
+            if texto_up in ("NAO", "N", "CANCELA"):
+                sess_ocr = sessoes[key]
+                sessoes[key] = {
+                    "_aguardando_historico_ocr_ambiguo": True,
+                    "_ocr_valor": sess_ocr["_ocr_valor"],
+                    "_ocr_data": sess_ocr["_ocr_data"],
+                    "_midia": sess_ocr.get("_midia"),
+                    "_mime": sess_ocr.get("_mime"),
+                }
+                return (
+                    "Ok, sem cadastrar agora. Antes de lançar, me conta rapidinho: "
+                    "qual é o histórico/motivo desse lançamento? (ou digite CANCELAR)"
+                )
+            if texto_up in ("SIM", "S", "OK", "CONFIRMA"):
+                sessoes[key]["_tipo"] = "aguardando_categoria_insumo_ocr"
+                return _texto_lista_categorias_insumo()
+            return "Não entendi. Responda SIM pra cadastrar ou NAO pra pular."
+
+        # Sub-fluxo: escolher categoria do insumo novo, criar, e tentar
+        # classificar de novo com o catálogo já atualizado
+        if sessoes[key].get("_tipo") == "aguardando_categoria_insumo_ocr":
+            from app.services.ocr_handler import (
+                CATEGORIAS_INSUMO_DISPONIVEIS, criar_insumo_a_partir_de_item,
+                inferir_operacao_por_itens,
+            )
+            escolha_cat = next((c for n, c, _ in CATEGORIAS_INSUMO_DISPONIVEIS if n == texto_up), None)
+            if not escolha_cat:
+                return _texto_lista_categorias_insumo(prefixo="Não entendi. ")
+
+            sess_ocr = sessoes[key]
+            criar_insumo_a_partir_de_item(sess_ocr["_imovel_id"], sess_ocr["_item_faltante"], escolha_cat)
+            nova_inferencia = inferir_operacao_por_itens(
+                sess_ocr["_itens_ocr_originais"], sess_ocr["_imovel_id"]
+            )
+
+            if nova_inferencia and nova_inferencia.get("status") == "sem_match":
+                item_faltante2 = nova_inferencia["item_faltante"]
+                sessoes[key] = {
+                    "_tipo": "aguardando_criar_insumo_ocr",
+                    "_item_faltante": item_faltante2,
+                    "_itens_ocr_originais": sess_ocr["_itens_ocr_originais"],
+                    "_imovel_id": sess_ocr["_imovel_id"],
+                    "_ocr_valor": sess_ocr["_ocr_valor"],
+                    "_ocr_data": sess_ocr["_ocr_data"],
+                    "_midia": sess_ocr.get("_midia"),
+                    "_mime": sess_ocr.get("_mime"),
+                }
+                return (
+                    f"Cadastrado! Mas também não encontrei \"{item_faltante2['descricao']}\" no "
+                    f"estoque.\nQuer cadastrar esse também? Responda SIM ou NAO."
+                )
+
+            if nova_inferencia and nova_inferencia.get("status") == "ok":
+                itens_txt2 = "; ".join(
+                    f"{i['descricao']} (R$ {i.get('valor_total', 0):.2f})"
+                    for i in nova_inferencia["itens_batidos"]
+                )
+                from app.db import buscar_descricao_conta
+                desc_conta2 = buscar_descricao_conta(nova_inferencia["conta"])
+                conta_txt2 = f"{nova_inferencia['conta']} - {desc_conta2}" if desc_conta2 else nova_inferencia["conta"]
+                sessoes[key] = {
+                    "conta": nova_inferencia["conta"],
+                    "tipo": "despesa",
+                    "valor": sess_ocr["_ocr_valor"],
+                    "data": sess_ocr["_ocr_data"],
+                    "confianca": 70,
+                    "produto": itens_txt2,
+                    "atividade": "rural",
+                    "_midia": sess_ocr.get("_midia"),
+                    "_mime": sess_ocr.get("_mime"),
+                    "_imovel_id": sess_ocr["_imovel_id"],
+                    "_compras_insumo_multiplos": [
+                        i for i in nova_inferencia["itens_batidos"]
+                        if i.get("insumo_id") and i.get("quantidade_estoque")
+                    ],
+                }
+                return (
+                    f"Cadastrado! Agora os itens da nota ({itens_txt2}) batem certinho.\n\n"
+                    f"Parece ser compra de insumo, conta {conta_txt2}.\n"
+                    f"Valor: R$ {sess_ocr['_ocr_valor']:.2f}\n\n"
+                    f"Responda SIM para confirmar como despesa, ou NAO se não for isso."
+                )
+
+            # Empate, ou categorias diferentes -- cai no fluxo manual
+            sessoes[key] = {
+                "_aguardando_historico_ocr_ambiguo": True,
+                "_ocr_valor": sess_ocr["_ocr_valor"],
+                "_ocr_data": sess_ocr["_ocr_data"],
+                "_midia": sess_ocr.get("_midia"),
+                "_mime": sess_ocr.get("_mime"),
+            }
+            return (
+                "Cadastrado! Mas ainda não deu pra classificar automaticamente. "
+                "Antes de lançar, me conta rapidinho: qual é o histórico/motivo "
+                "desse lançamento? (ou digite CANCELAR)"
+            )
+
         if sessoes[key].get("_aguardando_historico_ocr_ambiguo"):
             if texto_up in ("0", "CANCELAR", "CANCELA"):
                 sessoes.pop(key, None)
@@ -2378,3 +2496,11 @@ async def _finalizar_producao_agricola(safra: dict, dados: dict, imovel_id: int,
         f"Destino: {dados['destino']}"
         f"{texto_estoque}"
     )
+
+
+def _texto_lista_categorias_insumo(prefixo: str = "") -> str:
+    from app.services.ocr_handler import CATEGORIAS_INSUMO_DISPONIVEIS
+    linhas = [f"{prefixo}Qual categoria é esse insumo?\n"]
+    for numero, _, label in CATEGORIAS_INSUMO_DISPONIVEIS:
+        linhas.append(f"{numero}. {label}")
+    return "\n".join(linhas)
