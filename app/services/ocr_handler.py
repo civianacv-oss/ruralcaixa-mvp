@@ -364,7 +364,14 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
                 candidatos_scored.append((score, insumo_id, categoria, nome_original, unidade))
 
         if not candidatos_scored:
-            return None  # pelo menos 1 item não bateu -- mantém fluxo manual
+            return {
+                "status": "sem_match",
+                "item_faltante": {
+                    "descricao": item.get("descricao"),
+                    "quantidade": item.get("quantidade"),
+                    "valor_total": item.get("valor_total", 0),
+                },
+            }
 
         candidatos_scored.sort(key=lambda c: -c[0])
         melhor_score = candidatos_scored[0][0]
@@ -411,4 +418,36 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
     if not conta:
         return None
 
-    return {"conta": conta, "categoria": categoria_unica, "itens_batidos": itens_batidos}
+    return {"status": "ok", "conta": conta, "categoria": categoria_unica, "itens_batidos": itens_batidos}
+
+
+CATEGORIAS_INSUMO_DISPONIVEIS = [
+    ("1", "racao", "Ração / Nutrição animal"),
+    ("2", "agricola", "Insumo agrícola (semente, adubo, defensivo)"),
+    ("3", "medicamento", "Medicamento / Sanidade animal"),
+    ("4", "combustivel", "Combustível"),
+    ("5", "reproducao", "Reprodução"),
+    ("6", "outros", "Outros"),
+]
+
+
+def criar_insumo_a_partir_de_item(imovel_id: int, item_faltante: dict, categoria: str) -> int:
+    """Cadastra um insumo novo a partir de um item de nota que não bateu
+    com nada no catálogo, depois do produtor confirmar que quer criar
+    (fluxo "Não encontrei X no seu estoque. Quer cadastrar agora?")."""
+    from app.db import get_db
+    nome = (item_faltante.get("descricao") or "Insumo").strip().title()
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO insumos (fazenda_id, nome, categoria, unidade, origem, estoque_atual, ativo)
+            VALUES (%s, %s, %s, 'kg', 'comprado', 0, true)
+            RETURNING id
+        """, (imovel_id, nome, categoria))
+        row = cur.fetchone()
+        insumo_id = row["id"] if isinstance(row, dict) else row[0]
+        conn.commit()
+        return insumo_id
+    finally:
+        conn.close()
