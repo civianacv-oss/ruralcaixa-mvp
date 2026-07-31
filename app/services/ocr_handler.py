@@ -350,21 +350,29 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
         if not desc_norm:
             return None  # item sem descrição -- não arrisca
 
-        achou_categoria = None
-        achou_insumo_id = None
-        achou_nome = None
-        achou_unidade = None
+        # Pontua CADA insumo do catálogo por quantos caracteres de palavras
+        # específicas batem na descrição do item, e escolhe o MELHOR, não
+        # o primeiro -- palavras curtas/genéricas ("farelo") não podem
+        # vencer palavras mais específicas ("algodao") só por ordem de
+        # iteração. Se houver empate entre 2+ insumos, não arrisca
+        # escolher (comum em catálogos de teste com nomes duplicados).
+        candidatos_scored = []
         for nome_cat, categoria, insumo_id, nome_original, unidade in catalogo:
             palavras_nome = [p for p in nome_cat.split() if len(p) > 3]
-            if palavras_nome and any(p in desc_norm for p in palavras_nome):
-                achou_categoria = categoria
-                achou_insumo_id = insumo_id
-                achou_nome = nome_original
-                achou_unidade = unidade
-                break
+            score = sum(len(p) for p in palavras_nome if p in desc_norm)
+            if score > 0:
+                candidatos_scored.append((score, insumo_id, categoria, nome_original, unidade))
 
-        if not achou_categoria:
+        if not candidatos_scored:
             return None  # pelo menos 1 item não bateu -- mantém fluxo manual
+
+        candidatos_scored.sort(key=lambda c: -c[0])
+        melhor_score = candidatos_scored[0][0]
+        empatados = [c for c in candidatos_scored if c[0] == melhor_score]
+        if len(empatados) > 1:
+            return None  # 2+ insumos empatados -- não adivinha, mantém fluxo manual
+
+        _, achou_insumo_id, achou_categoria, achou_nome, achou_unidade = empatados[0]
 
         # Quantidade pro estoque: converte sacas -> kg usando o peso
         # extraído do próprio texto do item, quando o insumo é rastreado
@@ -391,6 +399,7 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
             "insumo_id": achou_insumo_id,
             "insumo_nome": achou_nome,
             "quantidade_estoque": quantidade_estoque,
+            "unidade": achou_unidade,
         })
         categorias_encontradas.add(achou_categoria)
 
