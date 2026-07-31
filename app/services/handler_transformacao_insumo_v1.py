@@ -1,46 +1,61 @@
 """
-handler_transformacao_insumo_v1.py (v2 - adaptado a convencao real do projeto)
+handler_transformacao_insumo_v1.py (v3 - sem parametro conn: cada camada
+abre sua propria conexao SQLAlchemy internamente, seguindo o padrao real
+do projeto confirmado em app/db.py)
 
-Segue o MESMO padrao ja usado por "recibo_pendente" em mensagem_handler.py
-(nao o wizard multi-etapa do Recibo, que e mais complexo por pedir os
-dados em varias mensagens - transformacao chega pronta numa unica
-mensagem, como "misturei 30kg de milho e 20kg de soja pra fazer Racao X",
-entao o padrao mais simples de confirmacao "_pendente" e o correto aqui).
+Segue o padrao "recibo_pendente" (nao o wizard multi-etapa) - a mistura
+chega pronta numa unica mensagem, entao so precisa de confirmacao SIM/NAO,
+igual ao fluxo ja usado para confirmacao de venda de bois e recibo.
 
-Convencao observada em mensagem_handler.py (grep/sed feitos em 31/07):
-  - sessoes = _sessoes  (dict de modulo, compartilhado)
-  - key = msg.key        (identificador ja unificado por canal)
-  - sessoes[key]["_tipo"] marca o estado
-  - Bloco tipo "X_pendente" fica ANTES do bloco generico de confirmacao
-    de lancamento (linha ~241: "sessoes[key].get('_tipo') not in (...)")
-    - por isso "transformacao_pendente" PRECISA entrar nessa tupla de
-      exclusao, senao um SIM/NAO durante a confirmacao da mistura seria
-      engolido pelo tratamento generico de lancamento pendente.
-  - Confirmacao retorna STRING direta (nao um objeto/dataclass).
+Integracao em app/services/mensagem_handler.py (processar_mensagem):
 
-Duas funcoes publicas, pensadas para plugar direto em processar_mensagem:
+  1. Logo ANTES do bloco generico de sessao (por volta da linha 241,
+     "if key in sessoes and sessoes[key].get('_tipo') not in (...)"),
+     adicionar 'transformacao_pendente' na tupla de exclusao E interceptar:
 
-  1. processar_confirmacao_transformacao_pendente(sessoes, key, texto,
-     conn, imovel_id, produtor_id) -> str
-     Chamar logo apos o bloco "recibo_pendente" (mesma posicao/prioridade),
-     ANTES da linha ~241. So chamar se
-     sessoes.get(key, {}).get("_tipo") == "transformacao_pendente".
+         if is_transformacao_pendente_ativo(sessoes, key):
+             from app.services.handler_transformacao_insumo_v1 import (
+                 processar_confirmacao_transformacao_pendente,
+             )
+             auth = _autorizar_numero(msg.numero, msg.canal)
+             return processar_confirmacao_transformacao_pendente(
+                 sessoes, key, texto, auth["imovel_id"], auth["produtor_id"],
+             )
 
-  2. tentar_iniciar_transformacao(sessoes, key, texto, conn, imovel_id,
-     produtor_id) -> Optional[str]
-     Chamar no ponto onde a classificacao "de um tiro so" acontece
-     (equivalente a classificar_recibo - mensagem completa, sem wizard).
-     Retorna None se o texto nao parecer uma transformacao (deixa outros
-     classificadores tentarem); retorna a mensagem de confirmacao (e ja
-     grava sessoes[key]) se parecer.
+  2. Junto dos outros classificadores "de um tiro so" (perto de
+     _eh_comando_producao_agricola / _eh_comando_vinculo, ANTES do
+     bloco generico de classificar()):
+
+         from app.services.handler_transformacao_insumo_v1 import (
+             tentar_iniciar_transformacao,
+         )
+         auth = _autorizar_numero(msg.numero, msg.canal)
+         resposta_transformacao = tentar_iniciar_transformacao(
+             sessoes, key, texto, auth["imovel_id"], auth["produtor_id"],
+         )
+         if resposta_transformacao is not None:
+             return resposta_transformacao
+
+     (resposta_transformacao is None quando o texto nao parece uma
+     transformacao - nesse caso o fluxo normal de classificar() continua.)
+
+NOTA sobre auth["produtor_id"]: confirmado em 31/07 (sed 1720-1745) - as
+chaves sao exatamente "produtor_id" e "imovel_id". Colaborador_operacional
+tem produtor_id=None (autorizado so por vinculo ao imovel, sem CPF
+proprio) - decisao do produtor (31/07): nesse caso, o responsavel
+registrado na transformacao passa a ser o DONO do imovel
+(imoveis_rurais.produtor_id), resolvido automaticamente por
+_resolver_produtor_responsavel() dentro deste modulo. O canal chamador
+(mensagem_handler.py) NAO precisa tratar esse caso - so passa
+auth["produtor_id"] direto, mesmo que seja None.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 from typing import Optional
 
+from app.db import get_db
 from app.services.parser_transformacao_insumo_v1 import (
     parece_transformacao,
     extrair_transformacao,
@@ -59,9 +74,33 @@ from app.services.transformacao_insumo_v1 import (
 TIPO_TRANSFORMACAO_PENDENTE = "transformacao_pendente"
 
 
-# ---------------------------------------------------------------------------
-# Helper de conversao (mesmo de antes)
-# ---------------------------------------------------------------------------
+def _resolver_produtor_responsavel(produtor_id: Optional[int], imovel_id: int) -> Optional[int]:
+    """
+    Colaborador_operacional (autorizado so a reportar consumo/insumo) nao
+    tem produtor_id proprio - vem None de _autorizar_numero. Decisao do
+    produtor (31/07): nesse caso, usa o DONO do imovel como responsavel
+    pelo lancamento de transformacao (movimentacoes_insumo.produtor_id e
+    transformacoes_insumo.produtor_id sao NOT NULL).
+    """
+    if produtor_id is not None:
+        return produtor_id
+
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT produtor_id FROM imoveis_rurais WHERE id = %s",
+                (imovel_id,),
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+    return row["produtor_id"] if row else None
+
 
 def _resolucao_para_ingredientes(resolucao: ResolucaoTransformacao) -> list:
     return [
@@ -69,10 +108,6 @@ def _resolucao_para_ingredientes(resolucao: ResolucaoTransformacao) -> list:
         for item in resolucao.itens
     ]
 
-
-# ---------------------------------------------------------------------------
-# 1) Continuar uma confirmacao ja pendente (chamar ANTES do bloco generico)
-# ---------------------------------------------------------------------------
 
 def is_transformacao_pendente_ativo(sessoes: dict, key) -> bool:
     return sessoes.get(key, {}).get("_tipo") == TIPO_TRANSFORMACAO_PENDENTE
@@ -82,17 +117,17 @@ def processar_confirmacao_transformacao_pendente(
     sessoes: dict,
     key,
     texto: str,
-    conn,
     imovel_id: int,
-    produtor_id: int,
+    produtor_id: Optional[int],
 ) -> str:
-    """
-    Espelha o bloco "recibo_pendente" de mensagem_handler.py:
-      SIM/S/OK/CONFIRMA -> grava de fato, sessoes.pop(key)
-      NAO/N/CANCELA      -> cancela, sessoes.pop(key, None)
-      qualquer outra coisa -> pede pra responder SIM ou NAO (nao limpa a
-                              sessao, mantendo a pendencia)
-    """
+    produtor_id = _resolver_produtor_responsavel(produtor_id, imovel_id)
+    if produtor_id is None:
+        sessoes.pop(key, None)
+        return (
+            "Não consegui confirmar o responsável por este imóvel. "
+            "Cancelei a mistura - tente novamente ou fale com o proprietário."
+        )
+
     texto_up = texto.strip().upper()
     sess = sessoes.get(key, {})
     resolucao: ResolucaoTransformacao = sess.get("resolucao")
@@ -102,7 +137,6 @@ def processar_confirmacao_transformacao_pendente(
         sessoes.pop(key, None)
         try:
             resultado = processar_transformacao(
-                conn,
                 imovel_id=imovel_id,
                 produtor_id=produtor_id,
                 ingredientes=_resolucao_para_ingredientes(resolucao),
@@ -129,31 +163,23 @@ def processar_confirmacao_transformacao_pendente(
     return "Não entendi. Responda SIM para confirmar ou NAO para cancelar."
 
 
-# ---------------------------------------------------------------------------
-# 2) Deteccao/inicio (classificacao "de um tiro so", mensagem completa)
-# ---------------------------------------------------------------------------
-
 def tentar_iniciar_transformacao(
     sessoes: dict,
     key,
     texto: str,
-    conn,
     imovel_id: int,
-    produtor_id: int,
+    produtor_id: Optional[int],
 ) -> Optional[str]:
-    """
-    Retorna None se o texto nao parecer uma transformacao (outros
-    classificadores devem tentar). Caso pareca, sempre retorna uma
-    mensagem (de confirmacao pronta para SIM/NAO, ou pedindo correcao
-    se houver ambiguidade/insumo nao encontrado/estoque insuficiente).
-
-    So grava sessoes[key] (estado pendente) quando a mistura esta
-    COMPLETAMENTE resolvida e pronta para confirmar - caso contrario,
-    o produtor deve reenviar a frase corrigida (mesmo padrao usado no
-    resto do bot para correcao sem wizard formal).
-    """
     if not parece_transformacao(texto):
         return None
+
+    produtor_id = _resolver_produtor_responsavel(produtor_id, imovel_id)
+    if produtor_id is None:
+        return (
+            "Não consegui identificar o responsável por este imóvel para "
+            "registrar a mistura. Fale com o proprietário para confirmar o "
+            "cadastro."
+        )
 
     parse = extrair_transformacao(texto)
 
@@ -164,12 +190,7 @@ def tentar_iniciar_transformacao(
             "'misturei 30kg de milho e 20kg de soja pra fazer Racao X'."
         )
 
-    cur = conn.cursor()
-    try:
-        resolucao = resolver_transformacao(cur, imovel_id, parse)
-    finally:
-        cur.close()
-
+    resolucao = resolver_transformacao(imovel_id, parse)
     mensagem = montar_mensagem_confirmacao_completa(resolucao)
 
     if resolucao.pronto_para_confirmar:

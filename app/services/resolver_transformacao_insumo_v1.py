@@ -1,13 +1,16 @@
 """
-resolver_transformacao_insumo_v1.py (v2 - adaptado ao padrao SQLAlchemy)
+resolver_transformacao_insumo_v1.py (v3 - le direto estoque_atual/custo_medio)
 
-Camada intermediaria entre o parser de linguagem natural
-(parser_transformacao_insumo_v1.py) e a gravacao no banco
+Camada intermediaria entre o parser de linguagem natural e a gravacao
 (transformacao_insumo_v1.processar_transformacao).
 
-So faz LEITURA (catalogo, saldo, custo) - abre sua propria conexao via
-engine.connect() (nao precisa participar da transacao de escrita, que so
-comeca depois que o produtor confirma com SIM).
+CORRECAO 31/07: saldo e custo medio de um insumo sao campos CACHEADOS em
+insumos.estoque_atual / insumos.custo_medio (mantidos por
+aplicar_movimentacao_insumo a cada movimento) - nao precisa (nem deve)
+agregar via SUM sobre movimentacoes_insumo. Coluna de propriedade e
+fazenda_id, nao imovel_id.
+
+So faz LEITURA - abre e fecha sua propria conexao via app.db.get_db().
 """
 
 from __future__ import annotations
@@ -17,9 +20,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import text
-
-from app.db import engine
+from app.db import get_db
 from app.services.parser_transformacao_insumo_v1 import ResultadoParse, ItemExtraido
 
 
@@ -65,85 +66,57 @@ class ResolucaoTransformacao:
         )
 
 
-# ---------------------------------------------------------------------------
-# Resolucao contra o catalogo
-# ---------------------------------------------------------------------------
-
-def _buscar_match_exato(conn, imovel_id: int, nome_bruto: str) -> list:
-    rows = conn.execute(
-        text(
-            """
-            SELECT id, nome, categoria
-            FROM insumos
-            WHERE imovel_id = :imovel_id AND ativo = TRUE AND LOWER(nome) = LOWER(:nome)
-            """
-        ),
-        {"imovel_id": imovel_id, "nome": nome_bruto},
-    ).fetchall()
-    return rows
+def _buscar_match_exato(cur, fazenda_id: int, nome_bruto: str) -> list:
+    cur.execute(
+        """
+        SELECT id, nome, categoria, estoque_atual, custo_medio
+        FROM insumos
+        WHERE fazenda_id = %s AND ativo = TRUE AND LOWER(nome) = LOWER(%s)
+        """,
+        (fazenda_id, nome_bruto),
+    )
+    return cur.fetchall()
 
 
-def _buscar_match_parcial(conn, imovel_id: int, nome_bruto: str) -> list:
-    rows = conn.execute(
-        text(
-            """
-            SELECT id, nome, categoria
-            FROM insumos
-            WHERE imovel_id = :imovel_id AND ativo = TRUE AND LOWER(nome) LIKE LOWER(:padrao)
-            ORDER BY nome
-            """
-        ),
-        {"imovel_id": imovel_id, "padrao": f"%{nome_bruto}%"},
-    ).fetchall()
-    return rows
+def _buscar_match_parcial(cur, fazenda_id: int, nome_bruto: str) -> list:
+    cur.execute(
+        """
+        SELECT id, nome, categoria, estoque_atual, custo_medio
+        FROM insumos
+        WHERE fazenda_id = %s AND ativo = TRUE AND LOWER(nome) LIKE LOWER(%s)
+        ORDER BY nome
+        """,
+        (fazenda_id, f"%{nome_bruto}%"),
+    )
+    return cur.fetchall()
 
 
-def _buscar_saldo_e_custo(conn, imovel_id: int, insumo_id: int) -> tuple:
-    row = conn.execute(
-        text(
-            """
-            SELECT
-                COALESCE(SUM(
-                    CASE WHEN direcao = 'entrada' THEN quantidade ELSE -quantidade END
-                ), 0) AS saldo,
-                COALESCE(
-                    SUM(CASE WHEN direcao = 'entrada' THEN quantidade * custo_unitario ELSE 0 END)
-                    / NULLIF(SUM(CASE WHEN direcao = 'entrada' THEN quantidade ELSE 0 END), 0),
-                    0
-                ) AS custo_medio
-            FROM movimentacoes_insumo
-            WHERE imovel_id = :imovel_id AND insumo_id = :insumo_id
-            """
-        ),
-        {"imovel_id": imovel_id, "insumo_id": insumo_id},
-    ).fetchone()
-    return Decimal(row[0]), Decimal(row[1])
+def _linha_para_candidato(row: dict) -> InsumoCandidato:
+    return InsumoCandidato(
+        id=row["id"],
+        nome=row["nome"],
+        categoria=row["categoria"],
+        saldo=Decimal(str(row["estoque_atual"] or 0)),
+        custo_unitario=Decimal(str(row["custo_medio"] or 0)),
+    )
 
 
-def _resolver_um_item(conn, imovel_id: int, item: ItemExtraido) -> ItemResolvido:
+def _resolver_um_item(cur, fazenda_id: int, item: ItemExtraido) -> ItemResolvido:
     nome_bruto = item.nome_insumo_bruto
 
-    candidatos_rows = _buscar_match_exato(conn, imovel_id, nome_bruto)
-    if not candidatos_rows:
-        candidatos_rows = _buscar_match_parcial(conn, imovel_id, nome_bruto)
+    linhas = _buscar_match_exato(cur, fazenda_id, nome_bruto)
+    if not linhas:
+        linhas = _buscar_match_parcial(cur, fazenda_id, nome_bruto)
 
-    if len(candidatos_rows) == 0:
+    if len(linhas) == 0:
         return ItemResolvido(
             nome_bruto=nome_bruto,
             quantidade_kg=item.quantidade_kg,
             status=StatusResolucao.NAO_ENCONTRADO,
         )
 
-    if len(candidatos_rows) > 1:
-        candidatos = []
-        for insumo_id, nome, categoria in candidatos_rows:
-            saldo, custo = _buscar_saldo_e_custo(conn, imovel_id, insumo_id)
-            candidatos.append(
-                InsumoCandidato(
-                    id=insumo_id, nome=nome, categoria=categoria,
-                    saldo=saldo, custo_unitario=custo,
-                )
-            )
+    if len(linhas) > 1:
+        candidatos = [_linha_para_candidato(r) for r in linhas]
         return ItemResolvido(
             nome_bruto=nome_bruto,
             quantidade_kg=item.quantidade_kg,
@@ -151,20 +124,15 @@ def _resolver_um_item(conn, imovel_id: int, item: ItemExtraido) -> ItemResolvido
             candidatos=candidatos,
         )
 
-    insumo_id, nome, categoria = candidatos_rows[0]
-    saldo, custo = _buscar_saldo_e_custo(conn, imovel_id, insumo_id)
-    insumo = InsumoCandidato(
-        id=insumo_id, nome=nome, categoria=categoria,
-        saldo=saldo, custo_unitario=custo,
-    )
+    insumo = _linha_para_candidato(linhas[0])
 
     custo_estimado = None
     saldo_suficiente = None
     if item.quantidade_kg is not None:
-        custo_estimado = (item.quantidade_kg * custo).quantize(
+        custo_estimado = (item.quantidade_kg * insumo.custo_unitario).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
-        saldo_suficiente = saldo >= item.quantidade_kg
+        saldo_suficiente = insumo.saldo >= item.quantidade_kg
 
     return ItemResolvido(
         nome_bruto=nome_bruto,
@@ -179,11 +147,19 @@ def _resolver_um_item(conn, imovel_id: int, item: ItemExtraido) -> ItemResolvido
 def resolver_transformacao(
     imovel_id: int, resultado_parse: ResultadoParse
 ) -> ResolucaoTransformacao:
-    """Abre sua propria conexao (somente leitura) via engine.connect()."""
-    with engine.connect() as conn:
-        itens_resolvidos = [
-            _resolver_um_item(conn, imovel_id, item) for item in resultado_parse.itens
-        ]
+    """imovel_id e usado como fazenda_id (mesmo espaco de valores)."""
+    fazenda_id = imovel_id
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        try:
+            itens_resolvidos = [
+                _resolver_um_item(cur, fazenda_id, item) for item in resultado_parse.itens
+            ]
+        finally:
+            cur.close()
+    finally:
+        conn.close()
 
     custo_total = None
     if all(
@@ -198,10 +174,6 @@ def resolver_transformacao(
         custo_total_estimado=custo_total,
     )
 
-
-# ---------------------------------------------------------------------------
-# Mensagem de confirmacao completa (SIM/NAO, uma unica mensagem)
-# ---------------------------------------------------------------------------
 
 def montar_mensagem_confirmacao_completa(resolucao: ResolucaoTransformacao) -> str:
     linhas = ["Confirma a mistura abaixo?\n"]
