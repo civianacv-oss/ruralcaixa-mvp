@@ -886,8 +886,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
                                 origem_descricao=f"Compra via OCR — lançamento #{lancamento_id}",
                             )
                             conn_estoque.commit()
+                            unidade_txt = item_ins.get("unidade") or "kg"
                             linhas_entrada.append(
-                                f"  • {item_ins['insumo_nome']}: +{qtd:g}kg "
+                                f"  • {item_ins['insumo_nome']}: +{qtd:g}{unidade_txt} "
                                 f"(novo estoque {resultado_mov['novo_estoque']:g})"
                             )
                         finally:
