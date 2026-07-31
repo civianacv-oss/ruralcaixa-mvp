@@ -255,8 +255,12 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # do bloco genérico abaixo, senão um SIM/NAO durante a confirmação da
     # mistura seria capturado por engano.
     from app.services.handler_transformacao_insumo_v1 import (
+        is_ambiguidade_pendente_ativo, processar_escolha_ambiguidade,
         is_transformacao_pendente_ativo, processar_confirmacao_transformacao_pendente,
     )
+    if is_ambiguidade_pendente_ativo(sessoes, key):
+        return processar_escolha_ambiguidade(sessoes, key, texto)
+
     if is_transformacao_pendente_ativo(sessoes, key):
         auth_transf_conf = _autorizar_numero(msg.numero, msg.canal)
         return processar_confirmacao_transformacao_pendente(
@@ -264,7 +268,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
         )
 
     # Confirmação de lançamento pendente na sessão
-    if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "recibo_wizard", "recibo_pendente", "transformacao_pendente"):
+    if key in sessoes and sessoes[key].get("_tipo") not in ("cadastro", "recibo_wizard", "recibo_pendente", "transformacao_pendente", "transformacao_ambiguidade_pendente"):
 
         # Sub-fluxo: escolha do lote de bovino (piloto de rastreabilidade
         # de custo por unidade de produção)
