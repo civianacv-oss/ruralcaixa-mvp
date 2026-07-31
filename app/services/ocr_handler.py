@@ -339,7 +339,11 @@ def inferir_operacao_por_itens(itens: list, imovel_id: int):
         if not achou:
             return None  # pelo menos 1 item não bateu -- mantém fluxo manual
 
-        itens_batidos.append({"descricao": item.get("descricao"), "categoria": achou})
+        itens_batidos.append({
+            "descricao": item.get("descricao"),
+            "categoria": achou,
+            "valor_total": item.get("valor_total", 0),
+        })
         categorias_encontradas.add(achou)
 
     if len(categorias_encontradas) != 1:

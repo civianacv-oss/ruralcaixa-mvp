@@ -110,7 +110,10 @@ async def processar_mensagem(msg: MsgIn) -> str:
                         from app.services.ocr_handler import inferir_operacao_por_itens
                         inferencia = inferir_operacao_por_itens(itens_ocr, imovel_id_ocr)
                         if inferencia:
-                            itens_txt = "; ".join(i["descricao"] for i in inferencia["itens_batidos"])
+                            itens_txt = "; ".join(
+                                f"{i['descricao']} (R$ {i.get('valor_total', 0):.2f})"
+                                for i in inferencia["itens_batidos"]
+                            )
                             from app.db import buscar_descricao_conta
                             desc_conta = buscar_descricao_conta(inferencia["conta"])
                             conta_txt = f"{inferencia['conta']} - {desc_conta}" if desc_conta else inferencia["conta"]
