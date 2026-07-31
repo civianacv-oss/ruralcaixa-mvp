@@ -11,7 +11,14 @@ Integracao em app/services/mensagem_handler.py (processar_mensagem):
 
   1. Logo ANTES do bloco generico de sessao (por volta da linha 241,
      "if key in sessoes and sessoes[key].get('_tipo') not in (...)"),
-     adicionar 'transformacao_pendente' na tupla de exclusao E interceptar:
+     adicionar 'transformacao_pendente' E 'transformacao_ambiguidade_pendente'
+     na tupla de exclusao, e interceptar (nessa ordem):
+
+         if is_ambiguidade_pendente_ativo(sessoes, key):
+             from app.services.handler_transformacao_insumo_v1 import (
+                 processar_escolha_ambiguidade,
+             )
+             return processar_escolha_ambiguidade(sessoes, key, texto)
 
          if is_transformacao_pendente_ativo(sessoes, key):
              from app.services.handler_transformacao_insumo_v1 import (
@@ -63,7 +70,10 @@ from app.services.parser_transformacao_insumo_v1 import (
 from app.services.resolver_transformacao_insumo_v1 import (
     resolver_transformacao,
     montar_mensagem_confirmacao_completa,
+    atribuir_numeracao_ambiguidade,
+    buscar_insumo_por_id,
     ResolucaoTransformacao,
+    StatusResolucao,
 )
 from app.services.transformacao_insumo_v1 import (
     processar_transformacao,
@@ -72,6 +82,7 @@ from app.services.transformacao_insumo_v1 import (
 
 
 TIPO_TRANSFORMACAO_PENDENTE = "transformacao_pendente"
+TIPO_AMBIGUIDADE_PENDENTE = "transformacao_ambiguidade_pendente"
 
 
 def _resolver_produtor_responsavel(produtor_id: Optional[int], imovel_id: int) -> Optional[int]:
@@ -199,5 +210,128 @@ def tentar_iniciar_transformacao(
             "resolucao": resolucao,
             "nome_resultado": resolucao.nome_resultado,
         }
+    elif any(item.status == StatusResolucao.AMBIGUO for item in resolucao.itens):
+        numeracao = atribuir_numeracao_ambiguidade(resolucao)
+        sessoes[key] = {
+            "_tipo": TIPO_AMBIGUIDADE_PENDENTE,
+            "resolucao": resolucao,
+            "nome_resultado": resolucao.nome_resultado,
+            "numeracao": numeracao,
+            "imovel_id": imovel_id,
+        }
+
+    return mensagem
+
+
+def is_ambiguidade_pendente_ativo(sessoes: dict, key) -> bool:
+    return sessoes.get(key, {}).get("_tipo") == TIPO_AMBIGUIDADE_PENDENTE
+
+
+def processar_escolha_ambiguidade(
+    sessoes: dict,
+    key,
+    texto: str,
+) -> str:
+    """
+    Interpreta a resposta do produtor a uma mensagem de ambiguidade -
+    espera numeros separados por virgula/espaco, um para cada item
+    ambiguo, na numeracao GLOBAL mostrada na mensagem anterior (ex: "1,4").
+
+    Nao exige ordem especifica: cada numero ja carrega a info de qual
+    item ele resolve (via `numeracao`), entao a validacao e por
+    COBERTURA (cada item ambiguo precisa ser resolvido exatamente uma
+    vez), nao por posicao.
+    """
+    sess = sessoes.get(key, {})
+    resolucao: ResolucaoTransformacao = sess.get("resolucao")
+    nome_resultado: str = sess.get("nome_resultado")
+    numeracao: dict = sess.get("numeracao", {})
+    imovel_id: int = sess.get("imovel_id")
+
+    indices_ambiguos = {
+        idx for idx, item in enumerate(resolucao.itens)
+        if item.status == StatusResolucao.AMBIGUO
+    }
+
+    # extrai numeros da resposta (aceita virgula, espaco, ou os dois)
+    partes = [p.strip() for p in texto.replace(",", " ").split() if p.strip()]
+    if not all(p.isdigit() for p in partes):
+        return (
+            "Não entendi. Responda só com os números separados por "
+            "vírgula (ex: \"1,4\"), um para cada item marcado como AMBIGUO."
+        )
+
+    escolhas = [int(p) for p in partes]
+
+    if len(escolhas) != len(indices_ambiguos):
+        return (
+            f"Preciso de exatamente {len(indices_ambiguos)} número(s), um "
+            f"para cada item ambíguo (você mandou {len(escolhas)}). "
+            f"Responda de novo, ex: \"1,4\"."
+        )
+
+    indices_cobertos = set()
+    for numero in escolhas:
+        if numero not in numeracao:
+            return (
+                f"O número {numero} não corresponde a nenhuma opção mostrada. "
+                f"Confira e responda de novo."
+            )
+        idx, _candidato = numeracao[numero]
+        if idx in indices_cobertos:
+            return (
+                "Você repetiu duas opções para o mesmo item. Responda com "
+                "um número diferente para cada item ambíguo."
+            )
+        indices_cobertos.add(idx)
+
+    if indices_cobertos != indices_ambiguos:
+        return (
+            "As opções escolhidas não cobrem todos os itens ambíguos. "
+            "Responda com um número para cada item marcado como AMBIGUO."
+        )
+
+    # Aplica as escolhas: busca saldo/custo ATUALIZADOS do insumo escolhido
+    for numero in escolhas:
+        idx, candidato_original = numeracao[numero]
+        insumo_atualizado = buscar_insumo_por_id(imovel_id, candidato_original.id)
+        item = resolucao.itens[idx]
+
+        if insumo_atualizado is None:
+            # Insumo pode ter sido desativado entre a primeira mensagem e
+            # agora - caso raro, mas nao pode quebrar o fluxo.
+            sessoes.pop(key, None)
+            return (
+                f"O insumo '{candidato_original.nome}' não está mais "
+                f"disponível. Reenvie a frase da mistura do zero."
+            )
+
+        item.insumo = insumo_atualizado
+        item.status = StatusResolucao.RESOLVIDO
+        item.candidatos = []
+        if item.quantidade_kg is not None:
+            item.custo_estimado = (item.quantidade_kg * insumo_atualizado.custo_unitario)
+            item.saldo_suficiente = insumo_atualizado.saldo >= item.quantidade_kg
+
+    # recalcula custo total agora que tudo (ou quase tudo) esta resolvido
+    if all(i.status == StatusResolucao.RESOLVIDO and i.custo_estimado is not None
+           for i in resolucao.itens):
+        from decimal import Decimal
+        resolucao.custo_total_estimado = sum(
+            (i.custo_estimado for i in resolucao.itens), Decimal("0")
+        )
+
+    mensagem = montar_mensagem_confirmacao_completa(resolucao)
+
+    if resolucao.pronto_para_confirmar:
+        sessoes[key] = {
+            "_tipo": TIPO_TRANSFORMACAO_PENDENTE,
+            "resolucao": resolucao,
+            "nome_resultado": nome_resultado,
+        }
+    else:
+        # sobrou outro bloqueio (ex: estoque insuficiente na escolha feita) -
+        # nao ha mais ambiguidade pra escolher por numero, entao pede reenvio
+        sessoes.pop(key, None)
 
     return mensagem

@@ -175,7 +175,55 @@ def resolver_transformacao(
     )
 
 
+def buscar_insumo_por_id(imovel_id: int, insumo_id: int) -> Optional[InsumoCandidato]:
+    """Busca saldo/custo ATUALIZADOS de um insumo especifico por id -
+    usado ao resolver uma escolha de ambiguidade (evita reusar dado
+    potencialmente desatualizado do momento da primeira mensagem)."""
+    fazenda_id = imovel_id
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT id, nome, categoria, estoque_atual, custo_medio
+                FROM insumos
+                WHERE fazenda_id = %s AND id = %s AND ativo = TRUE
+                """,
+                (fazenda_id, insumo_id),
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+    return _linha_para_candidato(row) if row else None
+
+
+def atribuir_numeracao_ambiguidade(resolucao: ResolucaoTransformacao) -> dict:
+    """
+    Retorna {numero_global: (indice_do_item, InsumoCandidato)}. Numeracao
+    e GLOBAL (sequencial por toda a mensagem, nao reinicia por item) para
+    que o produtor possa responder soh os numeros (ex: "1,4") sem
+    ambiguidade sobre a qual item cada numero pertence.
+    """
+    numeracao = {}
+    contador = 1
+    for idx, item in enumerate(resolucao.itens):
+        if item.status == StatusResolucao.AMBIGUO:
+            for candidato in item.candidatos:
+                numeracao[contador] = (idx, candidato)
+                contador += 1
+    return numeracao
+
+
 def montar_mensagem_confirmacao_completa(resolucao: ResolucaoTransformacao) -> str:
+    numeracao = atribuir_numeracao_ambiguidade(resolucao)
+    numeros_por_item = {}
+    for numero, (idx, candidato) in numeracao.items():
+        numeros_por_item.setdefault(idx, []).append((numero, candidato))
+
     linhas = ["Confirma a mistura abaixo?\n"]
 
     nome_resultado = resolucao.nome_resultado or "(nome nao identificado)"
@@ -183,8 +231,9 @@ def montar_mensagem_confirmacao_completa(resolucao: ResolucaoTransformacao) -> s
     linhas.append("Ingredientes:")
 
     bloqueios = []
+    tem_ambiguidade = False
 
-    for item in resolucao.itens:
+    for idx, item in enumerate(resolucao.itens):
         qtd_str = f"{item.quantidade_kg:g} kg" if item.quantidade_kg is not None else "quantidade nao clara"
 
         if item.status == StatusResolucao.RESOLVIDO:
@@ -203,14 +252,12 @@ def montar_mensagem_confirmacao_completa(resolucao: ResolucaoTransformacao) -> s
                 bloqueios.append(f"Estoque insuficiente de {item.insumo.nome}.")
 
         elif item.status == StatusResolucao.AMBIGUO:
-            nomes_candidatos = ", ".join(c.nome for c in item.candidatos)
+            tem_ambiguidade = True
             linhas.append(
-                f"  - {qtd_str} de '{item.nome_bruto}' "
-                f"⚠️ AMBIGUO - encontrei mais de um insumo parecido: {nomes_candidatos}"
+                f"  - {qtd_str} de '{item.nome_bruto}' ⚠️ AMBIGUO - qual voce quer dizer?"
             )
-            bloqueios.append(
-                f"Qual '{item.nome_bruto}' voce quer dizer: {nomes_candidatos}?"
-            )
+            for numero, candidato in numeros_por_item.get(idx, []):
+                linhas.append(f"      {numero}) {candidato.nome}")
 
         elif item.status == StatusResolucao.NAO_ENCONTRADO:
             linhas.append(
@@ -224,7 +271,14 @@ def montar_mensagem_confirmacao_completa(resolucao: ResolucaoTransformacao) -> s
     if resolucao.custo_total_estimado is not None:
         linhas.append(f"\nCusto total estimado: R$ {resolucao.custo_total_estimado:.2f}")
 
-    if bloqueios:
+    if tem_ambiguidade:
+        qtd_ambiguos = len(numeros_por_item)
+        exemplo = ",".join(str(v[0][0]) for v in list(numeros_por_item.values())[:qtd_ambiguos])
+        linhas.append(
+            f"\nResponda com os números separados por vírgula, um para cada "
+            f"item ambíguo acima (ex: \"{exemplo}\")."
+        )
+    elif bloqueios:
         linhas.append("\nAntes de confirmar, preciso resolver:")
         for b in bloqueios:
             linhas.append(f"  ⚠️ {b}")
