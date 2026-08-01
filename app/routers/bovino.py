@@ -1707,14 +1707,48 @@ def webhook_whatsapp_bovino(payload: WhatsAppMensagemBovino):
                     cur.execute("SELECT id FROM especie WHERE codigo = 'BOVINO'")
                     especie_row = cur.fetchone()
                     especie_id = especie_row["id"] if especie_row else None
+
+                    sexo_nasc = entidades.get("sexo", "F")
+                    if sexo_nasc == "M":
+                        # Regra de negocio (Cicero): macho nascido em rebanho
+                        # leiteiro sempre vira corte, independente da
+                        # genealogia/raca da mae.
+                        aptidao_manejo = "corte"
+                    else:
+                        # Femea: tenta raca informada na mensagem; senao cai
+                        # pro tipo_bovino do imovel; senao 'leite' como
+                        # ultimo recurso. Bug anterior (01/08) gravava
+                        # 'corte' fixo pra qualquer sexo.
+                        raca_nome = entidades.get("raca")
+                        raca_aptidao = None
+                        if raca_nome:
+                            cur.execute(
+                                "SELECT aptidao FROM bovino_racas WHERE LOWER(nome) = LOWER(%s)",
+                                (raca_nome,)
+                            )
+                            raca_row = cur.fetchone()
+                            if raca_row and raca_row["aptidao"] in ("leite", "corte"):
+                                raca_aptidao = raca_row["aptidao"]
+
+                        if raca_aptidao:
+                            aptidao_manejo = raca_aptidao
+                        else:
+                            cur.execute(
+                                "SELECT tipo_bovino FROM imoveis_rurais WHERE id = %s",
+                                (payload.imovel_id,)
+                            )
+                            tipo_row = cur.fetchone()
+                            tipo_imovel = tipo_row["tipo_bovino"] if tipo_row else None
+                            aptidao_manejo = tipo_imovel if tipo_imovel in ("leite", "corte") else "leite"
+
                     cur.execute("""
                         INSERT INTO bovino_animais
                             (imovel_id, especie_id, brinco, sexo, categoria, aptidao_manejo,
                              data_nascimento, origem)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,'nascimento') RETURNING id
                     """, (payload.imovel_id, especie_id, entidades.get("brinco"),
-                          entidades.get("sexo", "F"), entidades.get("categoria", "bezerro"),
-                          "corte", entidades.get("data_nascimento")))
+                          sexo_nasc, entidades.get("categoria", "bezerro"),
+                          aptidao_manejo, entidades.get("data_nascimento")))
                     evento_id = cur.fetchone()["id"]
                     evento_tab = "bovino_animais"
                 except psycopg2.errors.UniqueViolation:
