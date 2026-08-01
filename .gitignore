@@ -60,3 +60,19 @@ ngrok.exe
 /nfe_*.pdf
 desktop.ini
 
+
+# --- Limpeza 01/08/2026 ---
+node_modules/
+dist/
+*.bak_*
+
+# Prefixos de scripts avulsos que faltavam no padrao existente
+/patch_*.py
+/dados_*.py
+/migrar_*.py
+/reverter_*.py
+/validar_*.py
+/desfazer_*.py
+/cadastrar_*.py
+/adicionar_*.py
+/integrar_*.py
