@@ -423,7 +423,10 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
             imovel_de_outro = conn.execute(text("""
                 SELECT id, produtor_id FROM imoveis_rurais
                 WHERE produtor_id != :pid
-                  AND lower(unaccent(nome)) = lower(unaccent(:nome))
+                  AND regexp_replace(lower(unaccent(nome)),
+                        '^(fazenda|sitio|chacara|rancho|estancia|granja|haras|propriedade|invernada|retiro)\\s+', '')
+                      = regexp_replace(lower(unaccent(:nome)),
+                        '^(fazenda|sitio|chacara|rancho|estancia|granja|haras|propriedade|invernada|retiro)\\s+', '')
                   AND lower(unaccent(COALESCE(municipio, ''))) = lower(unaccent(COALESCE(:municipio, '')))
                   AND uf = :uf
                 LIMIT 1
@@ -446,7 +449,10 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
             imovel_similar = conn.execute(text("""
                 SELECT id FROM imoveis_rurais
                 WHERE produtor_id = :pid
-                  AND lower(unaccent(nome)) = lower(unaccent(:nome))
+                  AND regexp_replace(lower(unaccent(nome)),
+                        '^(fazenda|sitio|chacara|rancho|estancia|granja|haras|propriedade|invernada|retiro)\\s+', '')
+                      = regexp_replace(lower(unaccent(:nome)),
+                        '^(fazenda|sitio|chacara|rancho|estancia|granja|haras|propriedade|invernada|retiro)\\s+', '')
                 LIMIT 1
             """), {"pid": produtor_id, "nome": imovel.get("nome")}).fetchone()
 
@@ -466,6 +472,20 @@ def cadastrar(produtor: dict, imovel: dict) -> int:
                 conn.commit()
 
         return produtor_id
+
+
+def listar_imoveis_do_produtor(produtor_id: int) -> list[dict]:
+    """Lista os imoveis ja cadastrados de um produtor (usado no wizard de
+    cadastro pra evitar duplicar propriedade por variacao de nome digitado
+    -- achado em 31/07, imoveis 17/18 do Bira)."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, nome, nirf, area_ha, municipio, uf
+            FROM imoveis_rurais
+            WHERE produtor_id = :pid
+            ORDER BY id
+        """), {"pid": produtor_id}).mappings().all()
+        return [dict(r) for r in rows]
 
 # â”€â”€â”€ Painel do contador â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

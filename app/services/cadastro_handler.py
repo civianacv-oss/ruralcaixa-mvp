@@ -106,6 +106,17 @@ def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
             tel = "55" + tel
         sess["telefone"] = tel
 
+        # Se o CPF ja era de um produtor existente e ele e dono de imovel,
+        # oferece escolher uma propriedade ja cadastrada em vez de digitar
+        # o nome de novo (evita duplicidade por variacao de digitacao --
+        # achado em 31/07, imoveis 17/18 do Bira).
+        if sess.get("_dono", True) and sess.get("_produtor_existente_id"):
+            from app.db import listar_imoveis_do_produtor
+            candidatos = listar_imoveis_do_produtor(sess["_produtor_existente_id"])
+            if candidatos:
+                sess["_imoveis_candidatos"] = candidatos
+                proxima_forcada = "imovel_escolha"
+
     elif etapa == "uf":
         uf = texto.upper().strip()
         UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
@@ -121,6 +132,27 @@ def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
         except ValueError:
             sess["area_ha"] = None
 
+    elif etapa == "imovel_escolha":
+        resp = texto.strip().upper()
+        candidatos = sess.get("_imoveis_candidatos", [])
+        if resp in ("NOVA", "NENHUMA", "0", "NENHUMA DESSAS"):
+            sess["_imovel_id_existente"] = None
+            proxima_forcada = "imovel_nome"
+        else:
+            try:
+                idx = int(resp) - 1
+                if idx < 0 or idx >= len(candidatos):
+                    raise ValueError
+                escolhido = candidatos[idx]
+            except (ValueError, IndexError):
+                return "⚠️ Não entendi. Responda com o número da propriedade da lista, ou *NOVA* para cadastrar uma diferente:"
+            sess["_imovel_id_existente"] = escolhido["id"]
+            sess["imovel_nome"] = escolhido["nome"]
+            sess["municipio"] = escolhido.get("municipio")
+            sess["uf"] = escolhido.get("uf")
+            sess["area_ha"] = escolhido.get("area_ha")
+            proxima_forcada = "confirmar"
+
     elif etapa == "imovel_nome":
         sess["imovel_nome"] = texto
 
@@ -133,9 +165,23 @@ def processar_etapa(sessoes: dict, numero: str, texto: str) -> str:
 
     if proxima == "confirmar":
         return _montar_confirmacao(sess)
+    elif proxima == "imovel_escolha":
+        return prefixo_extra + _montar_pergunta_imovel_escolha(sess)
     elif proxima:
         return prefixo_extra + PERGUNTAS[proxima]
     return None
+
+
+def _montar_pergunta_imovel_escolha(sess: dict) -> str:
+    candidatos = sess.get("_imoveis_candidatos", [])
+    linhas = ["🌾 Encontrei estas propriedades já cadastradas no seu nome:\n"]
+    for i, im in enumerate(candidatos, start=1):
+        area_txt = f", {im['area_ha']}ha" if im.get("area_ha") else ""
+        linhas.append(f"{i}️⃣ {im['nome']} ({im.get('municipio','?')}/{im.get('uf','?')}{area_txt})")
+    linhas.append(
+        "\nÉ uma dessas? Responda com o *número*, ou *NOVA* se for uma propriedade diferente."
+    )
+    return "\n".join(linhas)
 
 
 def _montar_confirmacao(sess: dict) -> str:
@@ -186,13 +232,19 @@ def confirmar_cadastro(sessoes: dict, key: str, numero_real: str = None, canal: 
 
     imovel = {}
     if sess.get("_dono", True):
-        imovel = {
-            "nome":      sess.get("imovel_nome"),
-            "municipio": sess.get("municipio"),
-            "uf":        sess.get("uf"),
-            "area_ha":   sess.get("area_ha"),
-            "nirf":      None,
-        }
+        if sess.get("_imovel_id_existente"):
+            imovel = {
+                "imovel_id":    sess["_imovel_id_existente"],
+                "participacao": 100,
+            }
+        else:
+            imovel = {
+                "nome":      sess.get("imovel_nome"),
+                "municipio": sess.get("municipio"),
+                "uf":        sess.get("uf"),
+                "area_ha":   sess.get("area_ha"),
+                "nirf":      None,
+            }
 
     return {"produtor": produtor, "imovel": imovel}
 
