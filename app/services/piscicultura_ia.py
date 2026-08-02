@@ -36,7 +36,8 @@ Formato de resposta:
 Intents disponíveis e seus campos:
 - registro_diario → racao_kg? (float), tipo_racao? (str), mortalidade_qtd? (int),
                      mortalidade_causa? (str), oxigenio_dissolvido? (float, mg/L),
-                     ph? (float), temperatura_c? (float), transparencia_secchi_cm? (int)
+                     ph? (float), temperatura_c? (float), transparencia_secchi_cm? (int),
+                     amonia_mg_l? (float, mg/L), nitrito_mg_l? (float, mg/L)
 - biometria       → qtd_amostrada (int), peso_medio_g (float), tecnico_responsavel? (str)
 - compra_insumo   → tipo_insumo (str: "racao"|"alevino"|"cal"|"outro"), descricao (str),
                      quantidade? (float), unidade? (str), valor_total (float), fornecedor? (str)

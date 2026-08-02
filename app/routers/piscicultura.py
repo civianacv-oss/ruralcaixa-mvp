@@ -170,6 +170,8 @@ def _gerar_alertas_agua(registro: dict) -> list:
     ph = registro.get("ph")
     temp = registro.get("temperatura_c")
     secchi = registro.get("transparencia_secchi_cm")
+    amonia = registro.get("amonia_mg_l")
+    nitrito = registro.get("nitrito_mg_l")
 
     if o2 is not None:
         if o2 < 2:
@@ -194,6 +196,18 @@ def _gerar_alertas_agua(registro: dict) -> list:
             alertas.append(f"⚠️ Transparência baixa = {secchi} cm — trocar água")
         elif secchi > 70:
             alertas.append(f"⚠️ Transparência alta = {secchi} cm — adubar viveiro")
+
+    if amonia is not None:
+        if amonia > 0.5:
+            alertas.append(f"⚠️ CRÍTICO: Amônia = {amonia} mg/L — acima do limite (0.5 mg/L), trocar água")
+        elif amonia > 0.3:
+            alertas.append(f"⚠️ Amônia elevada = {amonia} mg/L (aviso, limite crítico 0.5)")
+
+    if nitrito is not None:
+        if nitrito > 0.2:
+            alertas.append(f"⚠️ CRÍTICO: Nitrito = {nitrito} mg/L — acima do limite (0.2 mg/L), trocar água")
+        elif nitrito > 0.1:
+            alertas.append(f"⚠️ Nitrito elevado = {nitrito} mg/L (aviso, limite crítico 0.2)")
 
     return alertas
 
@@ -655,9 +669,10 @@ def registrar_dia(data: RegistroDiarioCreate):
                 INSERT INTO registros_diarios_piscicultura
                     (ciclo_id, data_registro, racao_kg, tipo_racao, custo_racao_dia,
                      preco_kg_racao, mortalidade_qtd, mortalidade_causa,
-                     oxigenio_dissolvido, ph, temperatura_c, transparencia_secchi_cm, alertas,
+                     oxigenio_dissolvido, ph, temperatura_c, transparencia_secchi_cm,
+                     amonia_mg_l, nitrito_mg_l, alertas,
                      insumo_racao_id, movimentacao_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (ciclo_id, data_registro) DO UPDATE SET
                     racao_kg = EXCLUDED.racao_kg,
                     tipo_racao = EXCLUDED.tipo_racao,
@@ -669,6 +684,8 @@ def registrar_dia(data: RegistroDiarioCreate):
                     ph = EXCLUDED.ph,
                     temperatura_c = EXCLUDED.temperatura_c,
                     transparencia_secchi_cm = EXCLUDED.transparencia_secchi_cm,
+                    amonia_mg_l = EXCLUDED.amonia_mg_l,
+                    nitrito_mg_l = EXCLUDED.nitrito_mg_l,
                     alertas = EXCLUDED.alertas,
                     insumo_racao_id = EXCLUDED.insumo_racao_id,
                     movimentacao_id = EXCLUDED.movimentacao_id
@@ -684,6 +701,8 @@ def registrar_dia(data: RegistroDiarioCreate):
                 float(data.ph) if data.ph else None,
                 float(data.temperatura_c) if data.temperatura_c else None,
                 data.transparencia_secchi_cm,
+                float(data.amonia_mg_l) if data.amonia_mg_l else None,
+                float(data.nitrito_mg_l) if data.nitrito_mg_l else None,
                 alertas_str,
                 data.insumo_racao_id, movimentacao_id,
             ))
@@ -1110,8 +1129,8 @@ def webhook_whatsapp_piscicultura(payload: WhatsAppMensagemPiscicultura):
                     INSERT INTO registros_diarios_piscicultura
                         (ciclo_id, data_registro, racao_kg, tipo_racao, mortalidade_qtd,
                          mortalidade_causa, oxigenio_dissolvido, ph, temperatura_c,
-                         transparencia_secchi_cm, alertas)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                         transparencia_secchi_cm, amonia_mg_l, nitrito_mg_l, alertas)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (ciclo_id, data_registro) DO UPDATE SET
                         racao_kg = COALESCE(EXCLUDED.racao_kg, registros_diarios_piscicultura.racao_kg),
                         mortalidade_qtd = COALESCE(EXCLUDED.mortalidade_qtd, registros_diarios_piscicultura.mortalidade_qtd),
@@ -1119,6 +1138,8 @@ def webhook_whatsapp_piscicultura(payload: WhatsAppMensagemPiscicultura):
                         ph = COALESCE(EXCLUDED.ph, registros_diarios_piscicultura.ph),
                         temperatura_c = COALESCE(EXCLUDED.temperatura_c, registros_diarios_piscicultura.temperatura_c),
                         transparencia_secchi_cm = COALESCE(EXCLUDED.transparencia_secchi_cm, registros_diarios_piscicultura.transparencia_secchi_cm),
+                        amonia_mg_l = COALESCE(EXCLUDED.amonia_mg_l, registros_diarios_piscicultura.amonia_mg_l),
+                        nitrito_mg_l = COALESCE(EXCLUDED.nitrito_mg_l, registros_diarios_piscicultura.nitrito_mg_l),
                         alertas = COALESCE(EXCLUDED.alertas, registros_diarios_piscicultura.alertas)
                     RETURNING id
                 """, (
@@ -1126,7 +1147,8 @@ def webhook_whatsapp_piscicultura(payload: WhatsAppMensagemPiscicultura):
                     entidades.get("tipo_racao"), entidades.get("mortalidade_qtd"),
                     entidades.get("mortalidade_causa"), entidades.get("oxigenio_dissolvido"),
                     entidades.get("ph"), entidades.get("temperatura_c"),
-                    entidades.get("transparencia_secchi_cm"), alertas_str,
+                    entidades.get("transparencia_secchi_cm"), entidades.get("amonia_mg_l"),
+                    entidades.get("nitrito_mg_l"), alertas_str,
                 ))
                 evento_id = cur.fetchone()["id"]
                 evento_tab = "registros_diarios_piscicultura"

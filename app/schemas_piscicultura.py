@@ -161,6 +161,8 @@ class RegistroDiarioCreate(BaseModel):
     ph: Optional[Decimal] = Field(None, ge=0, le=14)
     temperatura_c: Optional[Decimal] = Field(None, ge=0, le=45)
     transparencia_secchi_cm: Optional[int] = Field(None, ge=0, le=500)
+    amonia_mg_l: Optional[Decimal] = Field(None, ge=0, le=50)
+    nitrito_mg_l: Optional[Decimal] = Field(None, ge=0, le=50)
 
 
 class RegistroDiarioResponse(BaseModel):
@@ -176,6 +178,8 @@ class RegistroDiarioResponse(BaseModel):
     ph: Optional[Decimal]
     temperatura_c: Optional[Decimal]
     transparencia_secchi_cm: Optional[int]
+    amonia_mg_l: Optional[Decimal] = None
+    nitrito_mg_l: Optional[Decimal] = None
     alertas: Optional[str]
     insumo_racao_id: Optional[int] = None
     alerta_racao: Optional[str] = None
