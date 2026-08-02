@@ -215,13 +215,6 @@ if importacao_router:
     app.include_router(importacao_router)
 
 try:
-    from app.routers.propriedades_rural import router as propriedades_rural_router
-    app.include_router(propriedades_rural_router)
-    print('PROPRIEDADES_RURAL ROUTER LOADED OK')
-except Exception as _e:
-    print(f'PROPRIEDADES_RURAL ROUTER FAILED: {_e}')
-
-try:
     from app.routers.administradores import router as administradores_router
     app.include_router(administradores_router)
     print('ADMINISTRADORES ROUTER LOADED OK')
@@ -252,13 +245,12 @@ except Exception as e:
     print(f"PRODUCAO_INSUMOS ROUTER FAILED: {e}")
 
 
-# Cron alertas insumos
-try:
-    from app.services.insumo_cron import verificar_alertas_insumo
-    print('INSUMO CRON LOADED OK')
-except Exception as _e:
-    verificar_alertas_insumo = None
-    print(f'INSUMO CRON FAILED: {_e}')
+# NOTA (02/08): existia aqui um import de app.services.insumo_cron que
+# nunca existiu no repo (mesma classe de problema do propriedades_rural
+# acima) -- removido. Alertas de estoque baixo de insumo continuam sem
+# cron real; não há nem endpoint /insumos/processar-alertas (comparar
+# com os outros módulos, que têm /{modulo}/processar-alertas). Fica como
+# pendência separada, maior escopo que essa limpeza.
 
 # Cron alertas ovinos
 try:

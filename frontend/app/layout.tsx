@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import GlobalErrorHandler from "@/components/GlobalErrorHandler";
 import DashboardLayout from "@/components/DashboardLayout";
+import { ImovelProvider } from "@/contexts/ImovelContext";
 
 // Apply safety patches IMMEDIATELY before any other code runs
 if (typeof window !== 'undefined') {
@@ -97,9 +98,11 @@ export default function RootLayout({
             }).catch(function(e) { console.log('Caches.keys error:', e); });
           }
         ` }} />
-        <DashboardLayout>
-          {children}
-        </DashboardLayout>
+        <ImovelProvider>
+          <DashboardLayout>
+            {children}
+          </DashboardLayout>
+        </ImovelProvider>
       </body>
     </html>
   );

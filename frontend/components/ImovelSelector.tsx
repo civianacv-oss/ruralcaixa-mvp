@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useImovel } from "../contexts/ImovelContext";
+import { apiFetch } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://ruralcaixa-mvp-production.up.railway.app";
 
@@ -10,7 +11,18 @@ export default function ImovelSelector() {
   const [loadingImoveis, setLoadingImoveis] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  // Carregar imóveis do backend
+  // Carregar imóveis do backend.
+  //
+  // 02/08: corrigido -- este componente nunca funcionou porque chamava
+  // GET /propriedades?cpf=..., endpoint que não existe em lugar nenhum
+  // do backend (era o import morto app.routers.propriedades_rural,
+  // referenciado em main.py mas o arquivo nunca existiu). Além disso
+  // era o padrão antigo e inseguro (CPF como query param), que já foi
+  // abandonado em 29-30/07 depois do bug de segurança do
+  // /imoveis/buscar?cpf=... (ignorava o cpf, retornava os 10 primeiros
+  // imóveis do sistema). Agora usa a fonte única de verdade real:
+  // GET /produtores/me/imoveis (Bearer token, já filtra por quem está
+  // autenticado -- próprios + vinculados via participacoes_imovel).
   useEffect(() => {
     const fetchImoveis = async () => {
       try {
@@ -20,41 +32,17 @@ export default function ImovelSelector() {
           return;
         }
 
-        // Obter CPF do produtor local
-        const produtorStr = localStorage.getItem("rc_produtor");
-        if (!produtorStr) {
-          console.warn("[ImovelSelector] Produtor não encontrado");
-          return;
-        }
-
-        let cpf = "";
-        try {
-          const produtor = JSON.parse(produtorStr);
-          cpf = produtor.cpf || "";
-        } catch (e) {
-          console.error("[ImovelSelector] Erro ao parsear produtor:", e);
-          return;
-        }
-
-        if (!cpf) {
-          console.warn("[ImovelSelector] CPF não encontrado no produtor");
-          return;
-        }
-
         setLoadingImoveis(true);
 
-        // Chamar endpoint correto: /propriedades?cpf=...
-        const response = await fetch(`${API}/propriedades?cpf=${cpf}&limit=100`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await apiFetch(`${API}/produtores/me/imoveis`);
 
         if (response.ok) {
           const data = await response.json();
-          
-          // Converter propriedades para formato de imóvel
-          const imovelList = (Array.isArray(data.itens) ? data.itens : []).map((prop: any) => ({
-            id: prop.id,
-            nome: prop.nome || `Propriedade ${prop.id}`,
+
+          // /produtores/me/imoveis retorna {imovel_id, nome, papel, ...}[]
+          const imovelList = (Array.isArray(data) ? data : []).map((prop: any) => ({
+            id: prop.imovel_id,
+            nome: prop.nome || `Propriedade ${prop.imovel_id}`,
           }));
 
           setImoveis(imovelList);
@@ -72,38 +60,34 @@ export default function ImovelSelector() {
     fetchImoveis();
   }, [setImoveis]);
 
-  // Deletar imóvel
-  const handleDeleteImovel = async (imovelId: string | number) => {
+  // Deletar imóvel (02/08: corrigido de /propriedades/{id}, que não
+  // existia, para o endpoint real DELETE /imoveis-rurais/{id})
+  const handleDeleteImovel = async (idParaExcluir: number) => {
     if (!confirm("Tem certeza que deseja excluir esta propriedade?")) {
       return;
     }
 
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        alert("Token não encontrado");
-        return;
-      }
+      setDeletingId(idParaExcluir);
 
-      setDeletingId(imovelId as number);
-
-      const response = await fetch(`${API}/propriedades/${imovelId}`, {
+      const response = await apiFetch(`${API}/imoveis-rurais/${idParaExcluir}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok || response.status === 204) {
-        // Remover da lista local
-        setImoveis((Array.isArray(imoveis) ? imoveis : []).filter(i => i.id !== imovelId));
-        
-        // Se era o selecionado, selecionar outro
-        if (imovelId === imovelId) {
-          const outroImovel = imoveis.find(i => i.id !== imovelId);
-          if (outroImovel) {
-            setImovelId(outroImovel.id);
-          }
+        const eraOAtivo = idParaExcluir === imovelId;
+        const restantes = (Array.isArray(imoveis) ? imoveis : []).filter(i => i.id !== idParaExcluir);
+        setImoveis(restantes);
+
+        // Se era o selecionado, troca pra outro e recarrega -- as demais
+        // páginas leem o imovel ativo via getImovelId() só na montagem,
+        // não reagem a mudança de contexto em tempo real.
+        if (eraOAtivo && restantes.length > 0) {
+          setImovelId(restantes[0].id);
+          window.location.reload();
+          return;
         }
-        
+
         alert("Propriedade excluída com sucesso!");
       } else {
         alert(`Erro ao excluir: ${response.status}`);
@@ -240,8 +224,13 @@ export default function ImovelSelector() {
                     <div
                       style={s.option(imovel.id === imovelId)}
                       onClick={() => {
+                        if (imovel.id === imovelId) {
+                          setOpenDropdown(false);
+                          return;
+                        }
                         setImovelId(imovel.id);
                         setOpenDropdown(false);
+                        window.location.reload();
                       }}
                     >
                       {imovel.nome}

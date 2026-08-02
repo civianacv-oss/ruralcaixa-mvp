@@ -2,6 +2,7 @@
 
 import { LogOut, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import ImovelSelector from "@/components/ImovelSelector";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed";
 
@@ -47,6 +48,9 @@ export default function DashboardLayout({
             </span>
           )}
         </div>
+
+        {/* Seletor de propriedade ativa */}
+        {!isCollapsed && <ImovelSelector />}
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto py-2 px-2">
