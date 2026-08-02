@@ -319,6 +319,46 @@ async def processar_mensagem(msg: MsgIn) -> str:
             auth_local = _autorizar_numero(msg.numero, msg.canal)
             return _avancar_consumo_insumo(sessoes, key, novo_resultado, auth_local.get("imovel_id"))
 
+        # Sub-fluxo (item #5, 02/08): compra de insumo do catálogo sem
+        # quantidade explícita no texto original -- pergunta a quantidade
+        # antes de confirmar, em vez de deixar a compra virar despesa
+        # comum silenciosamente sem dar entrada no estoque.
+        if sessoes[key].get("_aguardando_quantidade_insumo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo especificando a quantidade (ex: '50kg de núcleo')."
+
+            m_qtd = re.search(
+                r'(\d+(?:[.,]\d+)?)\s*'
+                r'(sacos?|sacas?|kg|quilos?|litros?|unidades?|toneladas?|ton|un)?',
+                texto.lower(),
+            )
+            if not m_qtd:
+                return (
+                    "Não entendi a quantidade. Me diga um número, com unidade se possível "
+                    "(ex: 50kg, 10 sacos), ou CANCELAR."
+                )
+            try:
+                quantidade_insumo = float(m_qtd.group(1).replace(",", "."))
+            except ValueError:
+                quantidade_insumo = 0
+            if quantidade_insumo <= 0:
+                return "Quantidade inválida. Me diga um número maior que zero, ou CANCELAR."
+
+            sess = sessoes[key]
+            resultado_pendente_insumo = sess["_lancamento_pendente_insumo"]
+            resultado_pendente_insumo["_compra_insumo_id"] = sess["_insumo_sem_qtd_id"]
+            resultado_pendente_insumo["_compra_insumo_nome"] = sess["_insumo_sem_qtd_nome"]
+            resultado_pendente_insumo["_compra_quantidade"] = quantidade_insumo
+            valor_lancamento = resultado_pendente_insumo.get("valor")
+            resultado_pendente_insumo["_compra_custo_unitario"] = (
+                round(valor_lancamento / quantidade_insumo, 4) if valor_lancamento else None
+            )
+            resultado_pendente_insumo["_imovel_id"] = sess["_imovel_id_insumo"]
+
+            sessoes[key] = resultado_pendente_insumo
+            return _proximo_passo_apos_valor(resultado_pendente_insumo, msg.numero)
+
         # Sub-fluxo: escolha de safra ambígua na produção agrícola
         if sessoes[key].get("_tipo") == "aguardando_escolha_safra":
             if texto_up in ("0", "CANCELAR", "CANCELA"):
@@ -1093,6 +1133,27 @@ async def processar_mensagem(msg: MsgIn) -> str:
         compra_insumo = _detectar_compra_insumo(texto, resultado["valor"], auth["imovel_id"])
         if compra_insumo:
             resultado.update(compra_insumo)
+        else:
+            # Item #5 (02/08): _detectar_compra_insumo exige quantidade+
+            # unidade explícitas no texto. Se não achou esse padrão mas o
+            # nome do insumo bate com o catálogo mesmo assim, pergunta a
+            # quantidade em vez de deixar a compra virar despesa comum
+            # silenciosamente sem dar entrada no estoque.
+            insumo_sem_qtd = detectar_insumo_sem_quantidade(texto, auth["imovel_id"])
+            if insumo_sem_qtd:
+                sessoes[key] = {
+                    "_aguardando_quantidade_insumo": True,
+                    "_insumo_sem_qtd_id": insumo_sem_qtd["insumo_id"],
+                    "_insumo_sem_qtd_nome": insumo_sem_qtd["insumo_nome"],
+                    "_lancamento_pendente_insumo": resultado,
+                    "_imovel_id_insumo": auth["imovel_id"],
+                }
+                return (
+                    f"📦 Notei que você mencionou \"{insumo_sem_qtd['insumo_nome']}\", que já está "
+                    f"no seu catálogo de insumos, mas não veio a quantidade.\n\n"
+                    f"Qual foi a quantidade (com unidade, ex: 50kg, 10 sacos)? "
+                    f"Se não for esse insumo, digite CANCELAR."
+                )
 
     sessoes[key] = resultado
 
@@ -2233,6 +2294,66 @@ def _detectar_compra_insumo(texto: str, valor: float, imovel_id: int) -> dict | 
         "_compra_custo_unitario": round(valor / quantidade, 4),
         "_imovel_id": imovel_id,
     }
+
+
+def detectar_insumo_sem_quantidade(texto: str, imovel_id: int) -> dict | None:
+    """
+    Item #5 da lista de pendências (02/08): quando a mensagem menciona um
+    insumo do catálogo mas SEM quantidade/unidade explícita (ex: "comprei
+    núcleo para ração de rebanho leiteiro R$3000" -- menciona "núcleo" mas
+    não diz quanto), _detectar_compra_insumo() acima retorna None (exige
+    o padrão "<qtd> <unidade>? de <produto>"), e a compra virava despesa
+    normal SILENCIOSAMENTE, sem dar entrada no estoque nem avisar o
+    produtor que isso aconteceu.
+
+    Só é chamada quando _detectar_compra_insumo já retornou None -- aqui a
+    checagem é deliberadamente mais permissiva (só nome do insumo, sem
+    exigir número antes), pra detectar exatamente esse caso. Retorna
+    {"insumo_id", "insumo_nome"} se achar exatamente 1 candidato no
+    catálogo; None se não achar nenhum (não é insumo conhecido, segue como
+    despesa normal mesmo) ou achar mais de um (ambíguo demais pra
+    perguntar quantidade sem saber de qual insumo -- mesma cautela de
+    _detectar_compra_insumo com empate).
+    """
+    from app.services.classifier import normalizar
+
+    texto_norm = normalizar(texto)
+    palavras_texto = set(texto_norm.split())
+
+    from app.db import engine
+    from sqlalchemy import text as sqlt
+
+    with engine.connect() as conn:
+        rows = conn.execute(sqlt("""
+            SELECT id, nome FROM insumos WHERE fazenda_id = :fid AND ativo = true
+        """), {"fid": imovel_id}).fetchall()
+
+    # Mesma lógica de pontuação por sobreposição de _detectar_compra_insumo
+    # (nome inteiro bate = prioridade máxima; senão, conta palavras em
+    # comum com 4+ letras, pra não empatar à toa em preposições/artigos).
+    # Empate real (ex: mensagem cita duas palavras que aparecem em dois
+    # insumos catalogados diferentes) não arrisca -- retorna None, mesma
+    # cautela já usada em _detectar_compra_insumo e _detectar_consumo_insumo.
+    candidatos = []  # (score, row)
+    for r in rows:
+        nome_norm = normalizar(r.nome)
+        if nome_norm in texto_norm:
+            candidatos.append((1000, r))
+            continue
+        palavras_nome = {p for p in nome_norm.split() if len(p) >= 4}
+        overlap = palavras_nome & palavras_texto
+        if overlap:
+            candidatos.append((len(overlap), r))
+
+    if not candidatos:
+        return None
+
+    melhor_score = max(c[0] for c in candidatos)
+    empatados = [r for score, r in candidatos if score == melhor_score]
+
+    if len(empatados) == 1:
+        return {"insumo_id": empatados[0].id, "insumo_nome": empatados[0].nome}
+    return None
 
 
 def _normalizar_para_comando(texto: str) -> str:
