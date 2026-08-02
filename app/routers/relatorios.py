@@ -11,7 +11,7 @@ caprino/suino tem tabela propria mas referenciam uma tabela "imoveis"
 que pode nao existir mais -- precisa investigar antes de incluir aqui
 (ver diagnostico separado).
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request, HTTPException
 from typing import Optional
 from datetime import date
 import psycopg2
@@ -25,8 +25,65 @@ def get_db():
     return psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=psycopg2.extras.RealDictCursor)
 
 
+# 02/08: resumo_por_atividade e comparativo_atividades aceitavam
+# produtor_id cru via query param, sem checar contra quem estava
+# autenticado -- qualquer token valido (de qualquer produtor) conseguia
+# ler o relatorio financeiro de QUALQUER outro produtor so trocando o
+# numero na URL (pendencia de seguranca registrada em sessao anterior,
+# "baixo risco enquanto so o Cicero tem token valido" -- deixou de ser
+# baixo risco no momento em que o painel virou multiusuario de verdade,
+# ver fix do ImovelSelector na mesma sessao).
+#
+# Ainda nao existe um sistema formal de "papel" (role) no banco -- por
+# ora, a tela /contador (que navega por produtor_id de qualquer
+# produtor) e uso interno do Cicero (produtor_id=1) como operador,
+# nao uma feature aberta a terceiros. Ate um sistema de role real
+# existir, a regra e simples: so pode consultar dado de OUTRO produtor
+# se for o proprio Cicero autenticado.
+_PRODUTOR_ID_OPERADOR = 1
+
+
+def _autorizar_produtor_id(request: Request, produtor_id_solicitado: int) -> int:
+    """Retorna o produtor_id que a consulta deve usar, ou lanca 403 se o
+    token autenticado nao tiver permissao pra ver o produtor_id pedido."""
+    produtor_id_token = getattr(request.state, "produtor_id", None)
+    if produtor_id_token is None:
+        raise HTTPException(status_code=401, detail="Token nao identificado.")
+    if produtor_id_solicitado == produtor_id_token:
+        return produtor_id_solicitado
+    if produtor_id_token == _PRODUTOR_ID_OPERADOR:
+        return produtor_id_solicitado
+    raise HTTPException(
+        status_code=403,
+        detail="Voce nao tem permissao pra ver o relatorio de outro produtor.",
+    )
+
+
+def _autorizar_imovel_id(request: Request, imovel_id_solicitado: int) -> int:
+    """Mesma logica de _autorizar_produtor_id, mas para endpoints que
+    filtram por imovel_id (rebanho, eficiencia-alimentar). Reaproveita
+    listar_imoveis_acessiveis (db.py) -- fonte unica de verdade criada
+    em 30/07 pro bug do /imoveis/buscar?cpf=... -- em vez de confiar
+    cegamente no imovel_id que vier na query string."""
+    produtor_id_token = getattr(request.state, "produtor_id", None)
+    if produtor_id_token is None:
+        raise HTTPException(status_code=401, detail="Token nao identificado.")
+    if produtor_id_token == _PRODUTOR_ID_OPERADOR:
+        return imovel_id_solicitado
+
+    from app.db import listar_imoveis_acessiveis
+    acessiveis = {i["imovel_id"] for i in listar_imoveis_acessiveis(produtor_id_token)}
+    if imovel_id_solicitado not in acessiveis:
+        raise HTTPException(
+            status_code=403,
+            detail="Voce nao tem permissao pra ver o relatorio deste imovel.",
+        )
+    return imovel_id_solicitado
+
+
 @router.get("/rebanho")
 def relatorio_rebanho(
+    request: Request,
     imovel_id: int,
     data_inicio: Optional[date] = Query(None),
     data_fim: Optional[date] = Query(None),
@@ -38,6 +95,7 @@ def relatorio_rebanho(
     animal ativo. data_inicio/data_fim reservados para uso futuro
     (ex: entradas/saidas no periodo) -- hoje o resumo e sempre "foto atual".
     """
+    imovel_id = _autorizar_imovel_id(request, imovel_id)
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -213,7 +271,7 @@ def _gpd_e_peso(cur, tabela_animais, tabela_pesagens, imovel_id, extra_where="",
 
 
 @router.get("/eficiencia-alimentar")
-def relatorio_eficiencia_alimentar(imovel_id: int, produtor_id: int):
+def relatorio_eficiencia_alimentar(request: Request, imovel_id: int, produtor_id: int):
     """
     Custo de racao por kg de peso vivo ganho, por rebanho (bovino de corte,
     ovino, caprino, suino) -- generalizacao do IOFC pra alem do leite.
@@ -225,6 +283,7 @@ def relatorio_eficiencia_alimentar(imovel_id: int, produtor_id: int):
     cabecas de cada rebanho -- nao e o custo real de cada um, e uma
     estimativa ate existir lancamento por lote em todas as especies.
     """
+    imovel_id = _autorizar_imovel_id(request, imovel_id)
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -312,6 +371,7 @@ def listar_atividades(produtor_id: Optional[int] = Query(None)):
 
 @router.get("/resumo-por-atividade")
 def resumo_por_atividade(
+    request: Request,
     produtor_id: int,
     meses: int = Query(12, ge=1, le=36),
 ):
@@ -319,6 +379,7 @@ def resumo_por_atividade(
     Alimenta o grafico comparativo do Dashboard. Lancamentos sem
     atividade_id (historico anterior ao backfill, ou casos ambiguos)
     caem no grupo "Nao classificado" em vez de sumir da soma."""
+    produtor_id = _autorizar_produtor_id(request, produtor_id)
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -355,12 +416,14 @@ def resumo_por_atividade(
 
 @router.get("/comparativo-atividades")
 def comparativo_atividades(
+    request: Request,
     produtor_id: int,
     meses: int = Query(12, ge=1, le=36),
 ):
     """Mesma base do resumo-por-atividade, mas ja consolidado no total
     do periodo (nao por mes) -- usado na tabela de rentabilidade
     comparada do Dashboard."""
+    produtor_id = _autorizar_produtor_id(request, produtor_id)
     conn = get_db()
     try:
         cur = conn.cursor()
