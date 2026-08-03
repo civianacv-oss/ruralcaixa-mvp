@@ -300,7 +300,7 @@ __export(db_exports, {
   normalizeInsumoNome: () => normalizeInsumoNome,
   revogarContador: () => revogarContador,
   searchInsumosCatalogo: () => searchInsumosCatalogo,
-  seedImoveisAcl: () => seedImoveisAcl,
+  syncImoveisAcl: () => syncImoveisAcl,
   updateAnimal: () => updateAnimal,
   updateHealthRecord: () => updateHealthRecord,
   updateProcuracaoStatus: () => updateProcuracaoStatus,
@@ -706,13 +706,15 @@ async function getVinculosPorContador(contadorCpf) {
     )
   );
 }
-async function seedImoveisAcl(produtorId, imovelIds) {
+async function syncImoveisAcl(produtorId, imovelIds) {
   const db = await getDb();
-  if (!db || imovelIds.length === 0) return;
-  const existing = await db.select({ imovelId: produtorImovel.imovelId }).from(produtorImovel).where(eq(produtorImovel.produtorId, produtorId));
-  if (existing.length > 0) return;
+  if (!db) return;
+  const existente = await db.select({ railwayToken: produtorImovel.railwayToken }).from(produtorImovel).where(and(eq(produtorImovel.produtorId, produtorId), sql`railwayToken IS NOT NULL`)).limit(1);
+  const tokenPreservado = existente[0]?.railwayToken ?? null;
+  await db.delete(produtorImovel).where(eq(produtorImovel.produtorId, produtorId));
+  if (imovelIds.length === 0) return;
   await db.insert(produtorImovel).values(
-    imovelIds.map((imovelId) => ({ produtorId, imovelId }))
+    imovelIds.map((imovelId) => ({ produtorId, imovelId, railwayToken: tokenPreservado }))
   );
 }
 var _db, CATEGORIA_PREFIX;
@@ -1710,7 +1712,18 @@ async function fetchProdutor(cpf) {
 }
 async function fetchImoveis(cpf) {
   try {
-    const res = await fetch(`${RAILWAY_API}/imoveis/buscar?cpf=${cleanCpf(cpf)}`);
+    const res = await fetch(`${RAILWAY_API}/produtor/imoveis?cpf=${cleanCpf(cpf)}`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+async function fetchImoveisAutenticado(token) {
+  try {
+    const res = await fetch(`${RAILWAY_API}/produtores/me/imoveis`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     if (!res.ok) return [];
     return await res.json();
   } catch {
@@ -1865,15 +1878,16 @@ async function verifyOtp(cpf, code) {
     throw new Error(errBody.detail || "C\xF3digo expirado ou n\xE3o solicitado. Solicite um novo c\xF3digo.");
   }
   const data = await res.json();
-  const imovelList = await fetchImoveis(cpfClean);
+  const imoveisAcessiveis = await fetchImoveisAutenticado(data.token);
   const localUser = await getUserByCpf(cpfClean).catch(() => null);
   const role = localUser?.role ?? "user";
-  let allowedImoveis = imovelList;
+  let allowedImoveis = imoveisAcessiveis.map((im) => ({
+    id: im.imovel_id,
+    nome: im.nome
+  }));
   if (role === "user") {
-    const allowedIds = await getImoveisForProdutor(data.produtor_id).catch(() => null);
-    if (allowedIds) {
-      allowedImoveis = imovelList.filter((im) => allowedIds.includes(im.id));
-    }
+    await syncImoveisAcl(data.produtor_id, imoveisAcessiveis.map((im) => im.imovel_id)).catch(() => {
+    });
   }
   const imovelId = allowedImoveis?.[0]?.id;
   const imovelCount = allowedImoveis.length;
@@ -1882,7 +1896,7 @@ async function verifyOtp(cpf, code) {
     success: true,
     produtorId: data.produtor_id,
     produtorNome: data.nome,
-    rcClaimsToken: data.token,
+    apiToken: data.token,
     imovelId,
     imovelCount,
     role,
@@ -1972,17 +1986,26 @@ var railwayRouter = router({
   // ── Imóveis ────────────────────────────────────────────────────────────────
   imoveis: publicProcedure.query(async ({ ctx }) => {
     const claims = await requireClaims(ctx.req);
-    const allImoveis = await railwayFetch(`/imoveis/buscar?cpf=${claims.cpf}`);
     if (claims.role === "admin") {
+      const allImoveis = await railwayFetch(`/imoveis/buscar?cpf=${claims.cpf}`);
       return allImoveis;
     }
-    let allowedIds = await getImoveisForProdutor(claims.produtorId);
-    if (!allowedIds) {
-      const railwayIds = allImoveis.map((im) => im.id);
-      await seedImoveisAcl(claims.produtorId, railwayIds);
-      allowedIds = railwayIds;
-    }
-    return allImoveis.filter((im) => allowedIds.includes(im.id));
+    const token = await getRailwayToken(claims.produtorId).catch(() => null);
+    const meusImoveis = token ? await railwayFetch(
+      `/produtores/me/imoveis`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ) : [];
+    const allowedIds = meusImoveis.map((im) => im.imovel_id);
+    await syncImoveisAcl(claims.produtorId, allowedIds).catch(() => {
+    });
+    return meusImoveis.map((im) => ({
+      id: im.imovel_id,
+      nome: im.nome,
+      municipio: im.municipio,
+      uf: im.uf,
+      area_ha: im.area_ha,
+      total_produtores: im.total_produtores
+    }));
   }),
   // ── Raças por espécie ──────────────────────────────────────────────────────
   // ── Criar Imóvel ──────────────────────────────────────────────────────────
@@ -2011,7 +2034,8 @@ var railwayRouter = router({
       body,
       claims.produtorId
     );
-    await seedImoveisAcl(claims.produtorId, [novo.id]);
+    const jaAcessiveis = await getImoveisForProdutor(claims.produtorId) ?? [];
+    await syncImoveisAcl(claims.produtorId, Array.from(new Set(jaAcessiveis.concat(novo.id))));
     return novo;
   }),
   // ── Editar Imóvel ──────────────────────────────────────────────────────────
@@ -2621,6 +2645,7 @@ var railwayRouter = router({
     };
     const COL_BRINCO = ["identificadoranimal", "identificador", "brinco"];
     const COL_DATA_CONTROLE = ["datacontrole"];
+    const COL_DATA_PARTO = ["dataparto"];
     const COL_NUM_CONTROLE = ["numerocontrole"];
     const COL_NUM_ORDENHAS = ["numerodeordenhasnocontrole", "numeroordenhas"];
     const COL_PROD_CONTROLE = ["producaoleitecontrole"];
@@ -2629,7 +2654,7 @@ var railwayRouter = router({
     const COL_LACTOSE = ["percentuallactose"];
     const COL_ES = ["es"];
     const COL_CCS = ["ccs"];
-    const itens = [];
+    const itensBrutos = [];
     const nao_encontrados = [];
     let ignoradas_count = 0;
     for (const row of input.rows) {
@@ -2646,10 +2671,14 @@ var railwayRouter = router({
         continue;
       }
       const n = (v) => v !== void 0 ? Number(v.replace(",", ".")) : void 0;
-      itens.push({
+      itensBrutos.push({
         animal_id: animalId,
         brinco,
         data: dataControle,
+        // data_parto só serve pra detectar colisao de brinco abaixo -- é
+        // removida antes de enviar pro backend (bovino_ordenha nao tem
+        // essa coluna, quem guarda parto é bovino_lactacoes)
+        data_parto: dataBr(findCol(row, COL_DATA_PARTO)),
         volume_l: n(producaoControle),
         gordura_pct: n(findCol(row, COL_GORDURA)),
         proteina_pct: n(findCol(row, COL_PROTEINA)),
@@ -2660,13 +2689,41 @@ var railwayRouter = router({
         numero_controle_externo: n(findCol(row, COL_NUM_CONTROLE))
       });
     }
-    if (itens.length === 0 && input.rows.length > 0) {
+    const DIAS_MIN_ENTRE_PARTOS = 250;
+    const datasPartoPorAnimal = /* @__PURE__ */ new Map();
+    for (const it of itensBrutos) {
+      if (!it.data_parto) continue;
+      if (!datasPartoPorAnimal.has(it.animal_id)) datasPartoPorAnimal.set(it.animal_id, /* @__PURE__ */ new Set());
+      datasPartoPorAnimal.get(it.animal_id).add(it.data_parto);
+    }
+    const animaisComColisao = /* @__PURE__ */ new Set();
+    for (const [animalId, datas] of datasPartoPorAnimal.entries()) {
+      const ordenadas = [...datas].sort();
+      for (let i = 1; i < ordenadas.length; i++) {
+        const dias = (new Date(ordenadas[i]).getTime() - new Date(ordenadas[i - 1]).getTime()) / 864e5;
+        if (dias < DIAS_MIN_ENTRE_PARTOS) {
+          animaisComColisao.add(animalId);
+          break;
+        }
+      }
+    }
+    const itens = [];
+    const colisoes_brinco = [];
+    for (const it of itensBrutos) {
+      const { data_parto, ...semDataParto } = it;
+      if (animaisComColisao.has(it.animal_id)) {
+        colisoes_brinco.push({ ...semDataParto, data_parto });
+      } else {
+        itens.push(semDataParto);
+      }
+    }
+    if (itens.length === 0 && colisoes_brinco.length === 0 && input.rows.length > 0) {
       throw new TRPCError4({
         code: "BAD_REQUEST",
         message: "Nenhuma linha reconhecida. Verifique se a planilha tem 'Identificador Animal', 'Data Controle' e 'Producao Leite Controle', e se os animais j\xE1 est\xE3o cadastrados no rebanho."
       });
     }
-    return { itens, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
+    return { itens, colisoes_brinco, nao_encontrados, ignoradas_count, total_planilha: input.rows.length };
   }),
   confirmarImportacaoControleLeiteiroBovino: publicProcedure.input(z2.object({
     imovelId: z2.number(),
@@ -2674,7 +2731,7 @@ var railwayRouter = router({
   })).mutation(async ({ ctx, input }) => {
     const claims = await requireClaims(ctx.req);
     assertImovel(claims, input.imovelId);
-    const itens = input.itens.map(({ brinco, ...rest }) => rest);
+    const itens = input.itens.map(({ brinco, data_parto, ...rest }) => rest);
     return railwayMutate(`/bovino/leiteiro/ordenha/importar`, "POST", {
       imovel_id: input.imovelId,
       itens
@@ -2733,7 +2790,7 @@ var railwayRouter = router({
     lancamentoId: z2.string(),
     produtorId: z2.number(),
     tipo: z2.enum(["receita", "despesa"]).optional(),
-    descricao: z2.string().optional(),
+    descricao: z2.string().nullable().optional(),
     valor: z2.number().positive().optional(),
     data_lancamento: z2.string().optional(),
     confirmado: z2.boolean().optional()
@@ -2938,7 +2995,7 @@ var railwayRouter = router({
     validade: z2.string().optional(),
     local_armazenamento: z2.string().optional(),
     preco_estimado: z2.number().optional(),
-    fornecedor_id: z2.number().optional(),
+    fornecedor_id: z2.number().nullable().optional(),
     reposicao_modo: z2.enum(["automatico", "manual"]).default("manual"),
     lead_time_dias: z2.number().default(7)
   })).mutation(async ({ ctx, input }) => {
@@ -2953,14 +3010,14 @@ var railwayRouter = router({
     imovelId: z2.number(),
     insumoId: z2.number(),
     nome: z2.string().min(1),
-    descricao: z2.string().optional(),
+    descricao: z2.string().nullable().optional(),
     categoria: z2.string(),
     unidade: z2.string(),
     origem: z2.enum(["comprado", "proprio", "doacao"]),
     estoque_minimo: z2.number(),
     estoque_ideal: z2.number(),
-    preco_estimado: z2.number().optional(),
-    fornecedor_id: z2.number().optional(),
+    preco_estimado: z2.number().nullable().optional(),
+    fornecedor_id: z2.number().nullable().optional(),
     reposicao_modo: z2.enum(["automatico", "manual"]),
     lead_time_dias: z2.number()
   })).mutation(async ({ ctx, input }) => {
@@ -3721,6 +3778,288 @@ var railwayRouter = router({
       },
       claims.produtorId
     );
+  }),
+  // ── Livro Caixa ──────────────────────────────────────────────────────────────
+  livroCaixaLancamentos: publicProcedure.input(z2.object({ imovelId: z2.number(), anoBase: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch(
+      `/livro-caixa/${input.imovelId}?ano_base=${input.anoBase}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  livroCaixaApuracao: publicProcedure.input(z2.object({ imovelId: z2.number(), anoBase: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch(
+      `/livro-caixa/${input.imovelId}/apuracao/${input.anoBase}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  criarLancamentoLivroCaixa: publicProcedure.input(z2.object({
+    imovelId: z2.number(),
+    anoBase: z2.number(),
+    dataLancamento: z2.string(),
+    tipo: z2.enum(["receita", "despesa"]),
+    categoria: z2.string(),
+    descricao: z2.string(),
+    valor: z2.number(),
+    deducaoIrpf: z2.boolean().default(true)
+  })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/livro-caixa/`, "POST", {
+      imovel_id: input.imovelId,
+      ano_base: input.anoBase,
+      data_lancamento: input.dataLancamento,
+      tipo: input.tipo,
+      categoria: input.categoria,
+      descricao: input.descricao,
+      valor: input.valor,
+      origem: "manual",
+      deducao_irpf: input.deducaoIrpf
+    }, claims.produtorId);
+  }),
+  excluirLancamentoLivroCaixa: publicProcedure.input(z2.object({ imovelId: z2.number(), id: z2.number() })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    await railwayMutate(`/livro-caixa/${input.id}`, "DELETE", void 0, claims.produtorId);
+    return { success: true };
+  }),
+  fecharMesLivroCaixa: publicProcedure.input(z2.object({ imovelId: z2.number(), anoBase: z2.number(), mes: z2.number() })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(
+      `/livro-caixa/${input.imovelId}/fechar/${input.anoBase}/${input.mes}`,
+      "POST",
+      void 0,
+      claims.produtorId
+    );
+  }),
+  fechamentoLivroCaixa: publicProcedure.input(z2.object({ imovelId: z2.number(), anoBase: z2.number(), mes: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch(
+      `/livro-caixa/${input.imovelId}/fechamento/${input.anoBase}/${input.mes}`,
+      void 0,
+      claims.produtorId
+    ).catch(() => ({ fechado: false, linhas: [] }));
+  }),
+  reabrirMesLivroCaixa: publicProcedure.input(z2.object({ imovelId: z2.number(), anoBase: z2.number(), mes: z2.number() })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(
+      `/livro-caixa/${input.imovelId}/fechamento/${input.anoBase}/${input.mes}`,
+      "DELETE",
+      void 0,
+      claims.produtorId
+    );
+  }),
+  iofcMensal: publicProcedure.input(z2.object({ produtorId: z2.number(), meses: z2.number().optional().default(12) })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch(
+      `/bovino/leiteiro/iofc/${input.produtorId}?meses=${input.meses}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  atividades: publicProcedure.query(async ({ ctx }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch(
+      `/relatorios/atividades?produtor_id=${claims.produtorId}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  resumoPorAtividade: publicProcedure.input(z2.object({ produtorId: z2.number(), meses: z2.number().optional().default(12) })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch(
+      `/relatorios/resumo-por-atividade?produtor_id=${input.produtorId}&meses=${input.meses}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  comparativoRentabilidade: publicProcedure.input(z2.object({ produtorId: z2.number(), meses: z2.number().optional().default(12) })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    return railwayFetch(
+      `/relatorios/comparativo-atividades?produtor_id=${input.produtorId}&meses=${input.meses}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  relatorioRebanho: publicProcedure.input(z2.object({
+    imovelId: z2.number(),
+    dataInicio: z2.string().optional(),
+    dataFim: z2.string().optional()
+  })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const params = new URLSearchParams({ imovel_id: String(input.imovelId) });
+    if (input.dataInicio) params.set("data_inicio", input.dataInicio);
+    if (input.dataFim) params.set("data_fim", input.dataFim);
+    return railwayFetch(`/relatorios/rebanho?${params}`, void 0, claims.produtorId);
+  }),
+  relatorioEficienciaAlimentar: publicProcedure.input(z2.object({ imovelId: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const params = new URLSearchParams({
+      imovel_id: String(input.imovelId),
+      produtor_id: String(claims.produtorId)
+    });
+    return railwayFetch(`/relatorios/eficiencia-alimentar?${params}`, void 0, claims.produtorId);
+  }),
+  listarCotacoes: publicProcedure.input(z2.object({ imovelId: z2.number(), status: z2.string().optional() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const qs = input.status ? `&status=${input.status}` : "";
+    return railwayFetch(`/cotacoes/?fazenda_id=${input.imovelId}${qs}`, void 0, claims.produtorId);
+  }),
+  obterCotacao: publicProcedure.input(z2.object({ imovelId: z2.number(), cotacaoId: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch(
+      `/cotacoes/${input.cotacaoId}?fazenda_id=${input.imovelId}`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  criarCotacao: publicProcedure.input(z2.object({
+    imovelId: z2.number(),
+    insumoId: z2.number().optional(),
+    descricaoProduto: z2.string(),
+    quantidade: z2.number(),
+    unidade: z2.string().default("unidade"),
+    observacoes: z2.string().optional(),
+    fornecedorIds: z2.array(z2.number()).min(1),
+    dataLimiteResposta: z2.string().optional()
+  })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/cotacoes/?fazenda_id=${input.imovelId}`, "POST", {
+      insumo_id: input.insumoId,
+      descricao_produto: input.descricaoProduto,
+      quantidade: input.quantidade,
+      unidade: input.unidade,
+      observacoes: input.observacoes,
+      fornecedor_ids: input.fornecedorIds,
+      data_limite_resposta: input.dataLimiteResposta
+    }, claims.produtorId);
+  }),
+  registrarRespostaCotacao: publicProcedure.input(z2.object({
+    imovelId: z2.number(),
+    cotacaoId: z2.number(),
+    fornecedorId: z2.number(),
+    precoUnitario: z2.number(),
+    prazoEntregaDias: z2.number().optional(),
+    observacaoResposta: z2.string().optional()
+  })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(
+      `/cotacoes/${input.cotacaoId}/fornecedores/${input.fornecedorId}?fazenda_id=${input.imovelId}`,
+      "PUT",
+      {
+        preco_unitario: input.precoUnitario,
+        prazo_entrega_dias: input.prazoEntregaDias,
+        observacao_resposta: input.observacaoResposta
+      },
+      claims.produtorId
+    );
+  }),
+  fecharCotacao: publicProcedure.input(z2.object({
+    imovelId: z2.number(),
+    cotacaoId: z2.number(),
+    fornecedorVencedorId: z2.number(),
+    criarPedidoCompra: z2.boolean().default(false)
+  })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/cotacoes/${input.cotacaoId}/fechar?fazenda_id=${input.imovelId}`, "POST", {
+      fornecedor_vencedor_id: input.fornecedorVencedorId,
+      criar_pedido_compra: input.criarPedidoCompra
+    }, claims.produtorId);
+  }),
+  cancelarCotacao: publicProcedure.input(z2.object({ imovelId: z2.number(), cotacaoId: z2.number() })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(`/cotacoes/${input.cotacaoId}/cancelar?fazenda_id=${input.imovelId}`, "POST", void 0, claims.produtorId);
+  }),
+  // ── Administradores de propriedade (acesso operacional, sem participação) ──
+  listarAdministradores: publicProcedure.input(z2.object({ imovelId: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch(
+      `/imoveis-rurais/${input.imovelId}/administradores`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  adicionarAdministrador: publicProcedure.input(z2.object({ imovelId: z2.number(), cpf: z2.string().min(11) })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const cpfClean = input.cpf.replace(/\D/g, "");
+    const todosProdutores = await railwayFetch(
+      "/produtores",
+      void 0,
+      claims.produtorId
+    );
+    const encontrado = todosProdutores.find((p) => p.cpf?.replace(/\D/g, "") === cpfClean);
+    if (!encontrado) {
+      throw new TRPCError4({
+        code: "NOT_FOUND",
+        message: "Esse CPF n\xE3o tem cadastro no RuralCaixa ainda. A pessoa precisa se cadastrar no sistema antes de poder ser adicionada como administradora."
+      });
+    }
+    const resultado = await railwayMutate(
+      `/imoveis-rurais/${input.imovelId}/administradores`,
+      "POST",
+      { produtor_id: encontrado.id },
+      claims.produtorId
+    );
+    return resultado;
+  }),
+  removerAdministrador: publicProcedure.input(z2.object({ imovelId: z2.number(), produtorId: z2.number() })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    const resultado = await railwayMutate(
+      `/imoveis-rurais/${input.imovelId}/administradores/${input.produtorId}`,
+      "DELETE",
+      void 0,
+      claims.produtorId
+    );
+    return resultado;
+  }),
+  // ── Colaboradores operacionais (cadastro leve, so nome+telefone, so bot) ──
+  listarColaboradoresOperacionais: publicProcedure.input(z2.object({ imovelId: z2.number() })).query(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayFetch(
+      `/imoveis-rurais/${input.imovelId}/colaboradores-operacionais`,
+      void 0,
+      claims.produtorId
+    );
+  }),
+  adicionarColaboradorOperacional: publicProcedure.input(z2.object({ imovelId: z2.number(), nome: z2.string().min(1), telefone: z2.string().min(8) })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(
+      `/imoveis-rurais/${input.imovelId}/colaboradores-operacionais`,
+      "POST",
+      { nome: input.nome, telefone: input.telefone },
+      claims.produtorId
+    );
+  }),
+  removerColaboradorOperacional: publicProcedure.input(z2.object({ imovelId: z2.number(), colaboradorId: z2.number() })).mutation(async ({ ctx, input }) => {
+    const claims = await requireClaims(ctx.req);
+    assertImovel(claims, input.imovelId);
+    return railwayMutate(
+      `/imoveis-rurais/${input.imovelId}/colaboradores-operacionais/${input.colaboradorId}`,
+      "DELETE",
+      void 0,
+      claims.produtorId
+    );
   })
 });
 
@@ -3794,7 +4133,10 @@ var appRouter = router({
         role: result.role ?? "user",
         // Return token so client can store it in localStorage as fallback
         // when cookies are blocked (cross-site preview environments)
-        rcClaimsToken: claimsToken
+        rcClaimsToken: claimsToken,
+        // Real FastAPI api_token — used for direct calls to the Railway backend
+        // (do NOT confuse with rcClaimsToken above, which is the tRPC session JWT)
+        apiToken: result.apiToken
       };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {

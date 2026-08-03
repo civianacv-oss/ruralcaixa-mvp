@@ -1916,19 +1916,19 @@ export default function Insumos() {
               {/* Cabeçalho fixo com scroll */}
               <div className="max-h-[60vh] overflow-y-auto">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+                  <TableHeader className="bg-background">
                     <TableRow>
-                      <TableHead className="w-[220px] max-w-[220px]">Nome</TableHead>
-                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Inicial</TableHead>
-                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Entradas</TableHead>
-                      <TableHead className="w-[90px] text-right hidden lg:table-cell">Saídas</TableHead>
-                      <TableHead className="w-[100px] text-right">Estoque</TableHead>
-                      <TableHead className="w-[80px] text-right hidden sm:table-cell">Mínimo</TableHead>
-                      <TableHead className="w-[100px] text-right hidden xl:table-cell">Valor</TableHead>
-                      <TableHead className="w-[90px]">Status</TableHead>
-                      <TableHead className="w-[140px] hidden md:table-cell">Fornecedor</TableHead>
-                      <TableHead className="w-[120px] text-right">Ação</TableHead>
-                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[220px] max-w-[220px]">Nome</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[90px] text-right hidden lg:table-cell">Inicial</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[90px] text-right hidden lg:table-cell">Entradas</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[90px] text-right hidden lg:table-cell">Saídas</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[100px] text-right">Estoque</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[80px] text-right hidden sm:table-cell">Mínimo</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[100px] text-right hidden xl:table-cell">Valor</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[90px]">Status</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[140px] hidden md:table-cell">Fornecedor</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[120px] text-right">Ação</TableHead>
+                      <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
