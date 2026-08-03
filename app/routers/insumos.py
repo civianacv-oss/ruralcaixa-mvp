@@ -455,6 +455,34 @@ def atualizar_insumo(iid: int, body: InsumoCreate, request: Request):
     fazenda_id = _auth(request)
     with get_db() as conn:
         with conn.cursor() as cur:
+            # Se o valor de estoque_atual mudou, cria um ajuste automatico
+            # via aplicar_movimentacao_insumo (mantem PMP/auditoria) em vez
+            # de ignorar silenciosamente -- achado 03/08: o modal do painel
+            # deixa editar esse campo, mas o UPDATE abaixo nunca o incluia,
+            # entao a edicao "desaparecia" sem aviso.
+            cur.execute(
+                "SELECT estoque_atual FROM insumos WHERE id=%s AND fazenda_id=%s",
+                (iid, fazenda_id)
+            )
+            atual = cur.fetchone()
+            if not atual:
+                raise HTTPException(404, "Insumo não encontrado")
+
+            estoque_antes = float(atual["estoque_atual"] or 0)
+            estoque_novo = float(body.estoque_atual or 0)
+            diferenca = estoque_novo - estoque_antes
+
+            if abs(diferenca) > 1e-6:
+                aplicar_movimentacao_insumo(
+                    cur, fazenda_id=fazenda_id, insumo_id=iid,
+                    tipo="ajuste_positivo" if diferenca > 0 else "ajuste_negativo",
+                    quantidade=abs(diferenca),
+                    origem_modulo="painel", origem_tipo="ajuste_estoque",
+                    origem_descricao="Ajuste manual via edição de insumo no painel",
+                    observacao=f"Estoque alterado de {estoque_antes:g} para {estoque_novo:g}",
+                    permitir_estoque_negativo=True,
+                )
+
             cur.execute("""
                 UPDATE insumos SET nome=%s, descricao=%s, categoria=%s, unidade=%s, origem=%s,
                     estoque_minimo=%s, estoque_ideal=%s, preco_estimado=%s,
