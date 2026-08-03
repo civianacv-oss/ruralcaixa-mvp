@@ -7,7 +7,7 @@ Fallback: pypdf extrai texto e monta imagem sintética (PDFs puramente textuais)
 
 import io
 import logging
-from typing import Tuple
+from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,35 @@ def _pdf_para_jpeg_fitz(pdf_bytes: bytes, pagina: int = 0, dpi: int = 150) -> by
     logger.info(f"[PDF→JPEG] {pix.width}×{pix.height}px · {len(jpeg_bytes)} bytes")
     doc.close()
     return jpeg_bytes
+
+
+def _pdf_todas_paginas_fitz(pdf_bytes: bytes, max_paginas: int = 3, dpi: int = 150) -> List[bytes]:
+    """Converte ate max_paginas do PDF em JPEG via PyMuPDF (achado 03/08:
+    documentos com DANFE + recibo anexados no mesmo PDF perdiam a pagina
+    com destinatario/data quando so a pagina 0 era processada)."""
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    total = len(doc)
+    logger.info(f"[PDF] Total de paginas: {total}")
+
+    paginas_a_processar = min(total, max_paginas)
+    jpegs = []
+    max_dim = 1600
+    for i in range(paginas_a_processar):
+        page = doc[i]
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        if pix.width > max_dim or pix.height > max_dim:
+            scale = max_dim / max(pix.width, pix.height)
+            mat2 = fitz.Matrix(scale * dpi / 72, scale * dpi / 72)
+            pix = page.get_pixmap(matrix=mat2, alpha=False)
+        jpeg_bytes = pix.tobytes("jpeg")
+        logger.info(f"[PDF→JPEG] pagina {i}: {pix.width}×{pix.height}px · {len(jpeg_bytes)} bytes")
+        jpegs.append(jpeg_bytes)
+
+    doc.close()
+    return jpegs
 
 
 def _pdf_para_jpeg_texto(pdf_bytes: bytes) -> bytes:
@@ -83,39 +112,45 @@ def processar_documento_para_claude(
     arquivo_bytes: bytes,
     mime_type: str,
     nome_arquivo: str = "documento",
-) -> Tuple[bytes, str]:
+    max_paginas: int = 3,
+) -> Tuple[List[bytes], str]:
     """
     Ponto de entrada principal.
 
     Recebe bytes de qualquer documento (PDF ou imagem) e retorna
-    (bytes_jpeg, "image/jpeg") prontos para a API Claude Vision.
+    (lista_de_bytes_jpeg, "image/jpeg") prontos para a API Claude Vision.
+    Para PDFs de multiplas paginas, retorna ate max_paginas imagens --
+    antes so a pagina 0 era processada, perdendo dados de outras paginas
+    (achado 03/08: PDF com DANFE + recibo anexados, destinatario/data
+    ficavam na pagina 2, nunca processada).
 
-    Para imagens já suportadas (jpeg, png, webp, gif) retorna sem converter.
+    Para imagens já suportadas (jpeg, png, webp, gif) retorna sem converter
+    (lista com 1 item).
     """
     mime_lower = mime_type.lower()
 
     # Imagens já suportadas — passa direto
     if any(mime_lower.startswith(t) for t in ("image/jpeg", "image/png", "image/webp", "image/gif")):
         logger.info(f"[Converter] Imagem direta: {mime_type}")
-        return arquivo_bytes, mime_type
+        return [arquivo_bytes], mime_type
 
     # PDF
     if "pdf" in mime_lower:
         logger.info(f"[Converter] Iniciando conversão PDF → JPEG")
 
-        # Tentativa 1: PyMuPDF (rápido, sem Poppler)
+        # Tentativa 1: PyMuPDF (rápido, sem Poppler) -- todas as paginas
         try:
-            jpeg = _pdf_para_jpeg_fitz(arquivo_bytes)
-            return jpeg, "image/jpeg"
+            jpegs = _pdf_todas_paginas_fitz(arquivo_bytes, max_paginas=max_paginas)
+            return jpegs, "image/jpeg"
         except ImportError:
             logger.warning("[Converter] PyMuPDF não instalado, tentando fallback texto")
         except Exception as e:
             logger.warning(f"[Converter] Fitz falhou: {e}, tentando fallback texto")
 
-        # Tentativa 2: pypdf + Pillow (texto nativo)
+        # Tentativa 2: pypdf + Pillow (texto nativo) -- so 1 imagem
         try:
             jpeg = _pdf_para_jpeg_texto(arquivo_bytes)
-            return jpeg, "image/jpeg"
+            return [jpeg], "image/jpeg"
         except ImportError:
             raise RuntimeError(
                 "Nenhum conversor de PDF disponível. "
@@ -126,4 +161,4 @@ def processar_documento_para_claude(
 
     # Tipo desconhecido — tenta como JPEG mesmo assim
     logger.warning(f"[Converter] Tipo desconhecido {mime_type}, enviando como JPEG")
-    return arquivo_bytes, "image/jpeg"
+    return [arquivo_bytes], "image/jpeg"

@@ -25,6 +25,7 @@ Formato:
   (ATENÇÃO no campo "quantidade" de cada item: a coluna QUANT. de notas fiscais brasileiras (NF-e) usa VÍRGULA como separador DECIMAL, geralmente com 3 casas -- ex: "30,000" significa TRINTA (30), NÃO trinta mil; "20,000" significa VINTE (20), NÃO vinte mil. NUNCA interprete essa vírgula como separador de milhar. Retorne sempre o valor decimal correto: "quantidade": 30, nunca "quantidade": 30000 para uma coluna QUANT. mostrando "30,000".)
   "numero_documento": "número da nota/boleto ou null",
   "chave_nfe": "chave de 44 dígitos ou null",
+  "natureza_operacao": "texto do campo Natureza da Operacao do documento (ex: COMPRA PARA INDUSTRIALIZACAO, VENDA DENTRO ESTADO), ou null",
   "tipo_operacao": "compra | venda | pagamento | outros",
   "confianca": "alta | media | baixa",
   "observacao": "qualquer informação relevante ou null"
@@ -97,10 +98,24 @@ def _corrigir_tipo_operacao_por_cpf(dados: dict, produtor_cpf: str = None) -> No
         dados["tipo_operacao"] = "venda"
         dados["_ambiguo_cpf"] = False
     elif doc_destinatario and doc_destinatario == cpf_produtor:
-        if dados.get("tipo_operacao") not in ("compra", "pagamento"):
-            logger.info("[OCR] CPF do produtor bate com destinatario -- corrigindo tipo_operacao para 'compra'")
-        dados["tipo_operacao"] = "compra"
-        dados["_ambiguo_cpf"] = False
+        # Excecao (achado 03/08, caso real do Bira): laticinio emite
+        # "nota de entrada" comprando leite do proprio produtor -- o CPF
+        # do produtor aparece como destinatario, mas economicamente e
+        # RECEITA dele (venda de leite), nao despesa. Reconhece pelo
+        # padrao natureza_operacao="...INDUSTRIALIZACAO..." + algum item
+        # mencionando "leite".
+        natureza = (dados.get("natureza_operacao") or "").upper()
+        itens_doc = dados.get("itens") or []
+        tem_leite = any("LEITE" in (i.get("descricao") or "").upper() for i in itens_doc)
+        if "INDUSTRIALIZACAO" in natureza and tem_leite:
+            logger.info("[OCR] Padrao laticinio-compra-leite-do-produtor detectado -- corrigindo tipo_operacao para 'venda'")
+            dados["tipo_operacao"] = "venda"
+            dados["_ambiguo_cpf"] = False
+        else:
+            if dados.get("tipo_operacao") not in ("compra", "pagamento"):
+                logger.info("[OCR] CPF do produtor bate com destinatario -- corrigindo tipo_operacao para 'compra'")
+            dados["tipo_operacao"] = "compra"
+            dados["_ambiguo_cpf"] = False
 
 
 async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/jpeg", produtor_cpf: str = None) -> dict:
@@ -145,14 +160,33 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                 logger.error(f"[PDF] Erro ao converter PDF: {type(e).__name__}: {e}")
                 raise RuntimeError(f"Não consegui processar o PDF: {str(e)}")
         
-        # ── Codificar imagem em base64 ─────────────────────────────────────
-        logger.info(f"[OCR] Codificando imagem em base64...")
-        imagem_b64 = base64.standard_b64encode(imagem_bytes).decode("utf-8")
-        logger.info(f"[OCR] Base64 gerado: {len(imagem_b64)} caracteres")
-        
+        # ── Codificar imagem(ns) em base64 ─────────────────────────────────
+        # imagem_bytes agora e' uma lista (1 item pra imagem simples, ate
+        # 3 pra PDF multi-pagina -- achado 03/08: documento de 2 paginas
+        # perdia dados que estavam so na pagina nao processada).
+        paginas_bytes = imagem_bytes if isinstance(imagem_bytes, list) else [imagem_bytes]
+        logger.info(f"[OCR] Codificando {len(paginas_bytes)} pagina(s) em base64...")
+        blocos_imagem = []
+        for pb in paginas_bytes:
+            b64 = base64.standard_b64encode(pb).decode("utf-8")
+            blocos_imagem.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
+            })
+        logger.info(f"[OCR] {len(blocos_imagem)} bloco(s) de imagem prontos")
+
         # ── Enviar para Claude Vision ──────────────────────────────────────
         logger.info(f"[OCR] Enviando para Claude Vision...")
-        
+
+        texto_instrucao = (
+            "Extraia todos os dados fiscais deste documento."
+            if len(blocos_imagem) == 1 else
+            f"Este documento tem {len(blocos_imagem)} paginas (imagens acima, em ordem). "
+            "Extraia todos os dados fiscais considerando o conteudo de TODAS as paginas -- "
+            "informacoes como destinatario, data ou natureza da operacao podem estar em "
+            "qualquer uma delas."
+        )
+
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -167,19 +201,8 @@ async def extrair_dados_documento(imagem_bytes: bytes, mime_type: str = "image/j
                     "system": SISTEMA_OCR,
                     "messages": [{
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": imagem_b64
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": "Extraia todos os dados fiscais desta imagem."
-                            }
+                        "content": blocos_imagem + [
+                            {"type": "text", "text": texto_instrucao}
                         ]
                     }]
                 }
