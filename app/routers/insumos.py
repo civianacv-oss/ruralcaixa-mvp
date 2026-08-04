@@ -207,14 +207,25 @@ def listar_insumos(request: Request, categoria: Optional[str] = None, origem: Op
             END AS status_estoque,
             COALESCE(mov.entradas_mes, 0) AS entradas_mes,
             COALESCE(mov.saidas_mes, 0) AS saidas_mes,
-            i.estoque_atual - COALESCE(mov.entradas_mes, 0) + COALESCE(mov.saidas_mes, 0) AS estoque_inicial_mes
+            i.estoque_atual - COALESCE(mov.entradas_total_mes, 0) + COALESCE(mov.saidas_total_mes, 0) AS estoque_inicial_mes
         FROM insumos i
         LEFT JOIN fornecedores f ON f.id = i.fornecedor_id
         LEFT JOIN (
             SELECT
                 insumo_id,
-                SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao','ajuste_positivo') THEN quantidade ELSE 0 END) AS entradas_mes,
-                SUM(CASE WHEN tipo IN ('uso','venda','perda','ajuste_negativo') THEN quantidade ELSE 0 END) AS saidas_mes
+                -- Ajustes (correções de estoque via edição no painel) ficam de fora
+                -- destas duas colunas -- elas representam movimento comercial real
+                -- (compra/produção/uso/venda/perda) pro mês, não correção de erro de
+                -- digitação. Achado 04/08: uma correção de estoque aparecia como
+                -- "Saída" enorme na lista, parecendo consumo real que nunca aconteceu.
+                SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao') THEN quantidade ELSE 0 END) AS entradas_mes,
+                SUM(CASE WHEN tipo IN ('uso','venda','perda') THEN quantidade ELSE 0 END) AS saidas_mes,
+                -- Estes dois SIM incluem ajuste_positivo/ajuste_negativo -- são usados
+                -- só pra reconstruir o estoque_inicial_mes corretamente (a conta
+                -- estoque_atual - entradas + saidas só fecha se TODO movimento for
+                -- somado, ajuste incluso).
+                SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao','ajuste_positivo') THEN quantidade ELSE 0 END) AS entradas_total_mes,
+                SUM(CASE WHEN tipo IN ('uso','venda','perda','ajuste_negativo') THEN quantidade ELSE 0 END) AS saidas_total_mes
             FROM movimentacoes_insumo
             WHERE TO_CHAR(data_movim, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
             GROUP BY insumo_id
@@ -415,12 +426,23 @@ def obter_insumo(iid: int, request: Request):
             # Estoque inicial do mês / entradas / saídas do mês — calculado a
             # partir de TODAS as movimentações do mês (não só as 20 últimas
             # acima, que são só pra exibição do histórico recente).
+            #
+            # Achado 04/08: entradas_mes/saidas_mes (as colunas exibidas na tela)
+            # não devem contar ajuste_positivo/ajuste_negativo -- uma correção de
+            # estoque via edição no painel (não é compra nem consumo real) estava
+            # aparecendo como "Saída" enorme, parecendo consumo que nunca aconteceu.
+            # Mas o cálculo de estoque_inicial_mes (linha abaixo) PRECISA somar os
+            # ajustes também, senão a conta não fecha matematicamente.
             cur.execute("""
                 SELECT
-                    COALESCE(SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao','ajuste_positivo')
+                    COALESCE(SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao')
                                        THEN quantidade ELSE 0 END), 0) AS entradas_mes,
+                    COALESCE(SUM(CASE WHEN tipo IN ('uso','venda','perda')
+                                       THEN quantidade ELSE 0 END), 0) AS saidas_mes,
+                    COALESCE(SUM(CASE WHEN tipo IN ('compra','producao_propria','doacao','ajuste_positivo')
+                                       THEN quantidade ELSE 0 END), 0) AS entradas_total_mes,
                     COALESCE(SUM(CASE WHEN tipo IN ('uso','venda','perda','ajuste_negativo')
-                                       THEN quantidade ELSE 0 END), 0) AS saidas_mes
+                                       THEN quantidade ELSE 0 END), 0) AS saidas_total_mes
                 FROM movimentacoes_insumo
                 WHERE insumo_id = %s
                   AND TO_CHAR(data_movim, 'YYYY-MM') = TO_CHAR(CURRENT_DATE, 'YYYY-MM')
@@ -428,11 +450,13 @@ def obter_insumo(iid: int, request: Request):
             mov_mes = cur.fetchone()
             entradas_mes = float(mov_mes["entradas_mes"] or 0)
             saidas_mes = float(mov_mes["saidas_mes"] or 0)
+            entradas_total_mes = float(mov_mes["entradas_total_mes"] or 0)
+            saidas_total_mes = float(mov_mes["saidas_total_mes"] or 0)
             estoque_atual = float(row["estoque_atual"] or 0)
             row["entradas_mes"] = entradas_mes
             row["saidas_mes"] = saidas_mes
             # Estoque inicial do mês = estoque atual desfazendo o que entrou/saiu neste mês
-            row["estoque_inicial_mes"] = estoque_atual - entradas_mes + saidas_mes
+            row["estoque_inicial_mes"] = estoque_atual - entradas_total_mes + saidas_total_mes
 
             return {"data": row}
 
