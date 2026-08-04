@@ -26,6 +26,7 @@ Formato:
   "numero_documento": "número da nota/boleto ou null",
   "chave_nfe": "chave de 44 dígitos ou null",
   "natureza_operacao": "texto do campo Natureza da Operacao do documento (ex: COMPRA PARA INDUSTRIALIZACAO, VENDA DENTRO ESTADO), ou null",
+  "emitente_cnae": "codigo CNAE do emitente, so digitos (ex: 1052000 para laticinios), ou null se nao aparecer no documento",
   "tipo_operacao": "compra | venda | pagamento | outros",
   "confianca": "alta | media | baixa",
   "observacao": "qualquer informação relevante ou null"
@@ -107,7 +108,13 @@ def _corrigir_tipo_operacao_por_cpf(dados: dict, produtor_cpf: str = None) -> No
         natureza = (dados.get("natureza_operacao") or "").upper()
         itens_doc = dados.get("itens") or []
         tem_leite = any("LEITE" in (i.get("descricao") or "").upper() for i in itens_doc)
-        if "INDUSTRIALIZACAO" in natureza and tem_leite:
+        # Exige tambem o CNAE de laticinio (1052-0) no emitente -- so o
+        # texto do natOp + item mencionar "leite" nao e prova suficiente
+        # (poderia ser coincidencia com outro fornecedor qualquer, ex:
+        # um item veterinario chamado "leite de magnesia").
+        emit_cnae = (dados.get("emitente_cnae") or "").strip()
+        emit_e_laticinio = emit_cnae.startswith("1052")
+        if "INDUSTRIALIZACAO" in natureza and tem_leite and emit_e_laticinio:
             logger.info("[OCR] Padrao laticinio-compra-leite-do-produtor detectado -- corrigindo tipo_operacao para 'venda'")
             dados["tipo_operacao"] = "venda"
             dados["_ambiguo_cpf"] = False
