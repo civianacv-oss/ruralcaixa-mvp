@@ -1592,6 +1592,7 @@ export default function Insumos() {
                           categoria: novoInsumo.categoria,
                           unidade: novoInsumo.unidade,
                           origem: novoInsumo.origem,
+                          estoque_atual: novoInsumo.estoque_atual,
                           estoque_minimo: novoInsumo.estoque_minimo,
                           estoque_ideal: novoInsumo.estoque_ideal,
                           preco_estimado: novoInsumo.preco_estimado ? Number(novoInsumo.preco_estimado) : undefined,
@@ -1913,9 +1914,13 @@ export default function Insumos() {
             </div>
           ) : (
             <div className="rounded-lg border overflow-hidden">
-              {/* Cabeçalho fixo com scroll */}
-              <div className="max-h-[60vh] overflow-y-auto">
-                <Table>
+              {/* Cabeçalho fixo com scroll -- 04/08: overflow-y-auto e
+                  overflow-x-auto (interno do componente Table) precisam
+                  estar no MESMO elemento pra position:sticky funcionar;
+                  antes eram dois containers de scroll aninhados
+                  diferentes, e o sticky grudava no errado (o horizontal,
+                  que não rola verticalmente) -- por isso "ainda" sumia. */}
+              <Table containerClassName="max-h-[60vh] overflow-y-auto">
                   <TableHeader className="bg-background">
                     <TableRow>
                       <TableHead className="sticky top-0 z-10 bg-background shadow-sm w-[220px] max-w-[220px]">Nome</TableHead>
@@ -2240,7 +2245,6 @@ export default function Insumos() {
                   </TableBody>
                 </Table>
               </div>
-            </div>
           )}
 
           {/* Dialog movimentação */}

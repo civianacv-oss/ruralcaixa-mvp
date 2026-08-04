@@ -1503,6 +1503,7 @@ export const railwayRouter = router({
       categoria: z.string(),
       unidade: z.string(),
       origem: z.enum(["comprado", "proprio", "doacao"]),
+      estoque_atual: z.number().optional(),
       estoque_minimo: z.number(),
       estoque_ideal: z.number(),
       preco_estimado: z.number().nullable().optional(),
