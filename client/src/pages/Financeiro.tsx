@@ -190,7 +190,16 @@ export default function Financeiro() {
   });
 
   const filtered = lancamentos.filter((l) => {
-    if (filterTipo !== "todos" && l.tipo !== filterTipo) return false;
+    // "pendente" nao e um tipo (receita/despesa) -- e um filtro pela
+    // subconta sentinela "9.9 PENDENTE DE CLASSIFICACAO", que pode ser
+    // tanto receita quanto despesa que nao foi classificada com
+    // confianca suficiente na hora do lancamento.
+    if (filterTipo === "pendente") {
+      const desc = (l.descricao || "").toUpperCase();
+      if (!desc.includes("PENDENTE DE CLASSIFICA")) return false;
+    } else if (filterTipo !== "todos" && l.tipo !== filterTipo) {
+      return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       return l.descricao?.toLowerCase().includes(q) || l.atividade?.toLowerCase().includes(q);
@@ -216,7 +225,7 @@ export default function Financeiro() {
       Despesas: v.despesa,
     }));
 
-  const tipos = ["todos", ...Array.from(new Set(lancamentos.map((l) => l.tipo)))];
+  const tipos = ["todos", ...Array.from(new Set(lancamentos.map((l) => l.tipo))), "pendente"];
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
@@ -308,7 +317,7 @@ export default function Financeiro() {
               className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${filterTipo === t ? "text-white shadow-sm" : "bg-white text-muted-foreground shadow-sm"}`}
               style={filterTipo === t ? { background: "oklch(0.38 0.12 145)" } : {}}
             >
-              {t === "todos" ? "Todos" : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === "todos" ? "Todos" : t === "pendente" ? "Pendente Classificação" : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
