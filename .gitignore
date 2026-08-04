@@ -76,3 +76,9 @@ dist/
 /cadastrar_*.py
 /adicionar_*.py
 /integrar_*.py
+
+# --- Limpeza 04/08/2026 ---
+/extrair_*.py
+/limpeza_*.sh
+/lancamentos_*.xlsx
+/retencoes_*.xlsx
