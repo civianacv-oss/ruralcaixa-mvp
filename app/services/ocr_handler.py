@@ -298,8 +298,12 @@ def ocr_para_lancamento(dados: dict) -> dict:
     return {
         "conta": MAPA_CONTA.get(operacao, "3.9"),
         "tipo": tipo,
+        # Nao defaulta mais pra hoje silenciosamente (achado 03/08): se a
+        # Claude nao identificou a data do documento, fica None aqui --
+        # o chamador (mensagem_handler.py) e responsavel por perguntar
+        # a data ao usuario antes de confirmar o lancamento.
+        "data": dados.get("data"),
         "valor": float(dados.get("valor_total", 0)),
-        "data": dados.get("data") or dt.today().isoformat(),
         "confianca": 80 if dados.get("confianca") == "alta" else 60,
         "produto": descricao,
         "numero_documento": dados.get("numero_documento"),

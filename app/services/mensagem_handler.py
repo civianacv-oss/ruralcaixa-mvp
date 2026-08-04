@@ -179,6 +179,19 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 )
 
             lancamento = ocr_para_lancamento(dados_ocr)
+            if not lancamento.get("data"):
+                sessoes[key] = {
+                    **lancamento,
+                    "_ocr": dados_ocr,
+                    "_midia": msg.midia_bytes,
+                    "_mime": msg.mime_type,
+                    "_aguardando_data_ocr": True,
+                    "_pos_data_fluxo": "normal",
+                }
+                return (
+                    "📅 Não consegui identificar a data deste documento.\n"
+                    "Pode me informar a data da nota/comprovante? (formato DD/MM/AAAA)"
+                )
             sessoes[key] = {
                 **lancamento,
                 "_ocr": dados_ocr,
@@ -558,6 +571,51 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 "desse lançamento? (ou digite CANCELAR)"
             )
 
+        if sessoes[key].get("_aguardando_data_ocr"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cancelado. Pode mandar de novo quando quiser."
+
+            import re as _re_data
+            m = _re_data.match(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$', texto.strip())
+            if not m:
+                return (
+                    "⚠️ Não entendi a data. Digite no formato DD/MM/AAAA "
+                    "(ex: 15/03/2026), ou CANCELAR."
+                )
+            dia, mes, ano = m.group(1), m.group(2), m.group(3)
+            try:
+                data_confirmada = date(int(ano), int(mes), int(dia)).isoformat()
+            except ValueError:
+                return "⚠️ Data inválida. Confira dia/mês/ano e tente de novo, ou CANCELAR."
+
+            sess = sessoes[key]
+            pos_fluxo = sess.get("_pos_data_fluxo")
+
+            if pos_fluxo == "wizard":
+                novo_sess = {
+                    "conta": sess.get("_wizard_conta"),
+                    "tipo": sess.get("_wizard_tipo"),
+                    "valor": sess.get("_wizard_valor") or 0,
+                    "data": data_confirmada,
+                    "confianca": 70,
+                    "produto": sess.get("_wizard_produto"),
+                    "atividade": "rural",
+                }
+                if sess.get("_midia"):
+                    novo_sess["_midia"] = sess["_midia"]
+                    novo_sess["_mime"] = sess["_mime"]
+                sessoes[key] = novo_sess
+                return _texto_confirmacao(novo_sess)
+            else:
+                dados_ocr = sess.get("_ocr", {})
+                dados_ocr["data"] = data_confirmada
+                sess["data"] = data_confirmada
+                sess.pop("_aguardando_data_ocr", None)
+                sess.pop("_pos_data_fluxo", None)
+                sessoes[key] = sess
+                return montar_mensagem_ocr(dados_ocr, msg.numero)
+
         if sessoes[key].get("_aguardando_historico_ocr_ambiguo"):
             if texto_up in ("0", "CANCELAR", "CANCELA"):
                 sessoes.pop(key, None)
@@ -594,11 +652,26 @@ async def processar_mensagem(msg: MsgIn) -> str:
             if not escolha:
                 return _texto_lista_contas_por_tipo(tipo_filtro, prefixo="Não entendi a escolha. ")
             conta, _label = escolha
+            if not sess.get("_ocr_data"):
+                sessoes[key] = {
+                    "_aguardando_data_ocr": True,
+                    "_pos_data_fluxo": "wizard",
+                    "_wizard_conta": conta,
+                    "_wizard_tipo": tipo_filtro,
+                    "_wizard_valor": sess.get("_ocr_valor") or 0,
+                    "_wizard_produto": sess.get("_historico_ocr"),
+                    "_midia": sess.get("_midia"),
+                    "_mime": sess.get("_mime"),
+                }
+                return (
+                    "📅 Não consegui identificar a data deste documento.\n"
+                    "Pode me informar a data da nota/comprovante? (formato DD/MM/AAAA)"
+                )
             novo_sess = {
                 "conta": conta,
                 "tipo": tipo_filtro,
                 "valor": sess.get("_ocr_valor") or 0,
-                "data": sess.get("_ocr_data") or date.today().isoformat(),
+                "data": sess.get("_ocr_data"),
                 "confianca": 70,
                 "produto": sess.get("_historico_ocr"),
                 "atividade": "rural",
