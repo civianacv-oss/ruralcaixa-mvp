@@ -62,6 +62,7 @@ def aplicar_movimentacao_insumo(
     permitir_estoque_negativo: bool = False,
     lote_id: Optional[int] = None,
     animal_id: Optional[int] = None,
+    especie: Optional[str] = None,
 ) -> dict:
     """
     Registra uma movimentação de estoque e atualiza saldo + PMP do insumo,
@@ -130,14 +131,14 @@ def aplicar_movimentacao_insumo(
             (insumo_id, fazenda_id, tipo, quantidade, custo_unitario, custo_total,
              observacao, data_movim, origem_modulo, origem_tipo, origem_id,
              origem_descricao, custo_medio_antes, custo_medio_depois,
-             lote_id, animal_id)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             lote_id, animal_id, especie)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING *
     """, (
         insumo_id, fazenda_id, tipo, quantidade, custo_unitario_movim, custo_total,
         observacao, data_movim or _date.today(), origem_modulo, origem_tipo, origem_id,
         origem_descricao, custo_medio_antes, custo_medio_depois,
-        lote_id, animal_id,
+        lote_id, animal_id, especie,
     ))
     movimentacao = cur.fetchone()
 

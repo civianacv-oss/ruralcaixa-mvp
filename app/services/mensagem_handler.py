@@ -135,7 +135,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                             from app.db import buscar_descricao_conta
                             desc_conta = buscar_descricao_conta(inferencia["conta"])
                             conta_txt = f"{inferencia['conta']} - {desc_conta}" if desc_conta else inferencia["conta"]
-                            sessoes[key] = {
+                            sess_compra_multipla = {
                                 "conta": inferencia["conta"],
                                 "tipo": "despesa",
                                 "valor": valor,
@@ -152,13 +152,16 @@ async def processar_mensagem(msg: MsgIn) -> str:
                                     if i.get("insumo_id") and i.get("quantidade_estoque")
                                 ],
                             }
-                            return (
+                            sessoes[key] = sess_compra_multipla
+                            prefixo_confirmacao = (
                                 f"📄 Não consegui confirmar pelo CPF se você comprou ou vendeu, "
                                 f"mas os itens da nota ({itens_txt}) batem com insumos que você "
                                 f"já usa.\n\n"
                                 f"Parece ser compra de insumo, conta {conta_txt}.\n"
                                 f"Valor: R$ {valor:.2f}\n\n"
-                                f"Responda SIM para confirmar como despesa, ou NAO se não for isso."
+                            )
+                            return prefixo_confirmacao + _avancar_confirmacao_compra_insumo(
+                                sessoes, key, sess_compra_multipla, imovel_id_ocr,
                             )
 
                 sessoes[key] = {
@@ -305,6 +308,27 @@ async def processar_mensagem(msg: MsgIn) -> str:
             sessoes[key] = resultado_pendente
             return _texto_confirmacao_consumo(resultado_pendente)
 
+        # Sub-fluxo (Fase 2, 04/08): escolha do lote de bovino pra COMPRA
+        # de insumo (entrada no estoque) -- espelha o bloco acima, que já
+        # existia só pro consumo (baixa).
+        if sessoes[key].get("_aguardando_lote_compra_insumo"):
+            sess_pendente_compra = sessoes[key]["_lancamento_pendente_compra"]
+            lotes_compra = sessoes[key]["_lotes_disponiveis"]
+            if texto_up not in ("0",) and not (texto_up.isdigit() and 1 <= int(texto_up) <= len(lotes_compra)):
+                linhas = ["Não entendi. Essa compra de insumo é pra qual lote de bovino?\n"]
+                for i, lote in enumerate(lotes_compra, start=1):
+                    linhas.append(f"{i}. {lote['nome']}")
+                linhas.append("\n0. Não é de um lote específico / estoque geral da fazenda")
+                return "\n".join(linhas)
+
+            if texto_up != "0":
+                lote_escolhido_compra = lotes_compra[int(texto_up) - 1]
+                sess_pendente_compra["_compra_lote_id"] = lote_escolhido_compra["id"]
+                sess_pendente_compra["_compra_lote_nome"] = lote_escolhido_compra["nome"]
+
+            sessoes[key] = sess_pendente_compra
+            return _texto_confirmacao(sess_pendente_compra)
+
         # Sub-fluxo: consumo de insumo ambíguo — produtor escolhe qual dos
         # candidatos empatados é o certo
         if sessoes[key].get("_aguardando_escolha_insumo"):
@@ -370,7 +394,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
             resultado_pendente_insumo["_imovel_id"] = sess["_imovel_id_insumo"]
 
             sessoes[key] = resultado_pendente_insumo
-            return _proximo_passo_apos_valor(resultado_pendente_insumo, msg.numero)
+            return _avancar_confirmacao_compra_insumo(
+                sessoes, key, resultado_pendente_insumo, sess["_imovel_id_insumo"],
+            )
 
         # Sub-fluxo: escolha de safra ambígua na produção agrícola
         if sessoes[key].get("_tipo") == "aguardando_escolha_safra":
@@ -534,7 +560,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 from app.db import buscar_descricao_conta
                 desc_conta2 = buscar_descricao_conta(nova_inferencia["conta"])
                 conta_txt2 = f"{nova_inferencia['conta']} - {desc_conta2}" if desc_conta2 else nova_inferencia["conta"]
-                sessoes[key] = {
+                sess_compra_multipla2 = {
                     "conta": nova_inferencia["conta"],
                     "tipo": "despesa",
                     "valor": sess_ocr["_ocr_valor"],
@@ -550,11 +576,14 @@ async def processar_mensagem(msg: MsgIn) -> str:
                         if i.get("insumo_id") and i.get("quantidade_estoque")
                     ],
                 }
-                return (
+                sessoes[key] = sess_compra_multipla2
+                prefixo_confirmacao2 = (
                     f"Cadastrado! Agora os itens da nota ({itens_txt2}) batem certinho.\n\n"
                     f"Parece ser compra de insumo, conta {conta_txt2}.\n"
                     f"Valor: R$ {sess_ocr['_ocr_valor']:.2f}\n\n"
-                    f"Responda SIM para confirmar como despesa, ou NAO se não for isso."
+                )
+                return prefixo_confirmacao2 + _avancar_confirmacao_compra_insumo(
+                    sessoes, key, sess_compra_multipla2, sess_ocr["_imovel_id"],
                 )
 
             # Empate, ou categorias diferentes -- cai no fluxo manual
@@ -997,12 +1026,17 @@ async def processar_mensagem(msg: MsgIn) -> str:
                             origem_modulo="mensageria",
                             origem_tipo="compra",
                             origem_descricao=f"Compra via WhatsApp/Telegram — lançamento #{lancamento_id}",
+                            lote_id=sess.get("_compra_lote_id"),
+                            especie="bovinos" if sess.get("_compra_lote_id") else None,
                         )
                         conn_estoque.commit()
+                        destino_lote_txt = (
+                            f", lote {sess['_compra_lote_nome']}" if sess.get("_compra_lote_nome") else ""
+                        )
                         entrada_insumo_msg = (
                             f"\n📦 Entrada no estoque: {sess['_compra_insumo_nome']} "
                             f"(+{sess['_compra_quantidade']:g}, novo estoque {resultado_mov['novo_estoque']:g}, "
-                            f"custo médio R$ {resultado_mov['novo_custo_medio']:.2f})"
+                            f"custo médio R$ {resultado_mov['novo_custo_medio']:.2f}{destino_lote_txt})"
                         )
                     finally:
                         conn_estoque.close()
@@ -1032,12 +1066,17 @@ async def processar_mensagem(msg: MsgIn) -> str:
                                 origem_modulo="mensageria",
                                 origem_tipo="compra_ocr",
                                 origem_descricao=f"Compra via OCR — lançamento #{lancamento_id}",
+                                lote_id=sess.get("_compra_lote_id"),
+                                especie="bovinos" if sess.get("_compra_lote_id") else None,
                             )
                             conn_estoque.commit()
                             unidade_txt = item_ins.get("unidade") or "kg"
+                            destino_lote_txt = (
+                                f", lote {sess['_compra_lote_nome']}" if sess.get("_compra_lote_nome") else ""
+                            )
                             linhas_entrada.append(
                                 f"  • {item_ins['insumo_nome']}: +{qtd:g}{unidade_txt} "
-                                f"(novo estoque {resultado_mov['novo_estoque']:g})"
+                                f"(novo estoque {resultado_mov['novo_estoque']:g}{destino_lote_txt})"
                             )
                         finally:
                             conn_estoque.close()
@@ -1234,6 +1273,9 @@ async def processar_mensagem(msg: MsgIn) -> str:
     if resultado.get("valor") is None:
         sessoes[key]["_aguardando_valor"] = True
         return "Não encontrei o valor dessa transação. Qual foi o valor (em R$)?"
+
+    if resultado.get("_compra_insumo_id"):
+        return _avancar_confirmacao_compra_insumo(sessoes, key, resultado, auth["imovel_id"])
 
     return _proximo_passo_apos_valor(resultado, msg.numero)
 
@@ -2270,6 +2312,47 @@ def _texto_confirmacao_consumo(dados: dict) -> str:
         f"Isso NÃO gera uma despesa nova (o gasto já foi registrado na compra).\n\n"
         f"Responda SIM para confirmar ou NÃO para cancelar."
     )
+
+def _avancar_confirmacao_compra_insumo(sessoes: dict, key: str, sess: dict, imovel_id) -> str:
+    """
+    Item #5 da lista de pendências (Fase 2, matching NF-e x catálogo de
+    insumo — implementado 04/08): antes de confirmar uma compra de insumo
+    que vai dar entrada no estoque (seja item único identificado por texto
+    livre, seja múltiplos itens identificados via OCR/NF-e), pergunta pra
+    qual lote de bovino ela deve ser alocada. Espelha o padrão já usado no
+    consumo (_avancar_consumo_insumo/_aguardando_lote_bovino), agora do
+    lado da aquisição.
+
+    Decidido com o Cícero (04/08): perguntar ao usuário no momento da
+    compra, em vez de tentar inferir automaticamente pelo nome do insumo
+    ou deixar sem lote — evita apropriação errada de custo entre lotes
+    (ex: ração genérica que serve tanto pro lote Leite quanto Corte).
+
+    Só pergunta se: (a) a compra realmente identificou insumo(s) do
+    catálogo (_compra_insumo_id ou _compras_insumo_multiplos), e (b) o
+    imóvel tem MAIS DE UM lote de bovino ativo -- com um só lote, ou
+    nenhum, não há ambiguidade real pra perguntar (evita fricção à toa).
+    """
+    sess["_imovel_id"] = imovel_id
+    tem_insumo_compra = bool(sess.get("_compra_insumo_id") or sess.get("_compras_insumo_multiplos"))
+    if not tem_insumo_compra:
+        return _texto_confirmacao(sess)
+
+    lotes_bovino = _listar_lotes_bovino_ativos(imovel_id)
+    if len(lotes_bovino) <= 1:
+        return _texto_confirmacao(sess)
+
+    sessoes[key] = {
+        "_aguardando_lote_compra_insumo": True,
+        "_lancamento_pendente_compra": sess,
+        "_lotes_disponiveis": lotes_bovino,
+    }
+    linhas = ["Essa compra de insumo é pra qual lote de bovino?\n"]
+    for i, lote in enumerate(lotes_bovino, start=1):
+        linhas.append(f"{i}. {lote['nome']}")
+    linhas.append("\n0. Não é de um lote específico / estoque geral da fazenda")
+    return "\n".join(linhas)
+
 
 def _listar_lotes_bovino_ativos(imovel_id: int) -> list:
     """Lista lotes de bovino ativos desse imóvel, pra pergunta de origem
