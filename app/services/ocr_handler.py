@@ -118,6 +118,11 @@ def _corrigir_tipo_operacao_por_cpf(dados: dict, produtor_cpf: str = None) -> No
             logger.info("[OCR] Padrao laticinio-compra-leite-do-produtor detectado -- corrigindo tipo_operacao para 'venda'")
             dados["tipo_operacao"] = "venda"
             dados["_ambiguo_cpf"] = False
+            # Item #1 da lista de pendencias (05/08): marca pra disparar a
+            # obrigacao acessoria (EFD-Reinf R-2055 ou eSocial S-1260,
+            # conforme o regime do produtor) depois que o lancamento for
+            # confirmado -- ver hook em mensagem_handler.py.
+            dados["_venda_leite_laticinio"] = True
         else:
             if dados.get("tipo_operacao") not in ("compra", "pagamento"):
                 logger.info("[OCR] CPF do produtor bate com destinatario -- corrigindo tipo_operacao para 'compra'")
@@ -308,6 +313,10 @@ def ocr_para_lancamento(dados: dict) -> dict:
         "produto": descricao,
         "numero_documento": dados.get("numero_documento"),
         "chave_nfe": dados.get("chave_nfe"),
+        # Item #1 da lista de pendencias (05/08): propaga a flag pro nivel
+        # superior do dict (alem de ja estar em sess["_ocr"]), pra facilitar
+        # o hook de obrigacao acessoria no momento da confirmacao SIM.
+        "_venda_leite_laticinio": dados.get("_venda_leite_laticinio", False),
     }
 
 
