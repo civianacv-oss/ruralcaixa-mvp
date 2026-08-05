@@ -121,6 +121,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                                 "_ocr_data": dados_ocr.get("data") or date.today().isoformat(),
                                 "_midia": msg.midia_bytes,
                                 "_mime": msg.mime_type,
+                                "_ocr": dados_ocr,
                             }
                             return (
                                 f"📄 Não encontrei \"{item_faltante['descricao']}\" no seu estoque "
@@ -611,6 +612,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     "_ocr_data": sess_ocr["_ocr_data"],
                     "_midia": sess_ocr.get("_midia"),
                     "_mime": sess_ocr.get("_mime"),
+                    "_imovel_id": sess_ocr.get("_imovel_id"),
+                    "_ocr": sess_ocr.get("_ocr"),
                 }
                 return (
                     "Ok, sem cadastrar agora. Antes de lançar, me conta rapidinho: "
@@ -649,6 +652,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     "_ocr_data": sess_ocr["_ocr_data"],
                     "_midia": sess_ocr.get("_midia"),
                     "_mime": sess_ocr.get("_mime"),
+                    "_ocr": sess_ocr.get("_ocr"),
                 }
                 return (
                     f"Cadastrado! Mas também não encontrei \"{item_faltante2['descricao']}\" no "
@@ -696,6 +700,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 "_ocr_data": sess_ocr["_ocr_data"],
                 "_midia": sess_ocr.get("_midia"),
                 "_mime": sess_ocr.get("_mime"),
+                "_imovel_id": sess_ocr.get("_imovel_id"),
+                "_ocr": sess_ocr.get("_ocr"),
             }
             return (
                 "Cadastrado! Mas ainda não deu pra classificar automaticamente. "
