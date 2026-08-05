@@ -164,12 +164,20 @@ async def processar_mensagem(msg: MsgIn) -> str:
                                 sessoes, key, sess_compra_multipla, imovel_id_ocr,
                             )
 
+                # Resolve o imovel_id sempre aqui (nao so quando ha itens_ocr
+                # acima) -- achado 05/08: sem isso, o fluxo ambiguo inteiro
+                # nunca carregava _imovel_id ate o lancamento final, o que
+                # quebrava silenciosamente qualquer hook pos-confirmacao que
+                # dependa dele (ex: obrigacao acessoria de venda de leite).
+                auth_ocr_ambiguo = _autorizar_numero(msg.numero, msg.canal)
                 sessoes[key] = {
                     "_aguardando_historico_ocr_ambiguo": True,
                     "_ocr_valor": valor,
                     "_ocr_data": dados_ocr.get("data") or date.today().isoformat(),
                     "_midia": msg.midia_bytes,
                     "_mime": msg.mime_type,
+                    "_imovel_id": auth_ocr_ambiguo.get("imovel_id"),
+                    "_ocr": dados_ocr,
                 }
                 return (
                     f"📄 Documento identificado, mas não consegui saber se você é quem "
@@ -725,6 +733,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     "confianca": 70,
                     "produto": sess.get("_wizard_produto"),
                     "atividade": "rural",
+                    "_imovel_id": sess.get("_imovel_id"),
+                    "_ocr": sess.get("_ocr"),
                 }
                 if sess.get("_midia"):
                     novo_sess["_midia"] = sess["_midia"]
@@ -786,6 +796,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
                     "_wizard_produto": sess.get("_historico_ocr"),
                     "_midia": sess.get("_midia"),
                     "_mime": sess.get("_mime"),
+                    "_imovel_id": sess.get("_imovel_id"),
+                    "_ocr": sess.get("_ocr"),
                 }
                 return (
                     "📅 Não consegui identificar a data deste documento.\n"
@@ -799,6 +811,8 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 "confianca": 70,
                 "produto": sess.get("_historico_ocr"),
                 "atividade": "rural",
+                "_imovel_id": sess.get("_imovel_id"),
+                "_ocr": sess.get("_ocr"),
             }
             if "_midia" in sess:
                 novo_sess["_midia"] = sess["_midia"]
@@ -1080,37 +1094,80 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 logger.error("Erro ao gravar lancamento (produtor nao identificado): %s", e)
                 return f"⚠️ Não consegui gravar o lançamento: {e}"
 
-            # Item #1 da lista de pendencias (05/08): dispara a obrigacao
-            # acessoria (EFD-Reinf R-2055 ou eSocial S-1260, conforme o
-            # regime do produtor) se esse lancamento for uma venda de leite
-            # pra laticinio detectada pelo OCR. So roda depois de gravar
-            # com sucesso -- nunca bloqueia o lancamento em si mesmo se der
-            # erro (fica só um aviso, o produtor não perde o lançamento).
+            # Item #1 da lista de pendencias (05/08, corrigido no mesmo
+            # dia depois do teste real com o Bira -- correção do próprio
+            # Cícero: "não pode ser somente a venda de leite, deve
+            # disparar para qualquer venda, e se for pessoa física a
+            # obrigação do tributo é do produtor"):
+            #
+            # Dispara pra QUALQUER receita de venda de produção rural
+            # (conta 1.1.x) que tenha vindo de um documento (OCR) -- não
+            # mais restrito a leite/laticínio. Extrai o CPF/CNPJ de quem
+            # COMPROU comparando emitente/destinatário do documento com o
+            # CPF do produtor (quem não for o produtor é o comprador).
+            # A decisão de qual obrigação se aplica (retenção pelo
+            # comprador PJ vs auto-apuração pelo produtor se comprador PF)
+            # é feita dentro de obrigacoes_acessorias.py.
+            #
+            # Só considera lançamentos com documento por trás (sess["_ocr"]
+            # presente) -- pensando em não gerar aviso em toda receita
+            # digitada de cabeça (ex: "recebi um pix de fulano"), onde não
+            # há como identificar CPF/CNPJ de quem pagou de qualquer forma.
+            #
+            # So roda depois de gravar com sucesso -- nunca bloqueia o
+            # lancamento em si mesmo se der erro (fica só um aviso).
             obrigacao_msg = ""
-            venda_leite_flag = sess.get("_venda_leite_laticinio") or (sess.get("_ocr") or {}).get("_venda_leite_laticinio")
-            if venda_leite_flag and sess.get("_imovel_id"):
+            dados_ocr_sess = sess.get("_ocr") or {}
+            eh_venda_producao_rural = (
+                sess.get("tipo") == "receita"
+                and (sess.get("conta") or "").startswith("1.1")
+                and bool(dados_ocr_sess)
+            )
+            if eh_venda_producao_rural and sess.get("_imovel_id"):
                 try:
                     from app.db import get_db
-                    from app.services.obrigacoes_acessorias import disparar_obrigacao_venda_leite
+                    from app.services.obrigacoes_acessorias import disparar_obrigacao_venda_producao_rural
                     conn_obrig = get_db()
                     try:
                         cur_obrig = conn_obrig.cursor()
                         cur_obrig.execute(
-                            "SELECT produtor_id FROM imoveis_rurais WHERE id = %s",
+                            "SELECT p.id AS produtor_id, p.cpf FROM imoveis_rurais i "
+                            "JOIN produtores p ON p.id = i.produtor_id WHERE i.id = %s",
                             (sess["_imovel_id"],),
                         )
                         row_prod = cur_obrig.fetchone()
                         if row_prod:
-                            dados_ocr_sess = sess.get("_ocr") or {}
-                            resultado_obrig = disparar_obrigacao_venda_leite(
+                            cpf_produtor = re.sub(r"\D", "", row_prod.get("cpf") or "")
+                            doc_emitente = re.sub(r"\D", "", dados_ocr_sess.get("emitente_documento") or "")
+                            doc_destinatario = re.sub(r"\D", "", dados_ocr_sess.get("destinatario_documento") or "")
+                            # Compara contra o CPF do produtor em vez de
+                            # assumir "emitente = vendedor" -- em uma NF de
+                            # ENTRADA (comum quando quem compra formaliza a
+                            # aquisição de um produtor sem emissão própria,
+                            # como o laticínio comprando leite do Bira), é o
+                            # COMPRADOR quem emite o documento, e o produtor
+                            # aparece como destinatário mesmo vendendo. Por
+                            # isso: quem bate com o CPF do produtor é sempre
+                            # o vendedor; a outra parte é o comprador.
+                            if doc_emitente == cpf_produtor and doc_emitente:
+                                doc_comprador = doc_destinatario
+                                nome_comprador = dados_ocr_sess.get("destinatario")
+                            elif doc_destinatario == cpf_produtor and doc_destinatario:
+                                doc_comprador = doc_emitente
+                                nome_comprador = dados_ocr_sess.get("emitente")
+                            else:
+                                doc_comprador = None
+                                nome_comprador = None
+
+                            resultado_obrig = disparar_obrigacao_venda_producao_rural(
                                 cur_obrig,
                                 produtor_id=row_prod["produtor_id"],
                                 imovel_id=sess["_imovel_id"],
                                 lancamento_uuid=lancamento_id,
                                 valor_bruto=float(sess.get("valor") or 0),
                                 data_nota=sess.get("data"),
-                                cnpj_laticinio=dados_ocr_sess.get("emitente_documento"),
-                                nome_laticinio=dados_ocr_sess.get("emitente"),
+                                documento_comprador=doc_comprador,
+                                nome_comprador=nome_comprador,
                             )
                             conn_obrig.commit()
                             obrigacao_msg = resultado_obrig.get("mensagem", "")
@@ -2743,6 +2800,7 @@ async def _processar_cadastro_colaborador(texto: str, numero: str, canal: str) -
         f"segurança, você (ou outro administrador) vai receber a pergunta aqui "
         f"mesmo -- {nome.split()[0]} não precisa (nem vai conseguir) escolher a conta contábil."
     )
+
 
 
 _TIPOS_VINCULO_VALIDOS = ("administrador", "procurador", "contador")
