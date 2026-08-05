@@ -241,7 +241,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
     # correr risco de um "folha Joao" ou "cadastrar trabalhador ..." cair
     # em outro parser antes de chegar aqui.
     if _eh_comando_trabalhador(texto):
-        return await _processar_cadastro_trabalhador(texto, msg.numero, msg.canal)
+        return await _processar_cadastro_trabalhador(texto, msg.numero, msg.canal, sessoes, key)
 
     if _eh_comando_pagamento_folha(texto):
         return await _processar_pagamento_folha(texto, msg.numero, msg.canal)
@@ -348,6 +348,81 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
             sessoes[key] = sess_pendente_compra
             return _texto_confirmacao(sess_pendente_compra)
+
+        # Sub-fluxo: assistente passo a passo de cadastro de trabalhador
+        # (item #2 da lista de pendências, ajustado 05/08 depois do
+        # primeiro teste real -- antes exigia tudo numa linha só).
+        if sessoes[key].get("_aguardando_trabalhador_cpf"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cadastro cancelado."
+            cpf = re.sub(r"\D", "", texto)
+            if len(cpf) != 11:
+                return "CPF inválido. Manda só números (ex: 12345678900), ou CANCELAR."
+            wiz = sessoes[key]["_wizard_trabalhador"]
+            wiz["cpf"] = cpf
+            return _avancar_wizard_trabalhador(
+                sessoes, key, wiz, sessoes[key]["_imovel_id"], sessoes[key]["_produtor_id"],
+            )
+
+        if sessoes[key].get("_aguardando_trabalhador_cargo"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cadastro cancelado."
+            wiz = sessoes[key]["_wizard_trabalhador"]
+            wiz["cargo"] = "Trabalhador Rural" if texto_up in ("PULAR", "SKIP") else texto.strip()
+            return _avancar_wizard_trabalhador(
+                sessoes, key, wiz, sessoes[key]["_imovel_id"], sessoes[key]["_produtor_id"],
+            )
+
+        if sessoes[key].get("_aguardando_trabalhador_salario"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cadastro cancelado."
+            try:
+                salario = float(texto.strip().replace(".", "").replace(",", "."))
+            except ValueError:
+                return "Não entendi o salário. Manda só números (ex: 1800 ou 1800,00), ou CANCELAR."
+            wiz = sessoes[key]["_wizard_trabalhador"]
+            wiz["salario_base"] = salario
+            return _avancar_wizard_trabalhador(
+                sessoes, key, wiz, sessoes[key]["_imovel_id"], sessoes[key]["_produtor_id"],
+            )
+
+        if sessoes[key].get("_aguardando_trabalhador_tipo_contrato"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cadastro cancelado."
+            if texto_up not in ("1", "2"):
+                return (
+                    "Responda:\n1. Prazo indeterminado (CLT comum)\n"
+                    "2. Prazo determinado (safra/temporário)\nou CANCELAR."
+                )
+            wiz = sessoes[key]["_wizard_trabalhador"]
+            wiz["tipo_contrato"] = texto_up
+            return _avancar_wizard_trabalhador(
+                sessoes, key, wiz, sessoes[key]["_imovel_id"], sessoes[key]["_produtor_id"],
+            )
+
+        if sessoes[key].get("_aguardando_trabalhador_admissao"):
+            if texto_up in ("0", "CANCELAR", "CANCELA"):
+                sessoes.pop(key, None)
+                return "Cadastro cancelado."
+            wiz = sessoes[key]["_wizard_trabalhador"]
+            if texto_up == "HOJE":
+                wiz["data_admissao"] = date.today()
+            else:
+                m_data = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$", texto.strip())
+                if not m_data:
+                    return "Data inválida. Use DD/MM/AAAA, ou \"hoje\", ou CANCELAR."
+                dia, mes, ano = m_data.groups()
+                try:
+                    wiz["data_admissao"] = date(int(ano), int(mes), int(dia))
+                except ValueError:
+                    return "Data inválida. Confira dia/mês/ano."
+            return _avancar_wizard_trabalhador(
+                sessoes, key, wiz, sessoes[key]["_imovel_id"], sessoes[key]["_produtor_id"],
+            )
 
         # Sub-fluxo: consumo de insumo ambíguo — produtor escolhe qual dos
         # candidatos empatados é o certo
@@ -2688,13 +2763,16 @@ def _eh_comando_trabalhador(texto: str) -> bool:
     return bool(_PADRAO_TRABALHADOR.match(_normalizar_para_comando(texto)))
 
 
-async def _processar_cadastro_trabalhador(texto: str, numero: str, canal: str) -> str:
+async def _processar_cadastro_trabalhador(texto: str, numero: str, canal: str, sessoes: dict, key: str) -> str:
     """
-    Comando de texto: "cadastrar trabalhador Nome; CPF; Cargo; Salario;
-    DD/MM/AAAA" (admissão). Separado por ";" -- nome pode ter espaços,
-    então precisa de um delimitador explícito (diferente do padrão de
-    colaborador operacional, que só reporta consumo e não entra na
-    folha/eSocial).
+    Comando de texto: "cadastrar trabalhador Nome". A partir daí o bot vira
+    um assistente passo a passo, perguntando CPF, cargo, salário base,
+    tipo de contrato e data de admissão -- um de cada vez (pedido do
+    Cícero em 05/08, depois do primeiro teste real em produção).
+
+    Formato antigo ("Nome; CPF; Cargo; Salário; Admissão" tudo de uma vez,
+    separado por ";") continua funcionando pra quem já sabe o formato --
+    só pula direto pros campos que faltarem preencher.
     """
     autorizacao = _autorizar_numero(numero, canal)
     if not autorizacao.get("autorizado"):
@@ -2711,51 +2789,83 @@ async def _processar_cadastro_trabalhador(texto: str, numero: str, canal: str) -
 
     match = _PADRAO_TRABALHADOR.match(_normalizar_para_comando(texto))
     resto_original = texto[match.end(1):].strip()
-    # Remove a palavra "trabalhador" do texto original (preservando acentos
-    # no resto) -- ela é sempre a primeira palavra depois do verbo.
     resto_original = re.sub(r"^\s*trabalhador\s+", "", resto_original, flags=re.IGNORECASE)
     partes = [p.strip() for p in resto_original.split(";")]
 
-    if len(partes) < 2:
+    nome = partes[0]
+    if not nome:
+        return "Não entendi o nome. Manda assim: \"cadastrar trabalhador Nome Completo\""
+
+    wiz = {"nome": nome, "cpf": None, "cargo": None, "salario_base": None,
+           "tipo_contrato": None, "data_admissao": None}
+
+    # Formato antigo, tudo numa linha só -- continua aceito pra quem já
+    # conhece. Preenche o que vier e deixa o assistente perguntar o resto.
+    if len(partes) > 1 and partes[1]:
+        cpf = re.sub(r"\D", "", partes[1])
+        if len(cpf) != 11:
+            return "CPF inválido. Confira e tenta de novo (ou manda só o nome pra eu perguntar passo a passo)."
+        wiz["cpf"] = cpf
+        if len(partes) > 2 and partes[2]:
+            wiz["cargo"] = partes[2]
+        if len(partes) > 3 and partes[3]:
+            try:
+                wiz["salario_base"] = float(partes[3].replace(".", "").replace(",", "."))
+            except ValueError:
+                return f"Não entendi o salário \"{partes[3]}\". Manda só números (ex: 1800 ou 1800,00)."
+        if len(partes) > 4 and partes[4]:
+            m_data = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$", partes[4].strip())
+            if not m_data:
+                return "Data de admissão inválida. Use o formato DD/MM/AAAA, ou deixe em branco."
+            dia, mes, ano = m_data.groups()
+            try:
+                wiz["data_admissao"] = date(int(ano), int(mes), int(dia))
+            except ValueError:
+                return "Data de admissão inválida. Confira dia/mês/ano."
+
+    return _avancar_wizard_trabalhador(sessoes, key, wiz, imovel_id, produtor_id)
+
+
+def _avancar_wizard_trabalhador(sessoes: dict, key: str, wiz: dict, imovel_id: int, produtor_id: int) -> str:
+    """Pergunta o próximo campo que faltar preencher, ou grava o cadastro
+    se já tiver tudo (CPF, cargo, salário, tipo de contrato, admissão)."""
+    base_sessao = {"_wizard_trabalhador": wiz, "_imovel_id": imovel_id, "_produtor_id": produtor_id}
+
+    if not wiz.get("cpf"):
+        sessoes[key] = {**base_sessao, "_aguardando_trabalhador_cpf": True}
+        return f"Cadastrando {wiz['nome']}. Qual o CPF? (só números, ex: 12345678900 -- ou CANCELAR)"
+
+    if not wiz.get("cargo"):
+        sessoes[key] = {**base_sessao, "_aguardando_trabalhador_cargo": True}
+        return "Qual o cargo/função? (ex: Ordenhador, Tratorista -- ou \"pular\" pra usar \"Trabalhador Rural\")"
+
+    if wiz.get("salario_base") is None:
+        sessoes[key] = {**base_sessao, "_aguardando_trabalhador_salario": True}
+        return "Qual o salário base mensal? (ex: 1800 ou 1800,00)"
+
+    if not wiz.get("tipo_contrato"):
+        sessoes[key] = {**base_sessao, "_aguardando_trabalhador_tipo_contrato": True}
         return (
-            "Não entendi. Manda assim (separado por ponto e vírgula):\n"
-            "\"cadastrar trabalhador Nome Completo; CPF; Cargo; Salário; Data de admissão\"\n\n"
-            "Exemplo: cadastrar trabalhador João da Silva; 12345678900; Ordenhador; 1800; 01/03/2026\n\n"
-            "(Cargo, salário e data de admissão são opcionais na hora do cadastro, "
-            "mas o salário precisa estar preenchido antes de lançar a folha.)"
+            "Qual o tipo de contrato de trabalho?\n"
+            "1. Prazo indeterminado (CLT comum)\n"
+            "2. Prazo determinado (safra/temporário)"
         )
 
-    nome = partes[0]
-    cpf = re.sub(r"\D", "", partes[1]) if len(partes) > 1 else ""
-    if len(cpf) != 11:
-        return "CPF inválido. Confira e tenta de novo."
+    if not wiz.get("data_admissao"):
+        sessoes[key] = {**base_sessao, "_aguardando_trabalhador_admissao": True}
+        return "Qual a data de admissão? (DD/MM/AAAA, ou \"hoje\")"
 
-    cargo = partes[2] if len(partes) > 2 and partes[2] else "Trabalhador Rural"
-    salario_base = None
-    if len(partes) > 3 and partes[3]:
-        try:
-            salario_base = float(partes[3].replace(".", "").replace(",", "."))
-        except ValueError:
-            return f"Não entendi o salário \"{partes[3]}\". Manda só números (ex: 1800 ou 1800,00)."
+    return _gravar_trabalhador(wiz, imovel_id, produtor_id)
 
-    data_admissao = date.today()
-    if len(partes) > 4 and partes[4]:
-        m_data = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$", partes[4].strip())
-        if not m_data:
-            return "Data de admissão inválida. Use o formato DD/MM/AAAA, ou deixe em branco."
-        dia, mes, ano = m_data.groups()
-        try:
-            data_admissao = date(int(ano), int(mes), int(dia))
-        except ValueError:
-            return "Data de admissão inválida. Confira dia/mês/ano."
 
+def _gravar_trabalhador(wiz: dict, imovel_id: int, produtor_id: int) -> str:
     from app.db import get_db
     conn = get_db()
     try:
         cur = conn.cursor()
         cur.execute(
             "SELECT id, nome FROM esocial_trabalhadores WHERE produtor_id = %s AND cpf = %s AND ativo = TRUE",
-            (produtor_id, cpf),
+            (produtor_id, wiz["cpf"]),
         )
         existe = cur.fetchone()
         if existe:
@@ -2763,22 +2873,26 @@ async def _processar_cadastro_trabalhador(texto: str, numero: str, canal: str) -
 
         cur.execute("""
             INSERT INTO esocial_trabalhadores
-                (produtor_id, imovel_id, cpf, nome, cargo, salario_base, data_admissao)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+                (produtor_id, imovel_id, cpf, nome, cargo, salario_base, tipo_contrato, data_admissao)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
-        """, (produtor_id, imovel_id, cpf, nome, cargo, salario_base, data_admissao))
+        """, (
+            produtor_id, imovel_id, wiz["cpf"], wiz["nome"], wiz["cargo"],
+            wiz["salario_base"], wiz["tipo_contrato"], wiz["data_admissao"],
+        ))
         novo_id = cur.fetchone()["id"]
         conn.commit()
     finally:
         conn.close()
 
-    salario_txt = f"R$ {salario_base:,.2f}" if salario_base else "não informado (precisa preencher antes de lançar a folha)"
+    tipo_txt = "Prazo indeterminado (CLT comum)" if wiz["tipo_contrato"] == "1" else "Prazo determinado (safra/temporário)"
     return (
-        f"✅ Trabalhador cadastrado (#{novo_id}): {nome}\n"
-        f"Cargo: {cargo}\n"
-        f"Salário base: {salario_txt}\n"
-        f"Admissão: {data_admissao.strftime('%d/%m/%Y')}\n\n"
-        f"Pra lançar a folha do mês, manda: \"folha {nome.split()[0]}\""
+        f"✅ Trabalhador cadastrado (#{novo_id}): {wiz['nome']}\n"
+        f"Cargo: {wiz['cargo']}\n"
+        f"Salário base: R$ {wiz['salario_base']:,.2f}\n"
+        f"Tipo de contrato: {tipo_txt}\n"
+        f"Admissão: {wiz['data_admissao'].strftime('%d/%m/%Y')}\n\n"
+        f"Pra lançar a folha do mês, manda: \"folha {wiz['nome'].split()[0]}\""
     )
 
 
