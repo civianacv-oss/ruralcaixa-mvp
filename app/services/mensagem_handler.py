@@ -182,12 +182,18 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 )
 
             lancamento = ocr_para_lancamento(dados_ocr)
+            # Item #1 da lista de pendencias (05/08): precisa do imovel_id
+            # aqui pra poder disparar a obrigacao acessoria de venda de
+            # leite depois -- antes so o ramo de CPF ambiguo resolvia isso.
+            auth_ocr_normal = _autorizar_numero(msg.numero, msg.canal)
+            imovel_id_normal = auth_ocr_normal.get("imovel_id")
             if not lancamento.get("data"):
                 sessoes[key] = {
                     **lancamento,
                     "_ocr": dados_ocr,
                     "_midia": msg.midia_bytes,
                     "_mime": msg.mime_type,
+                    "_imovel_id": imovel_id_normal,
                     "_aguardando_data_ocr": True,
                     "_pos_data_fluxo": "normal",
                 }
@@ -200,6 +206,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 "_ocr": dados_ocr,
                 "_midia": msg.midia_bytes,
                 "_mime": msg.mime_type,
+                "_imovel_id": imovel_id_normal,
             }
             return montar_mensagem_ocr(dados_ocr, msg.numero)
         except Exception as e:
@@ -228,6 +235,19 @@ async def processar_mensagem(msg: MsgIn) -> str:
 
     if _eh_comando_vinculo(texto):
         return await _processar_comando_vinculo(texto, msg.numero, msg.canal)
+
+    # Bot de folha de pagamento (item #2 da lista de pendencias, 05/08) --
+    # checados antes do fluxo generico de producao agricola/insumo pra nao
+    # correr risco de um "folha Joao" ou "cadastrar trabalhador ..." cair
+    # em outro parser antes de chegar aqui.
+    if _eh_comando_trabalhador(texto):
+        return await _processar_cadastro_trabalhador(texto, msg.numero, msg.canal)
+
+    if _eh_comando_pagamento_folha(texto):
+        return await _processar_pagamento_folha(texto, msg.numero, msg.canal)
+
+    if _eh_comando_folha(texto):
+        return await _processar_comando_folha(texto, msg.numero, msg.canal)
 
     # ── Transformação/mistura de insumo (mensagem completa, "de um tiro só") ──
     # Mesma prioridade de produção agrícola/vínculo acima - a mistura já vem
@@ -985,6 +1005,51 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 logger.error("Erro ao gravar lancamento (produtor nao identificado): %s", e)
                 return f"⚠️ Não consegui gravar o lançamento: {e}"
 
+            # Item #1 da lista de pendencias (05/08): dispara a obrigacao
+            # acessoria (EFD-Reinf R-2055 ou eSocial S-1260, conforme o
+            # regime do produtor) se esse lancamento for uma venda de leite
+            # pra laticinio detectada pelo OCR. So roda depois de gravar
+            # com sucesso -- nunca bloqueia o lancamento em si mesmo se der
+            # erro (fica só um aviso, o produtor não perde o lançamento).
+            obrigacao_msg = ""
+            venda_leite_flag = sess.get("_venda_leite_laticinio") or (sess.get("_ocr") or {}).get("_venda_leite_laticinio")
+            if venda_leite_flag and sess.get("_imovel_id"):
+                try:
+                    from app.db import get_db
+                    from app.services.obrigacoes_acessorias import disparar_obrigacao_venda_leite
+                    conn_obrig = get_db()
+                    try:
+                        cur_obrig = conn_obrig.cursor()
+                        cur_obrig.execute(
+                            "SELECT produtor_id FROM imoveis_rurais WHERE id = %s",
+                            (sess["_imovel_id"],),
+                        )
+                        row_prod = cur_obrig.fetchone()
+                        if row_prod:
+                            dados_ocr_sess = sess.get("_ocr") or {}
+                            resultado_obrig = disparar_obrigacao_venda_leite(
+                                cur_obrig,
+                                produtor_id=row_prod["produtor_id"],
+                                imovel_id=sess["_imovel_id"],
+                                lancamento_uuid=lancamento_id,
+                                valor_bruto=float(sess.get("valor") or 0),
+                                data_nota=sess.get("data"),
+                                cnpj_laticinio=dados_ocr_sess.get("emitente_documento"),
+                                nome_laticinio=dados_ocr_sess.get("emitente"),
+                            )
+                            conn_obrig.commit()
+                            obrigacao_msg = resultado_obrig.get("mensagem", "")
+                    finally:
+                        conn_obrig.close()
+                except Exception:
+                    logger.exception(
+                        "[ObrigacaoAcessoria] Falha ao disparar obrigacao "
+                        "acessoria pra lancamento_id=%s -- lancamento foi "
+                        "gravado normalmente, so a obrigacao acessoria que "
+                        "nao foi criada (fazer manualmente no painel).",
+                        lancamento_id,
+                    )
+
             # Upload de documento se houver mídia na sessão. Usa R2
             # (Cloudflare) em vez de Google Drive -- contas de serviço do
             # Google Drive não têm cota de armazenamento própria fora de
@@ -1104,6 +1169,7 @@ async def processar_mensagem(msg: MsgIn) -> str:
                 f"Data: {sess.get('data','')}\n\n"
                 f"{texto_comprovante}"
                 f"{entrada_insumo_msg}"
+                f"{obrigacao_msg}"
             )
         elif texto_up in ("NAO", "N", "CANCELA"):
             if sessoes[key].get("_consumo_puro"):
@@ -2608,6 +2674,308 @@ _TIPOS_VINCULO_VALIDOS = ("administrador", "procurador", "contador")
 _PADRAO_VINCULO = re.compile(
     r"^vincular\s+(administrador|procurador|contador)\s+([\d.\-\s]{11,18})$"
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Bot de folha de pagamento (item #2 da lista de pendências, 03-05/08)
+# ─────────────────────────────────────────────────────────────────────────
+_PADRAO_TRABALHADOR = re.compile(
+    r"^(cadastrar|adicionar|novo|nova)\s+trabalhador\s+(.+)$"
+)
+
+
+def _eh_comando_trabalhador(texto: str) -> bool:
+    return bool(_PADRAO_TRABALHADOR.match(_normalizar_para_comando(texto)))
+
+
+async def _processar_cadastro_trabalhador(texto: str, numero: str, canal: str) -> str:
+    """
+    Comando de texto: "cadastrar trabalhador Nome; CPF; Cargo; Salario;
+    DD/MM/AAAA" (admissão). Separado por ";" -- nome pode ter espaços,
+    então precisa de um delimitador explícito (diferente do padrão de
+    colaborador operacional, que só reporta consumo e não entra na
+    folha/eSocial).
+    """
+    autorizacao = _autorizar_numero(numero, canal)
+    if not autorizacao.get("autorizado"):
+        return ("Não consegui confirmar seu cadastro. Fale com quem configurou o "
+                "RuralCaixa pra essa propriedade antes de cadastrar trabalhadores.")
+    if autorizacao.get("papel") == "colaborador_operacional":
+        return ("Você não tem permissão pra cadastrar trabalhadores na folha. "
+                "Peça pro proprietário ou administrador da propriedade fazer isso.")
+
+    imovel_id = autorizacao.get("imovel_id")
+    produtor_id = autorizacao.get("produtor_id")
+    if not imovel_id or not produtor_id:
+        return "Não consegui identificar a propriedade pra cadastrar o trabalhador."
+
+    match = _PADRAO_TRABALHADOR.match(_normalizar_para_comando(texto))
+    resto_original = texto[match.end(1):].strip()
+    # Remove a palavra "trabalhador" do texto original (preservando acentos
+    # no resto) -- ela é sempre a primeira palavra depois do verbo.
+    resto_original = re.sub(r"^\s*trabalhador\s+", "", resto_original, flags=re.IGNORECASE)
+    partes = [p.strip() for p in resto_original.split(";")]
+
+    if len(partes) < 2:
+        return (
+            "Não entendi. Manda assim (separado por ponto e vírgula):\n"
+            "\"cadastrar trabalhador Nome Completo; CPF; Cargo; Salário; Data de admissão\"\n\n"
+            "Exemplo: cadastrar trabalhador João da Silva; 12345678900; Ordenhador; 1800; 01/03/2026\n\n"
+            "(Cargo, salário e data de admissão são opcionais na hora do cadastro, "
+            "mas o salário precisa estar preenchido antes de lançar a folha.)"
+        )
+
+    nome = partes[0]
+    cpf = re.sub(r"\D", "", partes[1]) if len(partes) > 1 else ""
+    if len(cpf) != 11:
+        return "CPF inválido. Confira e tenta de novo."
+
+    cargo = partes[2] if len(partes) > 2 and partes[2] else "Trabalhador Rural"
+    salario_base = None
+    if len(partes) > 3 and partes[3]:
+        try:
+            salario_base = float(partes[3].replace(".", "").replace(",", "."))
+        except ValueError:
+            return f"Não entendi o salário \"{partes[3]}\". Manda só números (ex: 1800 ou 1800,00)."
+
+    data_admissao = date.today()
+    if len(partes) > 4 and partes[4]:
+        m_data = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$", partes[4].strip())
+        if not m_data:
+            return "Data de admissão inválida. Use o formato DD/MM/AAAA, ou deixe em branco."
+        dia, mes, ano = m_data.groups()
+        try:
+            data_admissao = date(int(ano), int(mes), int(dia))
+        except ValueError:
+            return "Data de admissão inválida. Confira dia/mês/ano."
+
+    from app.db import get_db
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, nome FROM esocial_trabalhadores WHERE produtor_id = %s AND cpf = %s AND ativo = TRUE",
+            (produtor_id, cpf),
+        )
+        existe = cur.fetchone()
+        if existe:
+            return f"Esse CPF já está cadastrado como trabalhador ativo: \"{existe['nome']}\"."
+
+        cur.execute("""
+            INSERT INTO esocial_trabalhadores
+                (produtor_id, imovel_id, cpf, nome, cargo, salario_base, data_admissao)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+        """, (produtor_id, imovel_id, cpf, nome, cargo, salario_base, data_admissao))
+        novo_id = cur.fetchone()["id"]
+        conn.commit()
+    finally:
+        conn.close()
+
+    salario_txt = f"R$ {salario_base:,.2f}" if salario_base else "não informado (precisa preencher antes de lançar a folha)"
+    return (
+        f"✅ Trabalhador cadastrado (#{novo_id}): {nome}\n"
+        f"Cargo: {cargo}\n"
+        f"Salário base: {salario_txt}\n"
+        f"Admissão: {data_admissao.strftime('%d/%m/%Y')}\n\n"
+        f"Pra lançar a folha do mês, manda: \"folha {nome.split()[0]}\""
+    )
+
+
+_PADRAO_FOLHA = re.compile(r"^folha\s+(.+)$")
+
+
+def _eh_comando_folha(texto: str) -> bool:
+    return bool(_PADRAO_FOLHA.match(_normalizar_para_comando(texto)))
+
+
+async def _processar_comando_folha(texto: str, numero: str, canal: str) -> str:
+    """
+    Comando de texto: "folha <nome ou parte do nome>" -- opcionalmente com
+    eventos do mês separados por ";": "folha Joao; horas extras 200;
+    adicional 50". Sem eventos extras, usa só o salário base cadastrado.
+
+    Calcula INSS/IRRF 2026 (app/services/folha_pagamento.py), grava
+    S-1200 (idempotente por competência), pergunta confirmação antes de
+    registrar o pagamento (S-1210) + lançamento financeiro na conta 2.5.
+    """
+    autorizacao = _autorizar_numero(numero, canal)
+    if not autorizacao.get("autorizado"):
+        return ("Não consegui confirmar seu cadastro. Fale com quem configurou o "
+                "RuralCaixa pra essa propriedade antes de lançar a folha.")
+    if autorizacao.get("papel") == "colaborador_operacional":
+        return "Você não tem permissão pra lançar a folha de pagamento."
+
+    imovel_id = autorizacao.get("imovel_id")
+    produtor_id = autorizacao.get("produtor_id")
+
+    match = _PADRAO_FOLHA.match(_normalizar_para_comando(texto))
+    resto_original = texto[match.end(0) - len(match.group(1)):].strip()
+    partes = [p.strip() for p in resto_original.split(";")]
+    busca_nome = partes[0]
+
+    horas_extras = 0.0
+    adicional = 0.0
+    for extra in partes[1:]:
+        extra_norm = _normalizar_para_comando(extra)
+        m_valor = re.search(r"(\d+(?:[.,]\d+)?)", extra_norm)
+        valor_extra = float(m_valor.group(1).replace(",", ".")) if m_valor else 0.0
+        if "hora" in extra_norm:
+            horas_extras = valor_extra
+        elif "adicional" in extra_norm:
+            adicional = valor_extra
+
+    from app.db import get_db
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, nome, cargo, salario_base FROM esocial_trabalhadores
+            WHERE produtor_id = %s AND ativo = TRUE AND LOWER(nome) LIKE LOWER(%s)
+        """, (produtor_id, f"%{busca_nome}%"))
+        candidatos = cur.fetchall()
+    finally:
+        conn.close()
+
+    if not candidatos:
+        return (
+            f"Não encontrei nenhum trabalhador ativo com \"{busca_nome}\" no nome. "
+            f"Confira o cadastro ou cadastre com \"cadastrar trabalhador ...\"."
+        )
+    if len(candidatos) > 1:
+        nomes = "\n".join(f"- {c['nome']}" for c in candidatos)
+        return f"Achei mais de um trabalhador com esse nome:\n{nomes}\n\nSeja mais específico."
+
+    trabalhador = candidatos[0]
+    if not trabalhador.get("salario_base"):
+        return (
+            f"{trabalhador['nome']} não tem salário base cadastrado ainda. "
+            f"Atualize o cadastro antes de lançar a folha."
+        )
+
+    from app.services.folha_pagamento import calcular_folha, texto_holerite
+    per_apur = date.today().strftime("%Y-%m")
+    calc = calcular_folha(
+        salario_base=float(trabalhador["salario_base"]),
+        horas_extras=horas_extras,
+        adicional=adicional,
+    )
+
+    conn2 = get_db()
+    try:
+        cur2 = conn2.cursor()
+        from app.services.folha_pagamento import registrar_folha_mensal
+        resultado = registrar_folha_mensal(
+            cur2, produtor_id, trabalhador["id"], per_apur,
+            salario_base=float(trabalhador["salario_base"]),
+            horas_extras=horas_extras, adicional=adicional,
+        )
+        conn2.commit()
+    finally:
+        conn2.close()
+
+    holerite = texto_holerite(trabalhador["nome"], trabalhador["cargo"], per_apur, calc)
+    return (
+        f"{holerite}\n\n"
+        f"✅ Folha de {per_apur} registrada (S-1200 #{resultado['s1200_id']}).\n"
+        f"Quando o pagamento sair, manda \"paguei folha {trabalhador['nome'].split()[0]}\" "
+        f"pra registrar o pagamento e lançar a despesa na conta 2.5."
+    )
+
+
+_PADRAO_PAGAMENTO_FOLHA = re.compile(r"^paguei\s+folha\s+(.+)$")
+
+
+def _eh_comando_pagamento_folha(texto: str) -> bool:
+    return bool(_PADRAO_PAGAMENTO_FOLHA.match(_normalizar_para_comando(texto)))
+
+
+async def _processar_pagamento_folha(texto: str, numero: str, canal: str) -> str:
+    """
+    Comando de texto: "paguei folha <nome>". Busca o S-1200 mais recente
+    ainda pendente de pagamento pro trabalhador, registra o S-1210 e cria
+    o lançamento financeiro na conta 2.5 (mão de obra/salários) -- pedido
+    explícito do item #2 ("integração com o plano de contas").
+    """
+    autorizacao = _autorizar_numero(numero, canal)
+    if not autorizacao.get("autorizado"):
+        return "Não consegui confirmar seu cadastro."
+    if autorizacao.get("papel") == "colaborador_operacional":
+        return "Você não tem permissão pra registrar pagamento de folha."
+
+    imovel_id = autorizacao.get("imovel_id")
+    produtor_id = autorizacao.get("produtor_id")
+
+    match = _PADRAO_PAGAMENTO_FOLHA.match(_normalizar_para_comando(texto))
+    # Pega do texto ORIGINAL (com acentos) -- o match é feito contra a
+    # versão normalizada só pra reconhecer o comando, mas a busca do nome
+    # no banco (LIKE) precisa do nome de verdade, senão "joao" (sem
+    # acento) nunca bate com "João" salvo no banco.
+    busca_nome = texto[match.end(0) - len(match.group(1)):].strip()
+
+    from app.db import get_db
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT s.id AS s1200_id, s.per_apur, s.vr_liquido, t.id AS trabalhador_id, t.nome
+            FROM esocial_s1200 s
+            JOIN esocial_trabalhadores t ON t.id = s.trabalhador_id
+            WHERE t.produtor_id = %s AND LOWER(t.nome) LIKE LOWER(%s)
+              AND NOT EXISTS (
+                  SELECT 1 FROM esocial_s1210 p WHERE p.s1200_id = s.id
+              )
+            ORDER BY s.per_apur DESC
+            LIMIT 1
+        """, (produtor_id, f"%{busca_nome}%"))
+        pendente = cur.fetchone()
+
+        if not pendente:
+            return (
+                f"Não achei nenhuma folha pendente de pagamento pra \"{busca_nome}\". "
+                f"Lance a folha primeiro com \"folha {busca_nome}\"."
+            )
+
+        from app.services.folha_pagamento import registrar_pagamento_folha
+        s1210_id = registrar_pagamento_folha(
+            cur, produtor_id, pendente["trabalhador_id"], pendente["s1200_id"],
+            pendente["per_apur"], float(pendente["vr_liquido"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Lançamento financeiro na conta 2.5 (mão de obra/salários) -- reaproveita
+    # gravar_lancamento, igual o resto do bot.
+    lancamento_msg = ""
+    try:
+        from app.db import gravar_lancamento
+        dados_lancamento = {
+            "numero": numero, "canal": canal,
+            "conta": "2.5", "tipo": "despesa",
+            "valor": float(pendente["vr_liquido"]),
+            "data": date.today().isoformat(),
+            "produto": f"Folha de pagamento — {pendente['nome']} ({pendente['per_apur']})",
+            "atividade": "rural",
+        }
+        lancamento_id = gravar_lancamento(dados_lancamento)
+        lancamento_msg = f"\n💸 Lançamento #{lancamento_id} gravado na conta 2.5 (mão de obra/salários)."
+    except Exception:
+        logger.exception(
+            "[FolhaPagamento] Pagamento S-1210 #%s registrado, mas falhou "
+            "gravar o lancamento financeiro na conta 2.5 -- fazer manualmente.",
+            s1210_id,
+        )
+        lancamento_msg = (
+            "\n⚠️ Pagamento registrado, mas não consegui gravar o lançamento "
+            "financeiro automaticamente. Lance manualmente na conta 2.5."
+        )
+
+    return (
+        f"✅ Pagamento de {pendente['nome']} ({pendente['per_apur']}) registrado.\n"
+        f"Valor líquido: R$ {float(pendente['vr_liquido']):,.2f}"
+        f"{lancamento_msg}"
+    )
 
 
 def _eh_comando_vinculo(texto: str) -> bool:
